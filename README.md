@@ -1,7 +1,7 @@
 # Neutrino HDD Launcher Prototype
 
 ## What this is
-This will be a light Neutrino launcher that scans internal exFAT-formatted HDD for ISO files,
+This will be a memory card-based Neutrino launcher that scans internal exFAT-formatted HDD for ISO files,
 lists them and boots selected ISO via Neutrino.
 
 It writes to memory card history file before launching the game, triggering per-game memory cards on SD2PSX and MemCard PRO 2.
