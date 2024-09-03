@@ -1,10 +1,10 @@
 #include <debug.h>
+#include <elf-loader.h>
 #include <kernel.h>
 #include <ps2sdkapi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <elf-loader.h>
 
 #include "common.h"
 #include "history.h"
@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
   // Init HDD and MC modules
   logString("Loading modules...\n");
   int res;
-  if ((res = initMC()) != 0) {
+  if ((res = init()) != 0) {
     logString("Failed to initialize MC modules: %d\n", res);
     goto fail;
   }
@@ -45,12 +45,9 @@ int main(int argc, char *argv[]) {
   }
   logString("Modules loaded\n\n");
 
-  //   updateHistoryFile("SLUS_200.02");
-  //   while (1) {
-  //   }
-
-  // TODO: wait for HDD properly
-  sleep(3);
+//   updateHistoryFile("SLUS_200.02");
+//   while (1) {
+//   }
 
   logString("Searching for ISO on mass:/\n");
   struct targetList *titles = findISO("mass:/");
@@ -67,9 +64,10 @@ int main(int argc, char *argv[]) {
     title = title->next;
   }
 
-  // TODO: check if ID is null
-  logString("Adding history record\n");
-  updateHistoryFile(titles->first->id);
+  if (titles->first->id != NULL) {
+    logString("Adding history record\n");
+    updateHistoryFile(titles->first->id);
+  }
 
   // Allocate memory for full path to neutrino ELF and assemble full path
   char neutrinoPath[PATH_MAX + 1];

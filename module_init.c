@@ -7,26 +7,43 @@
 #include <string.h>
 
 #include "common.h"
+#include "module_init.h"
 
-// Embedded IOP module externs
-extern unsigned char sio2man_irx[] __attribute__((aligned(16)));
-extern unsigned int size_sio2man_irx;
+// Embedded IOP modules required for reading from memory card
+IRX_DEFINE(iomanX);
+IRX_DEFINE(fileXio);
+IRX_DEFINE(sio2man);
+IRX_DEFINE(mcman);
+IRX_DEFINE(mcserv);
 
-extern unsigned char mcman_irx[] __attribute__((aligned(16)));
-extern unsigned int size_mcman_irx;
+// Initializes basic modules required for reading from memory card
+int init() {
+  // Reset IOP
+  SifIopReset("", 0);
+  // Initialize the RPC manager
+  SifInitRpc(0);
 
-extern unsigned char mcserv_irx[] __attribute__((aligned(16)));
-extern unsigned int size_mcserv_irx;
+  int ret;
+  // Apply patches required to load modules from EE RAM
+  if ((ret = sbv_patch_enable_lmb()))
+    return ret;
+  if ((ret = sbv_patch_disable_prefix_check()))
+    return ret;
 
-extern unsigned char fileXio_irx[] __attribute__((aligned(16)));
-extern unsigned int size_fileXio_irx;
+  // Load modules
+  int iopret = 0;
+  IRX_LOAD(iomanX);
+  IRX_LOAD(fileXio);
+  IRX_LOAD(sio2man);
+  IRX_LOAD(mcman);
+  IRX_LOAD(mcserv);
 
-extern unsigned char iomanX_irx[] __attribute__((aligned(16)));
-extern unsigned int size_iomanX_irx;
+  return 0;
+}
 
-// List of HDD modules to load, in order
+// List of HDD modules to load from storage, in order
 // Paths are relative to ELF current working directory
-const int MODULE_COUNT = 5;
+const int HDD_MODULE_COUNT = 5;
 const char *hddmodules[] = {
     // BDM
     "modules/bdm.irx",
@@ -39,44 +56,7 @@ const char *hddmodules[] = {
     // ATA
     "modules/ata_bd.irx"};
 
-int initMC() {
-  SifIopReset("", 0);
-  // Initialize the RPC manager
-  SifInitRpc(0);
-
-  int ret;
-  // Apply patches required to load modules from EE RAM
-  if ((ret = sbv_patch_enable_lmb())) {
-    return ret;
-  }
-  if ((ret = sbv_patch_disable_prefix_check())) {
-    return ret;
-  }
-
-  // Load embedded modules
-  logString("\tLoading iomanX.irx\n");
-  if ((ret = SifExecModuleBuffer(&iomanX_irx, size_iomanX_irx, 0, NULL, &ret) < 0) || (ret)) {
-    return ret;
-  }
-  logString("\tLoading fileXio.irx\n");
-  if ((ret = SifExecModuleBuffer(&fileXio_irx, size_fileXio_irx, 0, NULL, &ret) < 0) || (ret)) {
-    return ret;
-  }
-  logString("\tLoading sio2man.irx\n");
-  if ((ret = SifExecModuleBuffer(&sio2man_irx, size_sio2man_irx, 0, NULL, &ret) < 0) || (ret)) {
-    return ret;
-  }
-  logString("\tLoading mcman.irx\n");
-  if ((ret = SifExecModuleBuffer(&mcman_irx, size_mcman_irx, 0, NULL, &ret) < 0) || (ret)) {
-    return ret;
-  }
-  logString("\tLoading mcserv.irx\n");
-  if ((ret = SifExecModuleBuffer(&mcserv_irx, size_mcserv_irx, 0, NULL, &ret) < 0) || (ret)) {
-    return ret;
-  }
-  return 0;
-}
-
+// Loads HDD modules from basePath
 int initHDD(char *basePath) {
   // Allocate memory for module paths
   char pathBuf[PATH_MAX + 1];
@@ -84,9 +64,9 @@ int initHDD(char *basePath) {
 
   // Load the needed modules
   int ret;
-  for (int i = 0; i < MODULE_COUNT; i++) {
+  for (int i = 0; i < HDD_MODULE_COUNT; i++) {
     strcat(pathBuf, hddmodules[i]); // append module path to base path
-    logString("\tLoading %s\n", pathBuf);
+    logString("\tloading %s\n", pathBuf);
     if ((ret = SifLoadModule(pathBuf, 0, NULL)) < 0) {
       logString("ERROR: Failed to load the module %s\n", pathBuf);
       return ret;
