@@ -12,12 +12,13 @@
 #include "history.h"
 #include "module_init.h"
 
-// 'R' is a placeholder used by OPL and FreeMCBoot, must be replaced by initSystemDataDir
-static char systemDataDir[] = "BRDATA-SYSTEM";
+// The 'X' in "BXDATA-SYSTEM" will be replaced with region-specific letter by initSystemDataDir
+// The 'X' in "mcX" will be replaced with memory card number in updateHistoryFile
+static char historyFilePath[] = "mcX:/BXDATA-SYSTEM/history";
 
 static inline int initSystemDataDir(void);
-void processHistoryList(char *histfilePath, const char *titleID, struct historyListEntry *historyList);
-int evictEntry(const char *path, const struct historyListEntry *evictedhistoryEntry);
+void processHistoryList(const char *titleID, struct historyListEntry *historyList);
+int evictEntry(const struct historyListEntry *evictedhistoryEntry);
 static uint16_t getTimestamp(void);
 
 // Adds title ID to the history file on both mc0 and mc1
@@ -27,17 +28,16 @@ int updateHistoryFile(const char *titleID) {
     return -ENOENT;
 
   // Try opening history file on mc0 and mc1
-  char path[64]; // Will point to the history file
-  int histfileFd, count, i;
+  int histfileFd, count;
   struct historyListEntry historyList[MAX_HISTORY_ENTRIES];
-  for (i = 0; i < 2; i++) {
-    sprintf(path, "mc%d:/%s/history", i, systemDataDir);
-    histfileFd = open(path, O_RDONLY);
+  for (char i = '0'; i < '2'; i++) { // Skipping int-char conversions thanks to ASCII code ordering
+    historyFilePath[2] = i;
+    histfileFd = open(historyFilePath, O_RDONLY);
     if (histfileFd < 0) { // File doesn't exist, continue
       continue;
     }
 
-    logString("Opened history file at %s\n", path);
+    logString("Opened history file at %s\n", historyFilePath);
 
     // Read history file
     count = read(histfileFd, historyList, HISTORY_FILE_SIZE);
@@ -48,10 +48,10 @@ int updateHistoryFile(const char *titleID) {
     close(histfileFd);
 
     // Process history file
-    processHistoryList(path, titleID, historyList);
+    processHistoryList(titleID, historyList);
 
     // Write history file
-    histfileFd = open(path, O_WRONLY | O_CREAT | O_TRUNC);
+    histfileFd = open(historyFilePath, O_WRONLY | O_CREAT | O_TRUNC);
     if (histfileFd < 0) {
       logString("Failed to open history file for writing: %d\n", histfileFd);
       continue;
@@ -68,7 +68,7 @@ int updateHistoryFile(const char *titleID) {
   return 0;
 }
 
-// Reads ROM version from rom0:ROMVER and initializes systemDataDir with region-specific letter
+// Reads ROM version from rom0:ROMVER and initializes historyFilePath with region-specific letter
 static inline int initSystemDataDir(void) {
   int romver_fd = open("rom0:ROMVER", O_RDONLY);
   if (romver_fd < 0) {
@@ -81,17 +81,17 @@ static inline int initSystemDataDir(void) {
 
   switch (romver_str[4]) {
   case 'C': // China
-    systemDataDir[1] = 'C';
+    historyFilePath[6] = 'C';
     break;
   case 'E': // Europe
-    systemDataDir[1] = 'E';
+    historyFilePath[6] = 'E';
     break;
   case 'H': // Asia
   case 'A': // USA
-    systemDataDir[1] = 'A';
+    historyFilePath[6] = 'A';
     break;
   default: // Japan
-    systemDataDir[1] = 'I';
+    historyFilePath[6] = 'I';
   }
 
   return 0;
@@ -99,7 +99,7 @@ static inline int initSystemDataDir(void) {
 
 // Processes history record list, updating title entry if it already exists in the list
 // or adding it to the list, evicting the least used title along the way
-void processHistoryList(char *histfilePath, const char *titleID, struct historyListEntry *historyList) {
+void processHistoryList(const char *titleID, struct historyListEntry *historyList) {
   // Used to find least used record
   int leastUsedRecordIdx = 0;
   int leastUsedRecordTimestamp = INT_MAX;
@@ -161,7 +161,6 @@ void processHistoryList(char *histfilePath, const char *titleID, struct historyL
           historyList[i].shiftAmount = 7;
         }
       }
-
       return;
     }
   }
@@ -177,7 +176,7 @@ void processHistoryList(char *histfilePath, const char *titleID, struct historyL
     struct historyListEntry evictedhistoryEntry;
     newEntry = &historyList[slot = leastUsedRecordIdx];
     memcpy(&evictedhistoryEntry, newEntry, sizeof(evictedhistoryEntry));
-    i = evictEntry(histfilePath, &evictedhistoryEntry);
+    i = evictEntry(&evictedhistoryEntry);
     if (i < 0) // Will reuse i here for result
       logString("Failed to append to history.old: %d\n", i);
   }
@@ -192,12 +191,13 @@ void processHistoryList(char *histfilePath, const char *titleID, struct historyL
 }
 
 // Appends evicted history entry to history.old file
-int evictEntry(const char *histfilePath, const struct historyListEntry *evictedhistoryEntry) {
+int evictEntry(const struct historyListEntry *evictedhistoryEntry) {
   logString("Evicting %s into history.old\n", evictedhistoryEntry->titleID);
   char fullpath[64];
   int fd, result;
 
-  sprintf(fullpath, "%s.old", histfilePath);
+  strcpy(fullpath, historyFilePath);
+  strcat(fullpath, ".old");
   if ((fd = open(fullpath, O_WRONLY | O_CREAT | O_APPEND)) >= 0) {
     lseek(fd, 0, SEEK_END);
     result = write(fd, evictedhistoryEntry, sizeof(struct historyListEntry)) == sizeof(struct historyListEntry) ? 0 : -EIO;
