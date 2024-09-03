@@ -14,63 +14,57 @@
 
 // 'R' is a placeholder used by OPL and FreeMCBoot, must be replaced by initSystemDataDir
 static char systemDataDir[] = "BRDATA-SYSTEM";
-static inline int initSystemDataDir(void);
 
+static inline int initSystemDataDir(void);
 void processHistoryList(char *histfilePath, const char *titleID, struct historyListEntry *historyList);
 int evictEntry(const char *path, const struct historyListEntry *evictedhistoryEntry);
 static uint16_t getTimestamp(void);
 
-// Adds title ID to the history file on mc0 or mc1
+// Adds title ID to the history file on both mc0 and mc1
 int updateHistoryFile(const char *titleID) {
   // Detect system directory
-  if (initSystemDataDir()) {
+  if (initSystemDataDir())
     return -ENOENT;
-  }
 
-  int histfileFd, i;
+  // Try opening history file on mc0 and mc1
   char path[64]; // Will point to the history file
-
-  // Try opening history file on mc0 or mc1
+  int histfileFd, count, i;
+  struct historyListEntry historyList[MAX_HISTORY_ENTRIES];
   for (i = 0; i < 2; i++) {
     sprintf(path, "mc%d:/%s/history", i, systemDataDir);
     histfileFd = open(path, O_RDONLY);
-    if (histfileFd >= 0) {
-      break;
+    if (histfileFd < 0) { // File doesn't exist, continue
+      continue;
     }
-  }
-  if (histfileFd < 0) {
-    logString("Couldn't find the history file\n");
-    return -ENOENT;
-  }
 
-  logString("Opened history file at %s\n", path);
+    logString("Opened history file at %s\n", path);
 
-  struct historyListEntry historyList[MAX_HISTORY_ENTRIES];
-
-  // Read history file
-  int count = read(histfileFd, historyList, HISTORY_FILE_SIZE);
-  if (count != (HISTORY_FILE_SIZE)) {
-    logString("Failed to load the history file, reinitializing\n");
-    memset(historyList, 0, HISTORY_FILE_SIZE);
-  }
-  close(histfileFd);
-
-  // Process history file
-  processHistoryList(path, titleID, historyList);
-
-  // Write history file
-  histfileFd = open(path, O_WRONLY | O_CREAT | O_TRUNC);
-  if (histfileFd < 0) {
-    logString("Failed to open history file for writing: %d\n", histfileFd);
-    return -EIO;
-  }
-  // Return error if not all bytes were written
-  count = write(histfileFd, historyList, HISTORY_FILE_SIZE);
-  if (!(count == (HISTORY_FILE_SIZE))) {
+    // Read history file
+    count = read(histfileFd, historyList, HISTORY_FILE_SIZE);
+    if (count != (HISTORY_FILE_SIZE)) {
+      logString("Failed to load the history file, reinitializing\n");
+      memset(historyList, 0, HISTORY_FILE_SIZE);
+    }
     close(histfileFd);
-    return -EIO;
+
+    // Process history file
+    processHistoryList(path, titleID, historyList);
+
+    // Write history file
+    histfileFd = open(path, O_WRONLY | O_CREAT | O_TRUNC);
+    if (histfileFd < 0) {
+      logString("Failed to open history file for writing: %d\n", histfileFd);
+      continue;
+    }
+    // Return error if not all bytes were written
+    count = write(histfileFd, historyList, HISTORY_FILE_SIZE);
+    if (!(count == (HISTORY_FILE_SIZE))) {
+      close(histfileFd);
+      logString("Failed to write: %d/%d bytes written\n", count, HISTORY_FILE_SIZE);
+      continue;
+    }
+    close(histfileFd);
   }
-  close(histfileFd);
   return 0;
 }
 
@@ -146,9 +140,8 @@ void processHistoryList(char *histfilePath, const char *titleID, struct historyL
       // Update launch count
       if ((historyList[i].bitmask & 0x3F) != 0x3F) {
         int newLaunchCount = historyList[i].launchCount + 1;
-        if (newLaunchCount >= 0x80) {
+        if (newLaunchCount >= 0x80)
           newLaunchCount = 0x7F;
-        }
 
         if (newLaunchCount >= 14) {
           if ((newLaunchCount - 14) % 10 == 0) {
@@ -185,9 +178,8 @@ void processHistoryList(char *histfilePath, const char *titleID, struct historyL
     newEntry = &historyList[slot = leastUsedRecordIdx];
     memcpy(&evictedhistoryEntry, newEntry, sizeof(evictedhistoryEntry));
     i = evictEntry(histfilePath, &evictedhistoryEntry);
-    if (i < 0) { // Will reuse i here for result
+    if (i < 0) // Will reuse i here for result
       logString("Failed to append to history.old: %d\n", i);
-    }
   }
 
   logString("Inserting entry to slot %d\n", slot);

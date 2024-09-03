@@ -17,7 +17,7 @@ struct historyListEntry {
     uint16_t timestamp;
 };
 
-// Functions
+// Adds title ID to the history file on both mc0 and mc1
 int updateHistoryFile(const char *titleID);
 
 #endif
