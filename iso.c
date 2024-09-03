@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <kernel.h>
 #include <ps2sdkapi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,46 +15,63 @@
 #include "common.h"
 #include "iso.h"
 
-int _findISO(char *rootpath, struct targetList *result);
+int _findISO(DIR *directory, struct targetList *result);
 char *getTitleID(char *path);
 
 struct targetList *findISO(char *rootpath) {
+  DIR *directory;
+  // Try to open directory, giving a chance to IOP modules to init
+  for (int i = 0; i < 1000; i++) {
+    directory = opendir(rootpath);
+    if (directory != NULL)
+      break;
+    nopdelay();
+  }
+  // Check if the directory can be opened
+  if (directory == NULL) {
+    logString("ERROR: Can't open %s\n", rootpath);
+    return NULL;
+  }
+
   struct targetList *result = malloc(sizeof(struct targetList));
   result->total = 0;
   result->first = NULL;
   result->last = NULL;
-  if (_findISO(rootpath, result)) {
+  chdir(rootpath);
+  if (_findISO(directory, result)) {
     free(result);
+    closedir(directory);
     return NULL;
   }
+  closedir(directory);
   return result;
 }
 
 // Searches rootpath and adds discovered ISOs to targetList
-int _findISO(char *rootpath, struct targetList *result) {
-  DIR *directory = opendir(rootpath);
-  // Check if the directory can be opened
-  if (directory == NULL) {
-    logString("ERROR: Can't open %s\n", rootpath);
+int _findISO(DIR *directory, struct targetList *result) {
+  if (directory == NULL)
     return -ENOENT;
-  }
-
   // Read directory entries
   struct dirent *entry;
   char titlePath[PATH_MAX + 1];
   char *fileext;
   while ((entry = readdir(directory)) != NULL) {
-    chdir(rootpath);
     // Check if the entry is a directory using d_type
     switch (entry->d_type) {
     case DT_DIR:
+      // Open dir and change cwd
+      DIR *d = opendir(entry->d_name);
+      chdir(entry->d_name);
       // Process inner directory recursively
-      _findISO(entry->d_name, result);
+      _findISO(d, result);
+      // Return back to root directory
+      chdir("..");
+      closedir(d);
       continue;
     default:
-      if (entry->d_name[0] == '.') { // Ignore .files (most likely macOS doubles)
+      if (entry->d_name[0] == '.') // Ignore .files (most likely macOS doubles)
         continue;
-      }
+
       // Make sure file has .iso extension
       fileext = strrchr(entry->d_name, '.');
       if ((fileext != NULL) && !strcmp(fileext, ".iso")) {
@@ -94,12 +112,9 @@ int _findISO(char *rootpath, struct targetList *result) {
           result->last = title;
         }
       }
-      chdir("..");
     }
   }
 
-  // Close the directory
-  closedir(directory);
   return 0;
 }
 
