@@ -1,0 +1,37 @@
+{
+    "configurations": [
+        {
+            "compilerPath": "",
+            "name": "EE (Open Source SDK)",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${PS2SDK}/common/include/**",
+                "${PS2SDK}/ee/include/**",
+                "${PS2DEV}/ee/include/**",
+                "${PS2DEV}/ee/mips64r5900el-ps2-elf/include/**",
+                "${GSKIT}/include/**"
+            ],
+            "defines": ["_EE"],
+            "cStandard": "gnu89",
+            "cppStandard": "gnu++98",
+            "intelliSenseMode": "gcc-x64"
+        },
+        {
+            "compilerPath": "",
+            "name": "IOP (Open Source SDK)",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${PS2SDK}/common/include/**",
+                "${PS2SDK}/iop/include/**",
+                "${PS2DEV}/iop/include/**",
+                "${PS2DEV}/iop/lib/gcc-lib/iop/3.2.3/include/**",
+                "${PS2DEV}/iop/iop/sys-include/**"
+            ],
+            "defines": ["_IOP"],
+            "cStandard": "gnu89",
+            "cppStandard": "c++03",
+            "intelliSenseMode": "gcc-x64"
+        }
+    ],
+    "version": 4
+}
