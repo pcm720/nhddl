@@ -37,7 +37,7 @@ int updateHistoryFile(const char *titleID) {
       continue;
     }
 
-    logString("Opened history file at %s\n", historyFilePath);
+    logString("Updating history file at %s\n", historyFilePath);
 
     // Read history file
     count = read(histfileFd, historyList, HISTORY_FILE_SIZE);
@@ -53,14 +53,14 @@ int updateHistoryFile(const char *titleID) {
     // Write history file
     histfileFd = open(historyFilePath, O_WRONLY | O_CREAT | O_TRUNC);
     if (histfileFd < 0) {
-      logString("Failed to open history file for writing: %d\n", histfileFd);
+      logString("ERROR: Failed to open history file for writing: %d\n", histfileFd);
       continue;
     }
     // Return error if not all bytes were written
     count = write(histfileFd, historyList, HISTORY_FILE_SIZE);
-    if (!(count == (HISTORY_FILE_SIZE))) {
+    if (count != HISTORY_FILE_SIZE) {
       close(histfileFd);
-      logString("Failed to write: %d/%d bytes written\n", count, HISTORY_FILE_SIZE);
+      logString("ERROR: Failed to write: %d/%d bytes written\n", count, HISTORY_FILE_SIZE);
       continue;
     }
     close(histfileFd);
@@ -178,7 +178,7 @@ void processHistoryList(const char *titleID, struct historyListEntry *historyLis
     memcpy(&evictedhistoryEntry, newEntry, sizeof(evictedhistoryEntry));
     i = evictEntry(&evictedhistoryEntry);
     if (i < 0) // Will reuse i here for result
-      logString("Failed to append to history.old: %d\n", i);
+      logString("ERROR: Failed to append to history.old: %d\n", i);
   }
 
   logString("Inserting entry to slot %d\n", slot);
