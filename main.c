@@ -10,6 +10,7 @@
 #include "history.h"
 #include "iso.h"
 #include "module_init.h"
+#include "options.h"
 
 // Relative path to neutrino ELF
 const char *neutrinoELF = "neutrino.elf";
@@ -45,46 +46,82 @@ int main(int argc, char *argv[]) {
   }
   logString("Modules loaded\n\n");
 
-//   updateHistoryFile("SLUS_200.02");
-//   while (1) {
-//   }
-
   logString("Searching for ISO on mass:/\n");
-  struct targetList *titles = findISO("mass:/");
+  struct TargetList *titles = findISO("mass:/");
   if (titles == NULL) {
     logString("No targets found\n");
     goto fail;
   }
 
   logString("Found %d target(s):\n", titles->total);
+  
+  init_scr();
+  logString("Loading options from mass:\n");
+  
+  struct ArgumentList *globalOptions = malloc(sizeof(struct ArgumentList));
+  getGlobalLaunchArguments(globalOptions, "mass:/");
+  struct ArgumentList *titleOptions = malloc(sizeof(struct ArgumentList));
+  getTitleLaunchArguments(titleOptions, titles->last);
 
-  target *title = titles->first;
-  while (title) {
-    logString("%s (%s) @ %s\n", title->name, title->id, title->fullPath);
-    title = title->next;
+  logString("Global args:\n");
+  struct Argument *tArg = globalOptions->first;
+  while (tArg != NULL) {
+    logString("arg: %s, val: %s, disabled: %d\n", tArg->arg, tArg->value, tArg->isDisabled);
+    tArg = tArg->next;
+  }
+  logString("Title args:\n");
+  tArg = titleOptions->first;
+  while (tArg != NULL) {
+    logString("arg: %s, val: %s, disabled: %d\n", tArg->arg, tArg->value, tArg->isDisabled);
+    tArg = tArg->next;
+  }
+  updateTitleLaunchArguments(titles->last, titleOptions);
+  while (1) {
   }
 
-  if (titles->first->id != NULL) {
-    logString("Adding history record\n");
-    updateHistoryFile(titles->first->id);
+  char *lastTitle = calloc(sizeof(char), PATH_MAX + 1);
+  if (getLastLaunchedTitle("mass:", lastTitle)) {
+    logString("Failed to read last played title\n");
+  } else
+    logString("Last played title is %s\n", lastTitle);
+
+  struct Target *launchTarget = NULL;
+  struct Target *current = titles->first;
+  if (strlen(lastTitle) > 0) {
+    while (launchTarget == NULL) {
+      if (!strcmp(current->fullPath, lastTitle)) {
+        launchTarget = current;
+        break;
+      } else if (current->next == NULL) {
+        break;
+      }
+      current = current->next;
+    }
   }
+  if (launchTarget == NULL) {
+    logString("Last played title not found, selecting the first title\n");
+    launchTarget = titles->first;
+  }
+
+  if (updateLastLaunchedTitle(launchTarget->fullPath)) {
+    logString("ERROR: Failed to update last played title\n");
+  }
+  updateHistoryFile(launchTarget->id);
 
   // Allocate memory for full path to neutrino ELF and assemble full path
   char neutrinoPath[PATH_MAX + 1];
   strcpy(neutrinoPath, basePath);
   strcat(neutrinoPath, neutrinoELF);
 
-  logString("Will load the first target in the list: %s (%s)\n", titles->first->name, titles->first->id);
+  logString("Will load %s (%s)\n", launchTarget->name, launchTarget->id);
   sleep(3);
 
   char *args[2];
   args[0] = "-bsd=ata";
 
-  struct target *target = titles->first;
-
-  args[1] = malloc(5 + strlen(target->fullPath));
+  args[1] = malloc(5 + strlen(launchTarget->fullPath));
   strcpy(args[1], "-dvd=");
-  strcat(args[1], target->fullPath);
+  strcat(args[1], launchTarget->fullPath);
 
   LoadELFFromFile(neutrinoPath, 2, args);
 

@@ -2,7 +2,7 @@
 
 EE_BIN = nhddl_unc.elf
 EE_BIN_PKD = nhddl.elf
-EE_OBJS = main.o module_init.o common.o iso.o history.o
+EE_OBJS = main.o module_init.o common.o iso.o history.o options.o
 
 IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx
 
