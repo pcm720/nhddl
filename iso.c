@@ -15,10 +15,10 @@
 #include "common.h"
 #include "iso.h"
 
-int _findISO(DIR *directory, struct targetList *result);
+int _findISO(DIR *directory, struct TargetList *result);
 char *getTitleID(char *path);
 
-struct targetList *findISO(char *rootpath) {
+struct TargetList *findISO(char *rootpath) {
   DIR *directory;
   // Try to open directory, giving a chance to IOP modules to init
   for (int i = 0; i < 1000; i++) {
@@ -33,7 +33,7 @@ struct targetList *findISO(char *rootpath) {
     return NULL;
   }
 
-  struct targetList *result = malloc(sizeof(struct targetList));
+  struct TargetList *result = malloc(sizeof(struct TargetList));
   result->total = 0;
   result->first = NULL;
   result->last = NULL;
@@ -47,14 +47,20 @@ struct targetList *findISO(char *rootpath) {
   return result;
 }
 
-// Searches rootpath and adds discovered ISOs to targetList
-int _findISO(DIR *directory, struct targetList *result) {
+// Searches rootpath and adds discovered ISOs to TargetList
+int _findISO(DIR *directory, struct TargetList *result) {
   if (directory == NULL)
     return -ENOENT;
   // Read directory entries
   struct dirent *entry;
-  char titlePath[PATH_MAX + 1];
   char *fileext;
+  char *titlePath = calloc(sizeof(char), PATH_MAX + 1);
+  if (!getcwd(titlePath, PATH_MAX + 1)) { // Initialize titlePath with current working directory
+    logString("ERROR: Failed to get cwd\n");
+    free(titlePath);
+    return -ENOENT;
+  }
+  int cwdLen = strlen(titlePath); // Get the length of base path string
   while ((entry = readdir(directory)) != NULL) {
     // Check if the entry is a directory using d_type
     switch (entry->d_type) {
@@ -76,24 +82,20 @@ int _findISO(DIR *directory, struct targetList *result) {
       fileext = strrchr(entry->d_name, '.');
       if ((fileext != NULL) && !strcmp(fileext, ".iso")) {
         // Generate full path
-        if (!getcwd(titlePath, PATH_MAX + 1)) {
-          logString("ERROR: Failed to get cwd\n");
-          closedir(directory);
-          return -ENOENT;
-        }
         strcat(titlePath, "/");
         strcat(titlePath, entry->d_name);
 
         // Initialize target
-        struct target *title = malloc(sizeof(struct target));
+        struct Target *title = calloc(sizeof(char), sizeof(struct Target));
+        title->idx = result->total;
         title->prev = NULL;
         title->next = NULL;
-        title->fullPath = malloc(strlen(titlePath));
+        title->fullPath = calloc(sizeof(char), strlen(titlePath) + 1);
         strcpy(title->fullPath, titlePath);
 
         // Get file name without the extension
         int nameLength = (int)(fileext - entry->d_name);
-        title->name = malloc(nameLength + 1);
+        title->name = calloc(sizeof(char), nameLength + 1);
         strncpy(title->name, entry->d_name, nameLength);
 
         // Get title ID
@@ -111,10 +113,12 @@ int _findISO(DIR *directory, struct targetList *result) {
           title->prev = result->last;
           result->last = title;
         }
+        titlePath[cwdLen] = '\0'; // reset titlePath by ending string on base path
       }
     }
   }
 
+  free(titlePath);
   return 0;
 }
 
@@ -130,6 +134,7 @@ char *getTitleID(char *path) {
   int system_cnf_fd = open("iso:/SYSTEM.CNF;1", O_RDONLY);
   if (system_cnf_fd < 0) {
     logString("ERROR: Unable to open SYSTEM.CNF from disk\n");
+    fileXioUmount("iso:");
     return NULL;
   }
 
@@ -142,7 +147,8 @@ char *getTitleID(char *path) {
   char *selfFile = strstr(system_cnf_data, "cdrom0:");
   char *fname_end = strstr(system_cnf_data, ";");
   if (selfFile == NULL || fname_end == NULL) {
-    logString("ERROR: file name not found in SYSTEM.CNF\n");
+    logString("ERROR: File name not found in SYSTEM.CNF\n");
+    fileXioUmount("iso:");
     return NULL;
   }
   fname_end[1] = '1';
@@ -156,4 +162,29 @@ char *getTitleID(char *path) {
   fileXioUmount("iso:");
 
   return titleID;
+}
+
+// Completely frees Target and returns pointer to a previous argument in the list
+struct Target *freeTarget(struct Target *target) {
+  struct Target *prev = NULL;
+  free(target->fullPath);
+  free(target->name);
+  free(target->id);
+  if (target->prev != NULL) {
+    prev = target->prev;
+  }
+  free(target);
+  return prev;
+}
+
+// Completely frees TargetList. Passed pointer will not be valid after this function executes
+void freeTargetList(struct TargetList *result) {
+  struct Target *target = result->last;
+  while (target != NULL) {
+    target = freeTarget(target);
+  }
+  result->first = NULL;
+  result->last = NULL;
+  result->total = 0;
+  free(result);
 }
