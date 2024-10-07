@@ -53,7 +53,7 @@ int getTitleLaunchArguments(struct ArgumentList *result, struct Target *target);
 
 // Saves title launch arguments to title-specific config file.
 // '$' before the argument name is used as 'disabled' flag.
-// '$' value means that the argument is empty, but still should be used without the value.
+// Empty value means that the argument is empty, but still should be used without the value.
 int updateTitleLaunchArguments(struct Target *target, struct ArgumentList *options);
 
 // Completely frees ArgumentList. Passed pointer will not be valid after this function executes
@@ -67,7 +67,7 @@ void insertArgumentCopy(struct ArgumentList *target, struct Argument *arg);
 // Expects result to be initialized with zeroes. All arguments in resulting list are a deep copy of arguments in source lists.
 void mergeArgumentLists(struct ArgumentList *list1, struct ArgumentList *list2);
 
-// Parses game compatibility mode argument value into a bitmask
+// Parses compatibility mode argument value into a bitmask
 uint8_t parseCompatModes(char *stringValue);
 
 // Stores compatibility mode from bitmask into string.

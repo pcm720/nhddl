@@ -54,7 +54,7 @@ int getLastLaunchedTitle(char *titlePath) {
   // Open last launched title file and read it
   int fd = open(targetPath, O_RDONLY);
   if (fd < 0) {
-    printf("ERROR: Failed to open last launched title file: %d\n", fd);
+    printf("WARN: Failed to open last launched title file: %d\n", fd);
     free(targetPath);
     return -ENOENT;
   }
@@ -70,7 +70,7 @@ int getLastLaunchedTitle(char *titlePath) {
   if (read(fd, titlePath, st.st_size) < 0) {
     close(fd);
     free(targetPath);
-    printf("ERROR: Failed to read last launched title\n");
+    printf("WARN: Failed to read last launched title\n");
     return -EIO;
   }
   close(fd);
@@ -130,7 +130,7 @@ int getGlobalLaunchArguments(struct ArgumentList *result) {
 
 // Generates ArgumentList from global and title-specific config file
 int getTitleLaunchArguments(struct ArgumentList *result, struct Target *target) {
-  printf("Looking for game-specific config for %s (%s)\n", target->name, target->id);
+  printf("Looking for title-specific config for %s (%s)\n", target->name, target->id);
   char *targetPath = calloc(sizeof(char), PATH_MAX + 1);
   buildConfigFilePath(targetPath, target->fullPath, NULL);
   // Determine actual title options file from config directory contents
@@ -141,7 +141,7 @@ int getTitleLaunchArguments(struct ArgumentList *result, struct Target *target) 
     return -ENOENT;
   }
 
-  // Find game config in config directory
+  // Find title config in config directory
   char *configPath = calloc(sizeof(char), PATH_MAX + 1);
   struct dirent *entry;
   while ((entry = readdir(directory)) != NULL) {
@@ -161,15 +161,15 @@ int getTitleLaunchArguments(struct ArgumentList *result, struct Target *target) 
   free(targetPath);
 
   if (configPath[0] == '\0') {
-    printf("Game-specific config not found\n");
+    printf("Title-specific config not found\n");
     goto out;
   }
 
   // Load arguments
-  printf("Loading game-specific config from %s\n", configPath);
+  printf("Loading title-specific config from %s\n", configPath);
   int ret = loadArgumentList(result, configPath);
   if (ret) {
-    printf("Failed to load argument list: %d\n", ret);
+    printf("ERROR: Failed to load argument list: %d\n", ret);
   }
 
 out:
@@ -179,18 +179,18 @@ out:
 
 // Saves title launch arguments to title-specific config file.
 // '$' before the argument name is used as 'disabled' flag.
-// '$' value means that the argument is empty, but still should be used without the value.
+// Empty value means that the argument is empty, but still should be used without the value.
 int updateTitleLaunchArguments(struct Target *target, struct ArgumentList *options) {
   // Build file path
   char *targetPath = calloc(sizeof(char), PATH_MAX + 1);
   buildConfigFilePath(targetPath, target->fullPath, target->name);
   strcat(targetPath, ".yaml");
-  printf("Saving game-specific config to %s\n", targetPath);
+  printf("Saving title-specific config to %s\n", targetPath);
 
   // Open file, truncating it
   int fd = open(targetPath, O_WRONLY | O_CREAT | O_TRUNC);
   if (fd < 0) {
-    printf("ERROR: Failed to open file");
+    printf("ERROR: Failed to open file\n");
     free(targetPath);
     return fd;
   }
@@ -207,7 +207,7 @@ int updateTitleLaunchArguments(struct Target *target, struct ArgumentList *optio
     if (!tArg->isGlobal) {
       len = sprintf(lineBuffer, "%s%s: %s\n", (tArg->isDisabled) ? "$" : "", tArg->arg, tArg->value);
     } else if (tArg->isDisabled) {
-      len = sprintf(lineBuffer, "$%s: $\n", tArg->arg);
+      len = sprintf(lineBuffer, "$%s:\n", tArg->arg);
     }
     if (len > 0) {
       if ((ret = write(fd, lineBuffer, len)) != len) {
@@ -302,8 +302,11 @@ int parseOptionsFile(struct ArgumentList *result, FILE *file) {
     substrIdx = startIdx;
     while ((lineBuffer[substrIdx] != '#') && (lineBuffer[substrIdx] != '\r') && (lineBuffer[substrIdx] != '\n')) {
       if (lineBuffer[substrIdx] == '\0') {
-        free(argName);
-        goto next;
+        // Update start index to create empty value
+        startIdx = substrIdx;
+        goto makeArgument;
+        // free(argName);
+        // goto next;
       }
       substrIdx++; // Advance until we reach the comment or end of line
     }
@@ -315,6 +318,7 @@ int parseOptionsFile(struct ArgumentList *result, FILE *file) {
     }
     substrIdx++; // Increment index since this the current one points to the last character of the value
 
+  makeArgument:
     struct Argument *arg = malloc(sizeof(struct Argument));
     arg->arg = argName;
     arg->isDisabled = isDisabled;
@@ -325,8 +329,11 @@ int parseOptionsFile(struct ArgumentList *result, FILE *file) {
 
     // Always put compatibility mode first
     if (!strcmp(COMPAT_MODES_ARG, arg->arg)) {
-      // Always allocate exactly (CM_NUM_MODES + 1) bytes for compatibility mode string
-      arg->value = calloc(CM_NUM_MODES + 1, 1);
+      // Always allocate at least (CM_NUM_MODES + 1) bytes for compatibility mode string
+      if ((substrIdx - startIdx) > (CM_NUM_MODES + 1))
+        arg->value = calloc((substrIdx - startIdx), 1);
+      else
+        arg->value = calloc(CM_NUM_MODES + 1, 1);
       strncpy(arg->value, &lineBuffer[startIdx], substrIdx - startIdx);
       arg->next = result->first;
       result->first = NULL;
@@ -419,12 +426,13 @@ void insertArgumentCopy(struct ArgumentList *target, struct Argument *arg) {
 
   target->total++;
 
-  // Always put game compatibility mode first
+  // Always put compatibility mode argument first
   if (!strcmp(COMPAT_MODES_ARG, copy->arg)) {
     copy->next = target->first;
     target->first = copy;
     if (target->last == NULL)
       target->last = copy;
+    return;
   }
 
   if (target->first == NULL) {
@@ -454,9 +462,8 @@ void mergeArgumentLists(struct ArgumentList *list1, struct ArgumentList *list2) 
       if (!strcmp(curArg2->arg, curArg1->arg)) {
         isDuplicate = 1;
         // If argument is not a compat mode flag, disabled and has no value
-        if (strcmp(COMPAT_MODES_ARG, curArg2->arg) && curArg1->isDisabled && (curArg1->value[0] == '$')) {
+        if (strcmp(COMPAT_MODES_ARG, curArg2->arg) && curArg1->isDisabled && (curArg1->value[0] == '\0')) {
           // Replace element in list1 with disabled element from list2
-          printf("Argument %s must be replaced\n", curArg1->arg);
           replaceArgument(curArg1, curArg2);
           curArg1->isDisabled = 1;
         }
@@ -472,7 +479,7 @@ void mergeArgumentLists(struct ArgumentList *list1, struct ArgumentList *list2) 
   }
 }
 
-// Parses game compatibility mode argument value into a bitmask
+// Parses compatibility mode argument value into a bitmask
 uint8_t parseCompatModes(char *stringValue) {
   uint8_t result = 0;
   for (int i = 0; i < strlen(stringValue); i++) {
@@ -496,11 +503,6 @@ void storeCompatModes(char *target, uint8_t modes) {
       target[pos] = COMPAT_MODE_MAP[i].value;
       pos++;
     }
-  }
-
-  if (pos == 0) {
-    target[pos] = '$';
-    pos++;
   }
 
   target[pos] = '\0';
@@ -530,12 +532,12 @@ struct ArgumentList *loadLaunchArgumentLists(struct Target *target) {
   // Initialize global argument list
   struct ArgumentList *globalArguments = calloc(sizeof(struct ArgumentList), 1);
   if ((res = getGlobalLaunchArguments(globalArguments))) {
-    printf("ERROR: failed to load global launch arguments: %d", res);
+    printf("WARN: Failed to load global launch arguments: %d\n", res);
   }
   // Initialize title list and merge global into it
   struct ArgumentList *titleArguments = calloc(sizeof(struct ArgumentList), 1);
   if ((res = getTitleLaunchArguments(titleArguments, target))) {
-    printf("ERROR: failed to load title arguments: %d", res);
+    printf("WARN: Failed to load title arguments: %d\n", res);
   }
 
   if (titleArguments->total != 0) {
