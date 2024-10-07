@@ -1,6 +1,9 @@
 obj/
 .vscode/settings.json
 *.elf
+*.irx
+*.yaml
+*.toml
 # Created by https://www.toptal.com/developers/gitignore/api/macos,windows,linux
 
 ### Linux ###
