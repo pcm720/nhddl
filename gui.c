@@ -11,20 +11,26 @@
 #include <ps2sdkapi.h>
 #include <stdio.h>
 
-#define MAX_TITLES_PER_PAGE_NTSC 20
-#define MAX_TITLES_PER_PAGE_PAL 25
-#define MAX_ARGUMENTS 12
-#define DIV_ROUND(n, d) (n + (d - 1)) / d
-
-const char artPath[] = "/ART";
-
-void init480p(GSGLOBAL *gsGlobal);
 int uiLoop(struct TargetList *titles);
 int uiTitleOptionsLoop(struct Target *title);
 void uiLaunchTitle(struct Target *target, struct ArgumentList *arguments);
 void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *selectedTitleCover);
 void drawArgumentList(struct ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx);
 void drawGameID(const char *game_id);
+
+#define MAX_TITLES_PER_PAGE_NTSC 20
+#define MAX_TITLES_PER_PAGE_PAL 25
+#define MAX_ARGUMENTS 12
+#define DIV_ROUND(n, d) (n + (d - 1)) / d
+
+// Assuming 140x200 cover art
+#define COVER_ART_RES_W 140
+#define COVER_ART_RES_H 200
+
+static const char artPath[] = "/ART";
+// Path relative to ELF_BASE_PATH.
+// If this file exists, 480p output will be enabled
+static const char progPath[] = "/480p";
 
 static GSGLOBAL *gsGlobal;
 static GSFONTM *gsFontM;
@@ -35,6 +41,11 @@ static char lineBuffer[255];
 // Predefined colors
 static const u64 WhiteFont = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80);
 static const u64 BlackBG = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x00);
+
+static int coverArtX2;
+static int coverArtY2;
+static int coverArtX1;
+static int coverArtY1;
 
 void init480p(GSGLOBAL *gsGlobal) {
   gsGlobal->Mode = GS_MODE_DTV_480P;
@@ -51,7 +62,14 @@ int uiInit() {
   if (gsGlobal->Mode == GS_MODE_PAL) {
     maxTitlesPerPage = MAX_TITLES_PER_PAGE_PAL;
   }
-  // init480p(gsGlobal);
+  // If this file exists, enable 480p
+  char *progFile = calloc(strlen(ELF_BASE_PATH) + strlen(progPath) + 1, 1);
+  strcat(progFile, ELF_BASE_PATH);
+  strcat(progFile, progPath);
+  if (!access(progFile, R_OK)) {
+    init480p(gsGlobal);
+  }
+  free(progFile);
 
   gsFontM = gsKit_init_fontm();
 
@@ -60,7 +78,7 @@ int uiInit() {
   // Initialize the DMAC
   int res;
   if ((res = dmaKit_chan_init(DMA_CHANNEL_GIF))) {
-    printf("ERROR: failed to initlize DMAC: %d\n", res);
+    printf("ERROR: Failed to initlize DMAC: %d\n", res);
     return res;
   }
 
@@ -69,12 +87,17 @@ int uiInit() {
   gsKit_mode_switch(gsGlobal, GS_ONESHOT);
   // Upload font, set font spacing
   if ((res = gsKit_fontm_upload(gsGlobal, gsFontM))) {
-    printf("ERROR: failed to upload FONTM: %d\n", res);
+    printf("ERROR: Failed to upload FONTM: %d\n", res);
     return res;
   }
   gsFontM->Spacing = 0.65f;
+
+  // Init cover texture
   coverTexture = calloc(sizeof(GSTEXTURE), 1);
-  coverTexture->Delayed = 1;
+  coverArtX2 = (gsGlobal->Width - 25);
+  coverArtY2 = (gsGlobal->Height / 2) + (COVER_ART_RES_H / 2);
+  coverArtX1 = coverArtX2 - COVER_ART_RES_W;
+  coverArtY1 = coverArtY2 - COVER_ART_RES_H;
 
   // Init gamepad inputs
   gpadInit();
@@ -83,24 +106,35 @@ int uiInit() {
 
 // Invalidates the current loaded texture and loads a new one
 int loadCoverArt(char *titleID) {
-  gsKit_TexManager_invalidate(gsGlobal, coverTexture);
-  gsKit_TexManager_free(gsGlobal, coverTexture);
+  gsKit_vram_clear(gsGlobal);
+
+  // Texture is loaded immediately by gsKit_texture_{jpeg,png} since Delayed is not set,
+  // so there is no need to use gsKit_TexManager calls.
   int res = 0;
   // Reuse line buffer for building texture path
-  snprintf(lineBuffer, 255, "%s%s/%s_COV.jpg", STORAGE_BASE_PATH, artPath, titleID);
-  // Try to load JPEG first
-  if (!(res = gsKit_texture_jpeg(gsGlobal, coverTexture, lineBuffer))) {
-    return res;
+  int len = snprintf(lineBuffer, 255, "%s%s/%s_COV.jpg", STORAGE_BASE_PATH, artPath, titleID);
+  if (!access(lineBuffer, R_OK)) {
+    // Try to load JPEG first
+    if (!(res = gsKit_texture_jpeg(gsGlobal, coverTexture, lineBuffer))) {
+      return res;
+    }
   }
   // If failed, try to load PNG
-  snprintf(lineBuffer, 255, "%s%s/%s_COV.png", STORAGE_BASE_PATH, artPath, titleID);
-  return gsKit_texture_png(gsGlobal, coverTexture, lineBuffer);
+  // Replace "jp" in "jpg" with "pn" to make "png"
+  lineBuffer[len - 2] = 'n';
+  lineBuffer[len - 3] = 'p';
+  if (!access(lineBuffer, R_OK)) {
+    return gsKit_texture_png(gsGlobal, coverTexture, lineBuffer);
+  }
+  printf("%s: cover not found\n", titleID);
+  return 1;
 }
 
 // Closes gamepad driver and clears up gsKit
 void uiCleanup() {
   gpadClose();
-  gsKit_TexManager_free(gsGlobal, coverTexture);
+  gsKit_vram_clear(gsGlobal);
+  free(coverTexture);
   gsKit_free_fontm(gsGlobal, gsFontM);
   gsKit_deinit_global(gsGlobal);
 }
@@ -110,7 +144,7 @@ int uiLoop(struct TargetList *titles) {
   int res = 0;
   if (gsGlobal == NULL) {
     if ((res = uiInit())) {
-      printf("ERROR: failed to init UI: %d\n", res);
+      printf("ERROR: Failed to init UI: %d\n", res);
       goto exit;
     };
   }
@@ -158,7 +192,6 @@ int uiLoop(struct TargetList *titles) {
 
     gsKit_queue_exec(gsGlobal);
     gsKit_sync_flip(gsGlobal);
-    gsKit_TexManager_nextFrame(gsGlobal);
 
     // Process user inputs
     input = getInput(-1);
@@ -235,7 +268,7 @@ void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *s
     // Draw title ID for selected title
     if (selectedTitleIdx == curTitle->idx) {
       // Draw title ID
-      gsKit_fontm_print_scaled(gsGlobal, gsFontM, gsGlobal->Width - (140 + 25.0f), 100.0f + 210, 0, 0.7f, WhiteFont, curTitle->id);
+      gsKit_fontm_print_scaled(gsGlobal, gsFontM, coverArtX1, coverArtY2 + 5, 0, 0.7f, WhiteFont, curTitle->id);
     }
 
     // Draw title name
@@ -246,18 +279,15 @@ void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *s
     curTitle = curTitle->next;
   }
 
-  // Draw cover art placeholder
-  gsKit_prim_sprite(gsGlobal, gsGlobal->Width - (140 + 27.0f), 98.0f, gsGlobal->Width - 23.0f, 102.0f + 200, 0,
-                    GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x00));
-  gsKit_prim_line(gsGlobal, gsGlobal->Width - (140 + 23.0f), 102.0f, gsGlobal->Width - 27.0f, 98.0f + 200, 0, BlackBG);
-  gsKit_prim_line(gsGlobal, gsGlobal->Width - 27.0f, 102.0f, gsGlobal->Width - (140 + 23.0f), 98.0f + 200, 0, BlackBG);
+  // Draw cover art placeholder/frame
+  gsKit_prim_sprite(gsGlobal, coverArtX1 - 2, coverArtY1 - 2, coverArtX2 + 2, coverArtY2 + 2, 0, GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x00));
+  gsKit_prim_line(gsGlobal, coverArtX1 + 2, coverArtY1 + 2, coverArtX2 - 2, coverArtY2 - 2, 0, BlackBG);
+  gsKit_prim_line(gsGlobal, coverArtX1 + 2, coverArtY2 - 2, coverArtX2 - 2, coverArtY1 + 2, 0, BlackBG);
 
   // Draw cover art if it exists
   if (selectedTitleCover != NULL) {
-    gsKit_TexManager_bind(gsGlobal, selectedTitleCover);
-    gsKit_prim_sprite_texture(gsGlobal, selectedTitleCover, gsGlobal->Width - (selectedTitleCover->Width + 25.0f), 100.0f, 0.0f, 0.0f,
-                              gsGlobal->Width - 25.0f, 100.0f + selectedTitleCover->Height, selectedTitleCover->Width, selectedTitleCover->Height, 1,
-                              GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80));
+    gsKit_prim_sprite_texture(gsGlobal, selectedTitleCover, coverArtX1, coverArtY1, 0.0f, 0.0f, coverArtX2, coverArtY2, selectedTitleCover->Width,
+                              selectedTitleCover->Height, 1, GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80));
   }
 }
 
@@ -266,7 +296,8 @@ int uiTitleOptionsLoop(struct Target *target) {
   struct ArgumentList *titleArguments = loadLaunchArgumentLists(target);
 
   uint8_t modes = 0;
-  if (!strcmp(COMPAT_MODES_ARG, titleArguments->first->arg)) {
+
+  if ((titleArguments->total != 0) && !strcmp(COMPAT_MODES_ARG, titleArguments->first->arg)) {
     modes = parseCompatModes(titleArguments->first->value);
   } else {
     // Insert compat mode flag if it doesn't exist
@@ -277,7 +308,6 @@ int uiTitleOptionsLoop(struct Target *target) {
   // Indexes 0 through CM_NUM_MODES are reserved for compatibility modes
   int selectedArgIdx = 0;
   int totalIndexes = (titleArguments->total - 1) + (CM_NUM_MODES - 1);
-  printf("total %d\n", totalIndexes);
   int input = 0;
 
   // Always start with the second element since the first
