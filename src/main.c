@@ -15,8 +15,8 @@ int main(int argc, char *argv[]) {
   // Initialize the screen (clear it)
   init_scr();
 
-  printf("\n\n*************\n");
-  logString("Neutrino HDD launcher by pcm720\n\n");
+  printf("*************\n");
+  logString("\n\nNHDDL — a Neutrino launcher by pcm720\n\n");
   printf("*************\n");
 
   // Get base path
@@ -41,13 +41,14 @@ int main(int argc, char *argv[]) {
   }
   logString("Modules loaded\n\n");
 
-  logString("Searching for ISO on mass:/\n");
+  logString("Searching for ISO on %s\n", STORAGE_BASE_PATH);
   struct TargetList *titles = findISO();
   if (titles == NULL) {
     logString("No targets found\n");
     goto fail;
   }
   
+  init_scr();
   if ((res = uiLoop(titles))) {
     init_scr();
     logString("\n\nERROR: UI loop failed: %d\n", res);
