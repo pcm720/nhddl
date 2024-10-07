@@ -15,6 +15,7 @@ IRX_DEFINE(fileXio);
 IRX_DEFINE(sio2man);
 IRX_DEFINE(mcman);
 IRX_DEFINE(mcserv);
+IRX_DEFINE(freepad);
 
 // Initializes basic modules required for reading from memory card
 int init() {
@@ -37,6 +38,8 @@ int init() {
   IRX_LOAD(sio2man);
   IRX_LOAD(mcman);
   IRX_LOAD(mcserv);
+  IRX_LOAD(freepad);
+
 
   return 0;
 }

@@ -1,6 +1,7 @@
 #include <debug.h>
 #include <stdio.h>
 
+// Logs to screen and debug console
 void logString(const char *str, ...) {
   va_list args;
   va_start(args, str);

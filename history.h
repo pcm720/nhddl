@@ -2,6 +2,8 @@
 #ifndef _HISTORY_H_
 #define _HISTORY_H_
 
+#include <stdint.h>
+
 // Target history file size
 #define MAX_HISTORY_ENTRIES 21
 #define HISTORY_FILE_SIZE MAX_HISTORY_ENTRIES * sizeof(struct historyListEntry)

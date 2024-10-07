@@ -16,20 +16,22 @@
 #include "iso.h"
 
 int _findISO(DIR *directory, struct TargetList *result);
+void insertIntoList(struct TargetList *result, struct Target *title);
+char toUppercase(char a);
 char *getTitleID(char *path);
 
-struct TargetList *findISO(char *rootpath) {
+struct TargetList *findISO() {
   DIR *directory;
   // Try to open directory, giving a chance to IOP modules to init
   for (int i = 0; i < 1000; i++) {
-    directory = opendir(rootpath);
+    directory = opendir(STORAGE_BASE_PATH);
     if (directory != NULL)
       break;
     nopdelay();
   }
   // Check if the directory can be opened
   if (directory == NULL) {
-    logString("ERROR: Can't open %s\n", rootpath);
+    logString("ERROR: Can't open %s\n", STORAGE_BASE_PATH);
     return NULL;
   }
 
@@ -37,7 +39,7 @@ struct TargetList *findISO(char *rootpath) {
   result->total = 0;
   result->first = NULL;
   result->last = NULL;
-  chdir(rootpath);
+  chdir(STORAGE_BASE_PATH);
   if (_findISO(directory, result)) {
     free(result);
     closedir(directory);
@@ -87,7 +89,6 @@ int _findISO(DIR *directory, struct TargetList *result) {
 
         // Initialize target
         struct Target *title = calloc(sizeof(char), sizeof(struct Target));
-        title->idx = result->total;
         title->prev = NULL;
         title->next = NULL;
         title->fullPath = calloc(sizeof(char), strlen(titlePath) + 1);
@@ -108,18 +109,72 @@ int _findISO(DIR *directory, struct TargetList *result) {
           result->first = title;
           result->last = title;
         } else {
-          // Else, update the last entry
-          result->last->next = title;
-          title->prev = result->last;
-          result->last = title;
+          insertIntoList(result, title);
         }
         titlePath[cwdLen] = '\0'; // reset titlePath by ending string on base path
       }
     }
   }
 
+  // Set indexes for each title
+  int idx = 0;
+  struct Target *curTitle = result->first;
+  while (curTitle != NULL) {
+    curTitle->idx = idx;
+    idx++;
+    curTitle = curTitle->next;
+  }
+
   free(titlePath);
   return 0;
+}
+
+// Inserts title in the list while keeping the alphabetical order
+void inline insertIntoList(struct TargetList *result, struct Target *title) {
+  // Traverse the list in reverse
+  struct Target *curTitle = result->last;
+  char current = toUppercase(title->name[0]);
+  char last;
+  while (1) {
+    // Compare first letters of the new title and the current title
+    last = toUppercase(curTitle->name[0]);
+
+    if ((current - last) >= 0) {
+      // First letter of the new title is after or the same as the current one
+      // New title must be inserted after the current list element
+      if (curTitle->next != NULL) {
+        // Current title has a next title, update the next element
+        curTitle->next->prev = title;
+        title->next = curTitle->next;
+      } else {
+        // Current title has no next title (it's the last list element)
+        result->last = title;
+      }
+      title->prev = curTitle;
+      curTitle->next = title;
+      break;
+    }
+
+    if (curTitle->prev == NULL) {
+      // Current title is the first in this list
+      // New title must be inserted at the beginning
+      curTitle->prev = title;
+      title->next = curTitle;
+      result->first = title;
+      break;
+    }
+
+    // Keep traversing the list
+    curTitle = curTitle->prev;
+  }
+}
+
+// Converts lower-case ASCII letter into upper-case
+char toUppercase(char a) {
+  if (a >= 0x61 && a <= 0x7A) {
+    return a - 32;
+  }
+  return a;
 }
 
 // The following code was copied from neutrino with minimal changes:
@@ -133,7 +188,7 @@ char *getTitleID(char *path) {
 
   int system_cnf_fd = open("iso:/SYSTEM.CNF;1", O_RDONLY);
   if (system_cnf_fd < 0) {
-    logString("ERROR: Unable to open SYSTEM.CNF from disk\n");
+    logString("ERROR: Unable to open SYSTEM.CNF: %s\n", path);
     fileXioUmount("iso:");
     return NULL;
   }
@@ -147,7 +202,7 @@ char *getTitleID(char *path) {
   char *selfFile = strstr(system_cnf_data, "cdrom0:");
   char *fname_end = strstr(system_cnf_data, ";");
   if (selfFile == NULL || fname_end == NULL) {
-    logString("ERROR: File name not found in SYSTEM.CNF\n");
+    logString("ERROR: File name not found in SYSTEM.CNF: %s\n", path);
     fileXioUmount("iso:");
     return NULL;
   }
@@ -187,4 +242,35 @@ void freeTargetList(struct TargetList *result) {
   result->last = NULL;
   result->total = 0;
   free(result);
+}
+
+// Finds target with given index in the list and returns a pointer to it
+struct Target *getTargetByIdx(struct TargetList *targets, int idx) {
+  struct Target *current = targets->first;
+  while (1) {
+    if (current->idx == idx) {
+      return current;
+    }
+
+    if (current->next == NULL)
+      break;
+
+    current = current->next;
+  }
+  return NULL;
+}
+
+// Makes and returns a deep copy of src without prev/next pointers.
+struct Target *copyTarget(struct Target *src) {
+  struct Target *copy = calloc(sizeof(struct Target), 1);
+  copy->idx = src->idx;
+
+  copy->fullPath = malloc(strlen(src->fullPath));
+  strcpy(copy->fullPath, src->fullPath);
+  copy->name = malloc(strlen(src->name));
+  strcpy(copy->name, src->name);
+  copy->id = malloc(strlen(src->id));
+  strcpy(copy->id, src->id);
+
+  return copy;
 }

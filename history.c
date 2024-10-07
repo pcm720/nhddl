@@ -37,12 +37,12 @@ int updateHistoryFile(const char *titleID) {
       continue;
     }
 
-    logString("Updating history file at %s\n", historyFilePath);
+    printf("Updating history file at %s\n", historyFilePath);
 
     // Read history file
     count = read(histfileFd, historyList, HISTORY_FILE_SIZE);
     if (count != (HISTORY_FILE_SIZE)) {
-      logString("Failed to load the history file, reinitializing\n");
+      printf("Failed to load the history file, reinitializing\n");
       memset(historyList, 0, HISTORY_FILE_SIZE);
     }
     close(histfileFd);
@@ -53,14 +53,14 @@ int updateHistoryFile(const char *titleID) {
     // Write history file
     histfileFd = open(historyFilePath, O_WRONLY | O_CREAT | O_TRUNC);
     if (histfileFd < 0) {
-      logString("ERROR: Failed to open history file for writing: %d\n", histfileFd);
+      printf("ERROR: Failed to open history file for writing: %d\n", histfileFd);
       continue;
     }
     // Return error if not all bytes were written
     count = write(histfileFd, historyList, HISTORY_FILE_SIZE);
     if (count != HISTORY_FILE_SIZE) {
       close(histfileFd);
-      logString("ERROR: Failed to write: %d/%d bytes written\n", count, HISTORY_FILE_SIZE);
+      printf("ERROR: Failed to write: %d/%d bytes written\n", count, HISTORY_FILE_SIZE);
       continue;
     }
     close(histfileFd);
@@ -133,7 +133,7 @@ void processHistoryList(const char *titleID, struct historyListEntry *historyLis
 
     // Check if this entry belongs to the target title
     if (!strncmp(historyList[i].titleID, titleID, sizeof(historyList[i].titleID))) {
-      logString("Updating entry at slot %d\n", i);
+      printf("Updating entry at slot %d\n", i);
       // Update timestamp
       historyList[i].timestamp = getTimestamp();
 
@@ -178,10 +178,10 @@ void processHistoryList(const char *titleID, struct historyListEntry *historyLis
     memcpy(&evictedhistoryEntry, newEntry, sizeof(evictedhistoryEntry));
     i = evictEntry(&evictedhistoryEntry);
     if (i < 0) // Will reuse i here for result
-      logString("ERROR: Failed to append to history.old: %d\n", i);
+      printf("ERROR: Failed to append to history.old: %d\n", i);
   }
 
-  logString("Inserting entry to slot %d\n", slot);
+  printf("Inserting entry to slot %d\n", slot);
   // Initialize the new entry
   strncpy(newEntry->titleID, titleID, sizeof(newEntry->titleID) - 1);
   newEntry->launchCount = 1;
@@ -192,7 +192,7 @@ void processHistoryList(const char *titleID, struct historyListEntry *historyLis
 
 // Appends evicted history entry to history.old file
 int evictEntry(const struct historyListEntry *evictedhistoryEntry) {
-  logString("Evicting %s into history.old\n", evictedhistoryEntry->titleID);
+  printf("Evicting %s into history.old\n", evictedhistoryEntry->titleID);
   char fullpath[64];
   int fd, result;
 

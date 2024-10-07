@@ -2,9 +2,9 @@
 
 EE_BIN = nhddl_unc.elf
 EE_BIN_PKD = nhddl.elf
-EE_OBJS = main.o module_init.o common.o iso.o history.o options.o
+EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o pad.o launcher.o
 
-IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx
+IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx
 
 EE_OBJS_DIR = obj/
 EE_ASM_DIR = asm/
@@ -14,7 +14,7 @@ EE_OBJS := $(EE_OBJS:%=$(EE_OBJS_DIR)%)
 EE_INCS := -I$(PS2DEV)/gsKit/include -I$(PS2SDK)/ports/include
 
 EE_LDFLAGS := -L$(PS2DEV)/gsKit/lib -L$(PS2SDK)/ports/lib -s
-EE_LIBS = -ldebug -lfileXio -lpatches -lelf-loader
+EE_LIBS = -ldebug -lfileXio -lpatches -lelf-loader -lgsKit -ldmaKit -lgskit_toolkit -ljpeg -lpng -lz -ltiff -lpad
 EE_CFLAGS := -mno-gpopt -G0
 
 BIN2C = $(PS2SDK)/bin/bin2c
@@ -25,11 +25,6 @@ all: $(EE_BIN_PKD)
 
 $(EE_BIN_PKD): $(EE_BIN)
 	ps2-packer $< $@
-
-run: all
-	ps2client -h 192.168.0.10 -t 1 execee host:$(EE_BIN)
-reset: clean
-	ps2client -h 192.168.0.10 reset
 
 format:
 	find . -type f -a \( -iname \*.h -o -iname \*.c \) | xargs clang-format -i
