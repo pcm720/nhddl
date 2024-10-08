@@ -255,11 +255,13 @@ int parseOptionsFile(struct ArgumentList *result, FILE *file) {
   char *lineBuffer = calloc(sizeof(char), PATH_MAX + 1);
   int startIdx;
   int substrIdx;
+  int argEndIdx;
   int isDisabled = 0;
   while (fgets(lineBuffer, PATH_MAX, file)) { // fgets reutrns NULL if EOF or an error occurs
     startIdx = 0;
     isDisabled = 0;
-
+    argEndIdx = 0;
+    
     //
     // Parse argument
     //
@@ -272,21 +274,35 @@ int parseOptionsFile(struct ArgumentList *result, FILE *file) {
 
     // Try to find ':' until line ends
     substrIdx = startIdx;
-    while (lineBuffer[substrIdx] != ':') {
-      if ((lineBuffer[substrIdx] == '\0')) { // EOL reached, read next line
-        goto next;
-      } else if (isspace((unsigned char)lineBuffer[startIdx])) { // Ignore whitespace by advancing start index to ignore this character
-        startIdx = substrIdx + 1;
-      } else if ((lineBuffer[substrIdx]) == '$') { // Handle disabled argument by doing the same as about
+    while (lineBuffer[substrIdx] != ':' && lineBuffer[substrIdx] != '\0') {
+      if (lineBuffer[substrIdx] == '$') {
+        // Handle disabled argument
         isDisabled = 1;
+        startIdx = substrIdx + 1;
+      } else if (isspace((unsigned char)lineBuffer[startIdx])) {
+        // Ignore whitespace by advancing start index to ignore this character
         startIdx = substrIdx + 1;
       }
       substrIdx++;
     }
 
-    // Copy argument to argName (whitespace between the argument and ':' will be included)
+    // If EOL is reached without finding ':', skip to the next line
+    if (lineBuffer[substrIdx] == '\0') {
+      goto next;
+    }
+
+    // Mark the end of argument name before removing trailing whitespace
+    argEndIdx = substrIdx;
+
+    // Remove trailing whitespace
+    while (isspace((unsigned char)lineBuffer[substrIdx - 1])) {
+      substrIdx--;
+    }
+
+    // Copy argument to argName
     char *argName = calloc(sizeof(char), substrIdx - startIdx + 1);
     strncpy(argName, &lineBuffer[startIdx], substrIdx - startIdx);
+    substrIdx = argEndIdx;
 
     //
     // Parse value
@@ -294,45 +310,40 @@ int parseOptionsFile(struct ArgumentList *result, FILE *file) {
     startIdx = substrIdx + 1;
     // Advance line index until we read a non-whitespace character or return at EOL
     while (isspace((unsigned char)lineBuffer[startIdx])) {
-      if (lineBuffer[substrIdx] == '\0') {
+      if (lineBuffer[startIdx] == '\0') {
         free(argName);
         goto next;
       }
       startIdx++;
     }
-    // Try to read value until we reach comment, a new line or the end of string
+
+    // Try to read value until we reach a comment, a new line, or the end of string
     substrIdx = startIdx;
-    while ((lineBuffer[substrIdx] != '#') && (lineBuffer[substrIdx] != '\r') && (lineBuffer[substrIdx] != '\n')) {
-      if (lineBuffer[substrIdx] == '\0') {
-        // Update start index to create empty value
-        startIdx = substrIdx;
-        goto makeArgument;
-        // free(argName);
-        // goto next;
-      }
-      substrIdx++; // Advance until we reach the comment or end of line
+    while (lineBuffer[substrIdx] != '#' && lineBuffer[substrIdx] != '\r' && lineBuffer[substrIdx] != '\n' && lineBuffer[substrIdx] != '\0') {
+      substrIdx++;
     }
-    substrIdx--; // Decrement index to a previous value since the current one points at '#', '\r' or '\n'
 
-    // Remove possible whitespace suffix
-    while (isspace((unsigned char)lineBuffer[substrIdx])) {
-      substrIdx--; // Decrement substring index until we read a non-whitespace character
+    // Remove trailing whitespace
+    while ((substrIdx > startIdx) && isspace((unsigned char)lineBuffer[substrIdx - 1])) {
+      substrIdx--;
     }
-    substrIdx++; // Increment index since this the current one points to the last character of the value
 
-  makeArgument:
     struct Argument *arg = newArgument(argName, NULL);
     arg->isDisabled = isDisabled;
 
-    if (!strcmp(COMPAT_MODES_ARG, arg->arg) && ((substrIdx - startIdx) > (CM_NUM_MODES + 1))) {
+    // Allocate memory for the argument value
+    size_t valueLength = substrIdx - startIdx;
+    if (!strcmp(COMPAT_MODES_ARG, arg->arg) && valueLength > CM_NUM_MODES + 1) {
       // Always allocate at least (CM_NUM_MODES + 1) bytes for compatibility mode string
-      arg->value = calloc(sizeof(char), (substrIdx - startIdx));
+      arg->value = calloc(CM_NUM_MODES + 1, sizeof(char));
     } else {
-      arg->value = calloc(sizeof(char), substrIdx - startIdx + 1);
+      arg->value = calloc(valueLength + 1, sizeof(char));
     }
-    strncpy(arg->value, &lineBuffer[startIdx], substrIdx - startIdx);
 
+    // Copy the value and add argument to the list
+    strncpy(arg->value, &lineBuffer[startIdx], valueLength);
     appendArgument(result, arg);
+
   next:
   }
   if (ferror(file) || !feof(file)) {
