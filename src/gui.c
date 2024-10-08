@@ -426,8 +426,8 @@ void drawArgumentList(struct ArgumentList *arguments, uint8_t compatModes, int s
     }
 
     // Draw argument
-    snprintf(lineBuffer, 255, "%s %s[%s] %s: %s", (((selectedArgIdx - CM_NUM_MODES) == idx) ? "\efright" : " "), ((argument->isGlobal) ? "(g)" : ""),
-             ((argument->isDisabled) ? " " : "x"), argument->arg, argument->value);
+    snprintf(lineBuffer, 255, "%s %s[%s] %s%s %s", (((selectedArgIdx - CM_NUM_MODES) == idx) ? "\efright" : " "), ((argument->isGlobal) ? "(g)" : ""),
+             ((argument->isDisabled) ? " " : "x"), argument->arg, (!strlen(argument->value)) ? "" : ":", argument->value);
     // Increment index for Y coordinate because 'Launch arguments' string occupies space for index 5
     gsKit_fontm_print_scaled(gsGlobal, gsFontM, 10, startY + (((idx % MAX_ARGUMENTS) + 1) * 15), 0, 0.6f, WhiteFont, lineBuffer);
 
