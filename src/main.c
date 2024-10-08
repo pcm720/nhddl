@@ -7,13 +7,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Relative path to neutrino ELF
+// Path to ISO storage
 const char STORAGE_BASE_PATH[] = "mass:";
+// Path to ELF directory
 char ELF_BASE_PATH[PATH_MAX + 1];
+// Progressive mode file name
 static const char progressiveFile[] = "480p";
 
 int main(int argc, char *argv[]) {
-  // Initialize the screen (clear it)
+  // Initialize the screen
   init_scr();
 
   printf("*************\n");

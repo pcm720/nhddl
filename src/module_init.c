@@ -40,7 +40,6 @@ int init() {
   IRX_LOAD(mcserv);
   IRX_LOAD(freepad);
 
-
   return 0;
 }
 

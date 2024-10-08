@@ -1,3 +1,5 @@
+#include "iso.h"
+#include "common.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <kernel.h>
@@ -11,9 +13,6 @@
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
 #include <io_common.h>
-
-#include "common.h"
-#include "iso.h"
 
 int _findISO(DIR *directory, struct TargetList *result);
 void insertIntoList(struct TargetList *result, struct Target *title);

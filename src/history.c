@@ -16,17 +16,17 @@
 // Icons of any other size show up as corrupted data
 #define ICON_SYS_SIZE 1776
 
+static inline int initSystemDataDir(void);
+void processHistoryList(const char *titleID, struct historyListEntry *historyList);
+int evictEntry(const struct historyListEntry *evictedhistoryEntry);
+static uint16_t getTimestamp(void);
+
 // The 'X' in "BXDATA-SYSTEM" will be replaced with region-specific letter by initSystemDataDir
 // The 'X' in "mcX" will be replaced with memory card number in updateHistoryFile
 static char historyFilePath[] = "mcX:/BXDATA-SYSTEM/history";
 extern unsigned char icon_J_sys[];
 extern unsigned char icon_C_sys[];
 extern unsigned char icon_A_sys[];
-
-static inline int initSystemDataDir(void);
-void processHistoryList(const char *titleID, struct historyListEntry *historyList);
-int evictEntry(const struct historyListEntry *evictedhistoryEntry);
-static uint16_t getTimestamp(void);
 
 int createSystemDataDir() {
   char iconPath[64];
