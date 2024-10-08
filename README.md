@@ -55,7 +55,7 @@ Arguments that need to be applied to every ISO by default are stored in `global.
 #### Title-specific arguments
 
 Arguments that need to be applied to a specific ISO are loaded from either  
-`ISO name without ISO extension.yaml` or `<title ID><anything>.yaml`.  
+`<ISO name>.yaml` or `<title ID><anything>.yaml`.  
 
 File that has the same name as ISO has the priority.  
 NHDDL creates this file automatically when title options are modified and saved in UI.
@@ -104,3 +104,14 @@ DVD/
    - TOTA.iso # SLUS_213.86
    - TOTA UNDUB.iso # SLUS_213.86
 ```
+
+## UI screenshots
+
+<details>
+    <summary>Title list</summary>
+    <img src="img/titles.png">
+</details>
+<details>
+    <summary>Title options</summary>
+    <img src="img/options.png">
+</details>
