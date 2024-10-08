@@ -27,10 +27,9 @@ void drawGameID(const char *game_id);
 #define COVER_ART_RES_W 140
 #define COVER_ART_RES_H 200
 
+// Path relative to STORAGE_BASE_PATH.
+// Used to load cover art
 static const char artPath[] = "/ART";
-// Path relative to ELF_BASE_PATH.
-// If this file exists, 480p output will be enabled
-static const char progPath[] = "/480p";
 
 static GSGLOBAL *gsGlobal;
 static GSFONTM *gsFontM;
@@ -55,21 +54,17 @@ void init480p(GSGLOBAL *gsGlobal) {
   gsGlobal->Height = 448;
 }
 
-int uiInit() {
+int uiInit(int enable480p) {
   gsGlobal = gsKit_init_global();
   gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+  gsGlobal->DoubleBuffering = GS_SETTING_OFF;
+  gsGlobal->ZBuffering = GS_SETTING_OFF;
 
-  if (gsGlobal->Mode == GS_MODE_PAL) {
+  if (enable480p) {
+    init480p(gsGlobal);
+  } else if (gsGlobal->Mode == GS_MODE_PAL) {
     maxTitlesPerPage = MAX_TITLES_PER_PAGE_PAL;
   }
-  // If this file exists, enable 480p
-  char *progFile = calloc(strlen(ELF_BASE_PATH) + strlen(progPath) + 1, 1);
-  strcat(progFile, ELF_BASE_PATH);
-  strcat(progFile, progPath);
-  if (!access(progFile, R_OK)) {
-    init480p(gsGlobal);
-  }
-  free(progFile);
 
   gsFontM = gsKit_init_fontm();
 
@@ -143,7 +138,7 @@ void uiCleanup() {
 int uiLoop(struct TargetList *titles) {
   int res = 0;
   if (gsGlobal == NULL) {
-    if ((res = uiInit())) {
+    if ((res = uiInit(0))) {
       printf("ERROR: Failed to init UI: %d\n", res);
       goto exit;
     };

@@ -10,13 +10,14 @@
 // Relative path to neutrino ELF
 const char STORAGE_BASE_PATH[] = "mass:";
 char ELF_BASE_PATH[PATH_MAX + 1];
+static const char progressiveFile[] = "480p";
 
 int main(int argc, char *argv[]) {
   // Initialize the screen (clear it)
   init_scr();
 
   printf("*************\n");
-  logString("\n\nNHDDL — a Neutrino launcher by pcm720\n\n");
+  logString("\n\nNHDDL - a Neutrino launcher by pcm720\n\n");
   printf("*************\n");
 
   // Get base path
@@ -47,14 +48,30 @@ int main(int argc, char *argv[]) {
     logString("No targets found\n");
     goto fail;
   }
-  
-  init_scr();
+
+  // If ELF file name ends with _p.elf or
+  // progressiveFile exists in current working directory, enable 480p mode
+  int enable480p = 0;
+  char *suffix = strrchr(argv[0], '_');
+  char *progFile = calloc(sizeof(char), PATH_MAX + 1);
+  snprintf(progFile, PATH_MAX + 1, "%s/%s", ELF_BASE_PATH, progressiveFile);
+  if (((suffix != NULL) && !strcmp(suffix, "_p.elf")) || (!access(progFile, R_OK))) {
+    printf("Starting UI in progressive mode\n");
+    enable480p = 1;
+  }
+  free(progFile);
+
+  if ((res = uiInit(enable480p))) {
+    printf("ERROR: Failed to init UI: %d\n", res);
+    goto fail;
+  }
+
   if ((res = uiLoop(titles))) {
     init_scr();
     logString("\n\nERROR: UI loop failed: %d\n", res);
     freeTargetList(titles);
     goto fail;
-  };
+  }
   printf("UI loop done, exiting\n");
   freeTargetList(titles);
   return 0;
