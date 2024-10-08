@@ -28,7 +28,7 @@ int assembleArgv(struct ArgumentList *arguments, char **argv) {
       }
 
       argSize = strlen(curArg->arg) + strlen(curArg->value) + 3; // + \0, = and -
-      char *value = calloc(argSize, sizeof(char));
+      char *value = calloc(sizeof(char), argSize);
 
       if (!strlen(curArg->value))
         snprintf(value, argSize, "-%s", curArg->arg);
@@ -58,7 +58,7 @@ void launchTitle(struct Target *target, struct ArgumentList *arguments) {
   // Assemble argv
   char **argv = malloc((arguments->total) * sizeof(char *));
   int argCount = assembleArgv(arguments, argv);
-  
+
   printf("Launching %s (%s) with arguments:\n", target->name, target->id);
   for (int i = 0; i < argCount; i++) {
     printf("%d: %s\n", i + 1, argv[i]);

@@ -103,7 +103,7 @@ int updateLastLaunchedTitle(char *titlePath) {
     free(targetPath);
     return -ENOENT;
   }
-  size_t writeLen = strlen(titlePath);
+  size_t writeLen = strlen(titlePath) + 1;
   if (write(fd, titlePath, writeLen) != writeLen) {
     printf("ERROR: Failed to write last launched title\n");
     close(fd);
@@ -326,7 +326,7 @@ int parseOptionsFile(struct ArgumentList *result, FILE *file) {
 
     if (!strcmp(COMPAT_MODES_ARG, arg->arg) && ((substrIdx - startIdx) > (CM_NUM_MODES + 1))) {
       // Always allocate at least (CM_NUM_MODES + 1) bytes for compatibility mode string
-      arg->value = calloc((substrIdx - startIdx), 1);
+      arg->value = calloc(sizeof(char), (substrIdx - startIdx));
     } else {
       arg->value = calloc(sizeof(char), substrIdx - startIdx + 1);
     }
@@ -375,9 +375,9 @@ struct Argument *copyArgument(struct Argument *src) {
   struct Argument *copy = calloc(sizeof(struct Argument), 1);
   copy->isGlobal = src->isGlobal;
   copy->isDisabled = src->isDisabled;
-  copy->arg = malloc(strlen(src->arg));
+  copy->arg = malloc(strlen(src->arg) + 1);
   strcpy(copy->arg, src->arg);
-  copy->value = malloc(strlen(src->value));
+  copy->value = malloc(strlen(src->value) + 1);
   strcpy(copy->value, src->value);
   return copy;
 }
@@ -390,9 +390,9 @@ void replaceArgument(struct Argument *dst, struct Argument *src) {
   free(dst->value);
   dst->isGlobal = src->isGlobal;
   dst->isDisabled = src->isDisabled;
-  dst->arg = malloc(strlen(src->arg));
+  dst->arg = malloc(strlen(src->arg) + 1);
   strcpy(dst->arg, src->arg);
-  dst->value = malloc(strlen(src->value));
+  dst->value = malloc(strlen(src->value) + 1);
   strcpy(dst->value, src->value);
 }
 
@@ -510,10 +510,10 @@ void storeCompatModes(struct Argument *target, uint8_t modes) {
 // Inserts a new compat mode arg into the argument list
 void insertCompatModeArg(struct ArgumentList *target, uint8_t modes) {
   struct Argument *newArg = calloc(sizeof(struct Argument), 1);
-  newArg->arg = calloc(strlen(COMPAT_MODES_ARG) + 1, 1);
+  newArg->arg = calloc(sizeof(char), strlen(COMPAT_MODES_ARG) + 1);
   strcpy(newArg->arg, COMPAT_MODES_ARG);
 
-  newArg->value = calloc(CM_NUM_MODES + 1, 1);
+  newArg->value = calloc(sizeof(char), CM_NUM_MODES + 1);
   storeCompatModes(newArg, modes);
 
   target->total++;

@@ -264,11 +264,11 @@ struct Target *copyTarget(struct Target *src) {
   struct Target *copy = calloc(sizeof(struct Target), 1);
   copy->idx = src->idx;
 
-  copy->fullPath = malloc(strlen(src->fullPath));
+  copy->fullPath = malloc(strlen(src->fullPath)+1);
   strcpy(copy->fullPath, src->fullPath);
-  copy->name = malloc(strlen(src->name));
+  copy->name = malloc(strlen(src->name)+1);
   strcpy(copy->name, src->name);
-  copy->id = malloc(strlen(src->id));
+  copy->id = malloc(strlen(src->id)+1);
   strcpy(copy->id, src->id);
 
   return copy;
