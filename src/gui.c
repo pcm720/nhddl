@@ -11,13 +11,6 @@
 #include <ps2sdkapi.h>
 #include <stdio.h>
 
-int uiLoop(struct TargetList *titles);
-int uiTitleOptionsLoop(struct Target *title);
-void uiLaunchTitle(struct Target *target, struct ArgumentList *arguments);
-void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *selectedTitleCover);
-void drawArgumentList(struct ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx);
-void drawGameID(const char *game_id);
-
 #define MAX_TITLES_PER_PAGE_NTSC 20
 #define MAX_TITLES_PER_PAGE_PAL 25
 #define MAX_ARGUMENTS 12
@@ -27,9 +20,12 @@ void drawGameID(const char *game_id);
 #define COVER_ART_RES_W 140
 #define COVER_ART_RES_H 200
 
-// Path relative to STORAGE_BASE_PATH.
-// Used to load cover art
-static const char artPath[] = "/ART";
+int uiLoop(struct TargetList *titles);
+int uiTitleOptionsLoop(struct Target *title);
+void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *selectedTitleCover);
+void drawArgumentList(struct ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx);
+void uiLaunchTitle(struct Target *target, struct ArgumentList *arguments);
+void drawGameID(const char *game_id);
 
 static GSGLOBAL *gsGlobal;
 static GSFONTM *gsFontM;
@@ -37,10 +33,16 @@ static GSTEXTURE *coverTexture;
 static int maxTitlesPerPage = MAX_TITLES_PER_PAGE_NTSC;
 static char lineBuffer[255];
 
+// Path relative to STORAGE_BASE_PATH.
+// Used to load cover art
+static const char artPath[] = "/ART";
+
 // Predefined colors
 static const u64 WhiteFont = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80);
 static const u64 BlackBG = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x00);
 
+// Cover art sprite coordinates
+// Initialized during uiInit from screen width and height
 static int coverArtX2;
 static int coverArtY2;
 static int coverArtX1;
@@ -231,6 +233,96 @@ exit:
   return res;
 }
 
+// Title options screen handler
+int uiTitleOptionsLoop(struct Target *target) {
+  int res = 0;
+  struct ArgumentList *titleArguments = loadLaunchArgumentLists(target);
+
+  uint8_t modes = 0;
+
+  if ((titleArguments->total != 0) && !strcmp(COMPAT_MODES_ARG, titleArguments->first->arg)) {
+    modes = parseCompatModes(titleArguments->first->value);
+  } else {
+    // Insert compat mode flag if it doesn't exist
+    // Assuming that compat mode flag always exists makes working with arguments much easier.
+    insertCompatModeArg(titleArguments, modes);
+  }
+
+  // Indexes 0 through CM_NUM_MODES are reserved for compatibility modes
+  int selectedArgIdx = 0;
+  int totalIndexes = (titleArguments->total - 1) + (CM_NUM_MODES - 1);
+  int input = 0;
+
+  // Always start with the second element since the first
+  // is guaranteed to be a compatibility mode flag
+  struct Argument *curArgument = titleArguments->first->next;
+
+  while (1) {
+    gsKit_clear(gsGlobal, BlackBG);
+
+    // Draw header and footer
+    gsFontM->Align = GSKIT_FALIGN_CENTER;
+    // Print title info
+    snprintf(lineBuffer, 255, "%s\n%s", target->name, target->id);
+    gsKit_fontm_print_scaled(gsGlobal, gsFontM, gsGlobal->Width / 2, 20, 0, 0.6f, WhiteFont, lineBuffer);
+    gsKit_fontm_print_scaled(gsGlobal, gsFontM, gsGlobal->Width / 2, 60, 0, 0.6f, WhiteFont, "Compatibility modes");
+
+    gsFontM->Align = GSKIT_FALIGN_LEFT;
+    gsKit_fontm_print_scaled(gsGlobal, gsFontM, 10, gsGlobal->Height - 65, 0, 0.6f, WhiteFont,
+                             "Press \f0090 to toggle options \n"
+                             "Press \f0095 to launch the title without saving options\n"
+                             "Press \f0097 to exit without saving, START to save options");
+
+    drawArgumentList(titleArguments, modes, selectedArgIdx);
+
+    gsKit_queue_exec(gsGlobal);
+    gsKit_sync_flip(gsGlobal);
+    gsKit_TexManager_nextFrame(gsGlobal);
+
+    // Process user inputs
+    input = getInput(-1);
+    if (input & (PAD_CROSS | PAD_CIRCLE)) {
+      if (selectedArgIdx < CM_NUM_MODES) {
+        // Change compat flag in bit mask and update argument value
+        modes ^= COMPAT_MODE_MAP[selectedArgIdx].mode;
+        storeCompatModes(titleArguments->first, modes);
+        titleArguments->first->isGlobal = 0;
+      } else {
+        // Toggle argument
+        curArgument->isDisabled = !curArgument->isDisabled;
+      }
+    } else if (input & PAD_UP) {
+      // Point to the previous argument
+      if (selectedArgIdx > 0) {
+        selectedArgIdx--;
+        if (selectedArgIdx >= CM_NUM_MODES)
+          curArgument = curArgument->prev;
+      }
+    } else if (input & PAD_DOWN) {
+      // Advance to the next argument, accounting for compatibility modes
+      if (selectedArgIdx < totalIndexes) {
+        selectedArgIdx++;
+        if (selectedArgIdx > CM_NUM_MODES)
+          curArgument = curArgument->next;
+      }
+    } else if (input & PAD_SQUARE) {
+      // Launch title without saving arguments
+      uiLaunchTitle(target, titleArguments);
+      res = 1; // If this was somehow reached, something went terribly wrong
+      goto exit;
+    } else if (input & PAD_START) {
+      updateTitleLaunchArguments(target, titleArguments);
+      goto exit;
+    } else if (input & PAD_TRIANGLE) {
+      // Quit to title list
+      goto exit;
+    }
+  }
+exit:
+  freeArgumentList(titleArguments);
+  return res;
+}
+
 // Draws title list
 void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *selectedTitleCover) {
   int curPage = selectedTitleIdx / maxTitlesPerPage;
@@ -284,95 +376,6 @@ void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *s
     gsKit_prim_sprite_texture(gsGlobal, selectedTitleCover, coverArtX1, coverArtY1, 0.0f, 0.0f, coverArtX2, coverArtY2, selectedTitleCover->Width,
                               selectedTitleCover->Height, 1, GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80));
   }
-}
-
-int uiTitleOptionsLoop(struct Target *target) {
-  int res = 0;
-  struct ArgumentList *titleArguments = loadLaunchArgumentLists(target);
-
-  uint8_t modes = 0;
-
-  if ((titleArguments->total != 0) && !strcmp(COMPAT_MODES_ARG, titleArguments->first->arg)) {
-    modes = parseCompatModes(titleArguments->first->value);
-  } else {
-    // Insert compat mode flag if it doesn't exist
-    // Assuming that compat mode flag always exists makes working with arguments much easier.
-    insertCompatModeArg(titleArguments, modes);
-  }
-
-  // Indexes 0 through CM_NUM_MODES are reserved for compatibility modes
-  int selectedArgIdx = 0;
-  int totalIndexes = (titleArguments->total - 1) + (CM_NUM_MODES - 1);
-  int input = 0;
-
-  // Always start with the second element since the first
-  // is guaranteed to be a compatibility mode flag
-  struct Argument *curArgument = titleArguments->first->next;
-
-  while (1) {
-    gsKit_clear(gsGlobal, BlackBG);
-
-    // Draw header and footer
-    gsFontM->Align = GSKIT_FALIGN_CENTER;
-    // Print title info
-    snprintf(lineBuffer, 255, "%s\n%s", target->name, target->id);
-    gsKit_fontm_print_scaled(gsGlobal, gsFontM, gsGlobal->Width / 2, 20, 0, 0.6f, WhiteFont, lineBuffer);
-    gsKit_fontm_print_scaled(gsGlobal, gsFontM, gsGlobal->Width / 2, 60, 0, 0.6f, WhiteFont, "Compatibility modes");
-
-    gsFontM->Align = GSKIT_FALIGN_LEFT;
-    gsKit_fontm_print_scaled(gsGlobal, gsFontM, 10, gsGlobal->Height - 65, 0, 0.6f, WhiteFont,
-                             "Press \f0090 to toggle options \n"
-                             "Press \f0095 to launch the title without saving options\n"
-                             "Press \f0097 to exit without saving, START to save options");
-
-    drawArgumentList(titleArguments, modes, selectedArgIdx);
-
-    gsKit_queue_exec(gsGlobal);
-    gsKit_sync_flip(gsGlobal);
-    gsKit_TexManager_nextFrame(gsGlobal);
-
-    // Process user inputs
-    input = getInput(-1);
-    if (input & (PAD_CROSS | PAD_CIRCLE)) {
-      if (selectedArgIdx < CM_NUM_MODES) {
-        // Change compat flag in bit mask and update argument value
-        modes ^= COMPAT_MODE_MAP[selectedArgIdx].mode;
-        storeCompatModes(titleArguments->first->value, modes);
-        titleArguments->first->isGlobal = 0;
-      } else {
-        // Toggle argument
-        curArgument->isDisabled = !curArgument->isDisabled;
-      }
-    } else if (input & PAD_UP) {
-      // Point to the previous argument
-      if (selectedArgIdx > 0) {
-        selectedArgIdx--;
-        if (selectedArgIdx >= CM_NUM_MODES)
-          curArgument = curArgument->prev;
-      }
-    } else if (input & PAD_DOWN) {
-      // Advance to the next argument, accounting for compatibility modes
-      if (selectedArgIdx < totalIndexes) {
-        selectedArgIdx++;
-        if (selectedArgIdx > CM_NUM_MODES)
-          curArgument = curArgument->next;
-      }
-    } else if (input & PAD_SQUARE) {
-      // Launch title without saving arguments
-      uiLaunchTitle(target, titleArguments);
-      res = 1; // If this was somehow reached, something went terribly wrong
-      goto exit;
-    } else if (input & PAD_START) {
-      updateTitleLaunchArguments(target, titleArguments);
-      goto exit;
-    } else if (input & PAD_TRIANGLE) {
-      // Quit to title list
-      goto exit;
-    }
-  }
-exit:
-  freeArgumentList(titleArguments);
-  return res;
 }
 
 void drawArgumentList(struct ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx) {

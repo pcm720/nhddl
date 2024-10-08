@@ -59,6 +59,12 @@ int updateTitleLaunchArguments(struct Target *target, struct ArgumentList *optio
 // Completely frees ArgumentList. Passed pointer will not be valid after this function executes
 void freeArgumentList(struct ArgumentList *result);
 
+// Creates new Argument with passed argName and value (without copying)
+struct Argument *newArgument(char *argName, char *value);
+
+// Appends arg to the end of target
+void appendArgument(struct ArgumentList *target, struct Argument *arg);
+
 // Does a deep copy of arg and inserts it into target.
 // Always places COMPAT_MODES_ARG on the top of the list.
 void insertArgumentCopy(struct ArgumentList *target, struct Argument *arg);
@@ -70,9 +76,9 @@ void mergeArgumentLists(struct ArgumentList *list1, struct ArgumentList *list2);
 // Parses compatibility mode argument value into a bitmask
 uint8_t parseCompatModes(char *stringValue);
 
-// Stores compatibility mode from bitmask into string.
+// Stores compatibility mode from bitmask into argument value and sets isDisabled flag accordingly.
 // Target must be at least 6 bytes long, including null terminator
-void storeCompatModes(char *target, uint8_t modes);
+void storeCompatModes(struct Argument *target, uint8_t modes);
 
 // Inserts a new compat mode arg into the argument list
 void insertCompatModeArg(struct ArgumentList *target, uint8_t modes);

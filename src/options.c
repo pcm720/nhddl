@@ -8,21 +8,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Device + baseConfigPath + lastTitlePath
+#define MAX_LAST_LAUNCHED_LENGTH 25
+
+int parseOptionsFile(struct ArgumentList *result, FILE *file);
+int loadArgumentList(struct ArgumentList *options, char *filePath);
+void appendArgument(struct ArgumentList *target, struct Argument *arg);
+struct Argument *newArgument(char *argName, char *value);
+
 // Defines all known compatibility modes
 const CompatiblityModeMap COMPAT_MODE_MAP[CM_NUM_MODES] = {{CM_DISABLE_BUILTIN_MODES, '0', "Disable built-in compat flags"},
                                                            {CM_IOP_ACCURATE_READS, '1', "IOP: Accurate reads"},
                                                            {CM_IOP_SYNC_READS, '2', "IOP: Sync reads"},
                                                            {CM_EE_UNHOOK_SYSCALLS, '3', "EE : Unhook syscalls"},
                                                            {CM_IOP_EMULATE_DVD_DL, '5', "IOP: Emulate DVD-DL"}};
-
 const char baseConfigPath[] = "/config";
 const char globalOptionsPath[] = "/global.yaml";
 const char lastTitlePath[] = "/lastTitle.txt";
-// Device + baseConfigPath + lastTitlePath
-#define MAX_LAST_LAUNCHED_LENGTH 25
-
-int parseOptionsFile(struct ArgumentList *result, FILE *file);
-int loadArgumentList(struct ArgumentList *options, char *filePath);
 
 // Writes full path to targetFileName into targetPath.
 // If targetFileName is NULL, will return path to config directory
@@ -319,42 +321,18 @@ int parseOptionsFile(struct ArgumentList *result, FILE *file) {
     substrIdx++; // Increment index since this the current one points to the last character of the value
 
   makeArgument:
-    struct Argument *arg = malloc(sizeof(struct Argument));
-    arg->arg = argName;
+    struct Argument *arg = newArgument(argName, NULL);
     arg->isDisabled = isDisabled;
-    arg->isGlobal = 0;
-    arg->value = NULL;
-    arg->prev = NULL;
-    arg->next = NULL;
 
-    // Always put compatibility mode first
-    if (!strcmp(COMPAT_MODES_ARG, arg->arg)) {
+    if (!strcmp(COMPAT_MODES_ARG, arg->arg) && ((substrIdx - startIdx) > (CM_NUM_MODES + 1))) {
       // Always allocate at least (CM_NUM_MODES + 1) bytes for compatibility mode string
-      if ((substrIdx - startIdx) > (CM_NUM_MODES + 1))
-        arg->value = calloc((substrIdx - startIdx), 1);
-      else
-        arg->value = calloc(CM_NUM_MODES + 1, 1);
-      strncpy(arg->value, &lineBuffer[startIdx], substrIdx - startIdx);
-      arg->next = result->first;
-      result->first = NULL;
+      arg->value = calloc((substrIdx - startIdx), 1);
     } else {
       arg->value = calloc(sizeof(char), substrIdx - startIdx + 1);
-      strncpy(arg->value, &lineBuffer[startIdx], substrIdx - startIdx);
     }
+    strncpy(arg->value, &lineBuffer[startIdx], substrIdx - startIdx);
 
-    // Increment title counter and update target list
-    result->total++;
-    if (result->first == NULL) {
-      // If this is the first entry, set first and last (if not set already)
-      result->first = arg;
-      if (result->last == NULL)
-        result->last = arg;
-    } else {
-      // Else, update the last entry
-      result->last->next = arg;
-      arg->prev = result->last;
-      result->last = arg;
-    }
+    appendArgument(result, arg);
   next:
   }
   if (ferror(file) || !feof(file)) {
@@ -418,30 +396,46 @@ void replaceArgument(struct Argument *dst, struct Argument *src) {
   strcpy(dst->value, src->value);
 }
 
-// Does a deep copy of arg and inserts it into target.
-// Always places COMPAT_MODES_ARG on the top of the list
-void insertArgumentCopy(struct ArgumentList *target, struct Argument *arg) {
-  // Do a deep copy for argument and value
-  struct Argument *copy = copyArgument(arg);
+// Creates new Argument with passed argName and value (without copying)
+struct Argument *newArgument(char *argName, char *value) {
+  struct Argument *arg = malloc(sizeof(struct Argument));
+  arg->arg = argName;
+  arg->value = value;
+  arg->isDisabled = 0;
+  arg->isGlobal = 0;
+  arg->prev = NULL;
+  arg->next = NULL;
+  return arg;
+}
 
+// Appends arg to the end of target
+void appendArgument(struct ArgumentList *target, struct Argument *arg) {
   target->total++;
 
   // Always put compatibility mode argument first
-  if (!strcmp(COMPAT_MODES_ARG, copy->arg)) {
-    copy->next = target->first;
-    target->first = copy;
+  if (!strcmp(COMPAT_MODES_ARG, arg->arg)) {
+    arg->next = target->first;
+    target->first = arg;
     if (target->last == NULL)
-      target->last = copy;
+      target->last = arg;
     return;
   }
 
   if (target->first == NULL) {
-    target->first = copy;
+    target->first = arg;
   } else {
-    target->last->next = copy;
-    copy->prev = target->last;
+    target->last->next = arg;
+    arg->prev = target->last;
   }
-  target->last = copy;
+  target->last = arg;
+}
+
+// Does a deep copy of arg and inserts it into target.
+// Always places COMPAT_MODES_ARG on the top of the list
+void appendArgumentCopy(struct ArgumentList *target, struct Argument *arg) {
+  // Do a deep copy for argument and value
+  struct Argument *copy = copyArgument(arg);
+  appendArgument(target, copy);
 }
 
 // Merges two lists into one, ignoring arguments in the second list that already exist in the first list.
@@ -473,7 +467,7 @@ void mergeArgumentLists(struct ArgumentList *list1, struct ArgumentList *list2) 
     }
     // If no duplicate was found, insert the argument
     if (!isDuplicate) {
-      insertArgumentCopy(list1, curArg2);
+      appendArgumentCopy(list1, curArg2);
     }
     curArg2 = curArg2->next;
   }
@@ -493,19 +487,24 @@ uint8_t parseCompatModes(char *stringValue) {
   return result;
 }
 
-// Stores compatibility mode from bitmask into string.
+// Stores compatibility mode from bitmask into argument value and sets isDisabled flag accordingly.
 // Target must be at least 6 bytes long, including null terminator
-void storeCompatModes(char *target, uint8_t modes) {
+void storeCompatModes(struct Argument *target, uint8_t modes) {
   int pos = 0;
 
   for (int i = 0; i < CM_NUM_MODES; i++) {
     if (modes & COMPAT_MODE_MAP[i].mode) {
-      target[pos] = COMPAT_MODE_MAP[i].value;
+      target->value[pos] = COMPAT_MODE_MAP[i].value;
       pos++;
     }
   }
 
-  target[pos] = '\0';
+  target->value[pos] = '\0';
+
+  if (!pos)
+    target->isDisabled = 1;
+  else
+    target->isDisabled = 0;
 }
 
 // Inserts a new compat mode arg into the argument list
@@ -515,7 +514,7 @@ void insertCompatModeArg(struct ArgumentList *target, uint8_t modes) {
   strcpy(newArg->arg, COMPAT_MODES_ARG);
 
   newArg->value = calloc(CM_NUM_MODES + 1, 1);
-  storeCompatModes(newArg->value, modes);
+  storeCompatModes(newArg, modes);
 
   target->total++;
 
