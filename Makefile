@@ -2,14 +2,17 @@
 
 EE_BIN = nhddl_unc.elf
 EE_BIN_PKD = nhddl.elf
-EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o pad.o launcher.o
 
+EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o pad.o launcher.o
 IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx
+RES_FILES += icon_A.sys icon_C.sys icon_J.sys
 
 EE_OBJS_DIR = obj/
 EE_ASM_DIR = asm/
 EE_SRC_DIR = src/
+
 EE_OBJS += $(IRX_FILES:.irx=_irx.o)
+EE_OBJS += $(RES_FILES:.sys=_sys.o)
 EE_OBJS := $(EE_OBJS:%=$(EE_OBJS_DIR)%)
 
 EE_INCS := -Iinclude -I$(PS2DEV)/gsKit/include -I$(PS2SDK)/ports/include
@@ -35,6 +38,9 @@ rebuild: clean all
 # IRX files
 %_irx.c:
 	$(BIN2C) $(PS2SDK)/iop/irx/$(*:$(EE_SRC_DIR)%=%).irx $@ $(*:$(EE_SRC_DIR)%=%)_irx
+
+%_sys.c:
+	$(BIN2C) res/$(*:$(EE_SRC_DIR)%=%).sys $@ $(*:$(EE_SRC_DIR)%=%)_sys
 
 $(EE_ASM_DIR):
 	@mkdir -p $@

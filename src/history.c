@@ -12,14 +12,60 @@
 #include "history.h"
 #include "module_init.h"
 
+// Sony OSD has the icon size fixed at 1776 bytes
+// Icons of any other size show up as corrupted data
+#define ICON_SYS_SIZE 1776
+
 // The 'X' in "BXDATA-SYSTEM" will be replaced with region-specific letter by initSystemDataDir
 // The 'X' in "mcX" will be replaced with memory card number in updateHistoryFile
 static char historyFilePath[] = "mcX:/BXDATA-SYSTEM/history";
+extern unsigned char icon_J_sys[];
+extern unsigned char icon_C_sys[];
+extern unsigned char icon_A_sys[];
 
 static inline int initSystemDataDir(void);
 void processHistoryList(const char *titleID, struct historyListEntry *historyList);
 int evictEntry(const struct historyListEntry *evictedhistoryEntry);
 static uint16_t getTimestamp(void);
+
+int createSystemDataDir() {
+  char iconPath[64];
+  int fd, result;
+  void *icon;
+
+  // Temporarily end historyFilePath at mcX:/BXDATA-SYSTEM
+  historyFilePath[18] = '\0';
+  // Open icon.sys
+  sprintf(iconPath, "%s/icon.sys", historyFilePath);
+  if ((fd = open(iconPath, O_RDONLY)) < 0) {
+    // If icon.sys doesn't exist, create it
+    mkdir(historyFilePath, 0777);
+    if ((fd = open(iconPath, O_CREAT | O_TRUNC | O_WRONLY)) >= 0) {
+      switch (historyFilePath[6]) {
+      case 'I':
+        icon = icon_J_sys;
+        break;
+      case 'C':
+        icon = icon_C_sys;
+        break;
+      default:
+        icon = icon_A_sys;
+        break;
+      }
+      // Write past the end of the icon (see the comment for ICON_SYS_SIZE).
+      result = write(fd, icon, ICON_SYS_SIZE) == ICON_SYS_SIZE ? 0 : -EIO;
+      close(fd);
+    } else
+      result = fd;
+  } else {
+    close(fd);
+    result = 0;
+  }
+
+  // Restore full historyFilePath
+  historyFilePath[18] = '/';
+  return result;
+}
 
 // Adds title ID to the history file on both mc0 and mc1
 int updateHistoryFile(const char *titleID) {
@@ -32,20 +78,26 @@ int updateHistoryFile(const char *titleID) {
   struct historyListEntry historyList[MAX_HISTORY_ENTRIES];
   for (char i = '0'; i < '2'; i++) { // Skipping int-char conversions thanks to ASCII code ordering
     historyFilePath[2] = i;
+    // Attempt to open history file
     histfileFd = open(historyFilePath, O_RDONLY);
-    if (histfileFd < 0) { // File doesn't exist, continue
-      continue;
-    }
-
-    printf("Updating history file at %s\n", historyFilePath);
-
-    // Read history file
-    count = read(histfileFd, historyList, HISTORY_FILE_SIZE);
-    if (count != (HISTORY_FILE_SIZE)) {
-      printf("Failed to load the history file, reinitializing\n");
+    if (histfileFd < 0) {
+      // File doesn't exist
+      printf("History file at %s does not exist, creating system directory\n", historyFilePath);
+      if (createSystemDataDir()) {
+        printf("WARN: Failed to create system directory\n");
+        continue;
+      }
       memset(historyList, 0, HISTORY_FILE_SIZE);
+    } else {
+      // Read history file
+      printf("Updating history file at %s\n", historyFilePath);
+      count = read(histfileFd, historyList, HISTORY_FILE_SIZE);
+      if (count != (HISTORY_FILE_SIZE)) {
+        printf("Failed to load the history file, reinitializing\n");
+        memset(historyList, 0, HISTORY_FILE_SIZE);
+      }
+      close(histfileFd);
     }
-    close(histfileFd);
 
     // Process history file
     processHistoryList(titleID, historyList);
