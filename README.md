@@ -104,3 +104,14 @@ DVD/
    - TOTA.iso # SLUS_213.86
    - TOTA UNDUB.iso # SLUS_213.86
 ```
+
+## UI screenshots
+
+<details>
+    <summary>Title list</summary>
+    <img src="img/titles.png">
+</details>
+<details>
+    <summary>Title options</summary>
+    <img src="img/options.png">
+</details>
