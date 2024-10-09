@@ -9,9 +9,13 @@
 #include <string.h>
 
 static const char neutrinoELF[] = "neutrino.elf";
-static char bsdArgument[] = "bsd";
-static char bsdValue[] = "ata";
 static char isoArgument[] = "dvd";
+static char bsdArgument[] = "bsd";
+#ifndef MX4SIO
+static char bsdValue[] = "ata";
+#else
+static char bsdValue[] = "mx4sio";
+#endif
 
 // Assembles argument lists into argv for Neutrino.
 // Expects argv to be initialized with at least (arguments->total) elements.

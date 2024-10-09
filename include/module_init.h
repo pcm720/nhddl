@@ -17,6 +17,6 @@
 // Initializes Memory Card modules required to load HDD modules and neutrino ELF
 int init();
 // Inititializes HDD modules located at basePath
-int initHDD(char *basePath);
+int initBDM(char *basePath);
 
 #endif

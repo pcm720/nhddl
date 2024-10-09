@@ -23,6 +23,12 @@ EE_CFLAGS := -mno-gpopt -G0
 
 BIN2C = $(PS2SDK)/bin/bin2c
 
+ifeq ($(MX4SIO), 1)
+ EE_BIN = nhddl_m4s_unc.elf
+ EE_BIN_PKD = nhddl_m4s.elf
+ EE_CFLAGS += -DMX4SIO
+endif
+
 .PHONY: all run reset clean rebuild format format-check
 
 all: $(EE_BIN_PKD)

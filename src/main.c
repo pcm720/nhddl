@@ -38,8 +38,8 @@ int main(int argc, char *argv[]) {
     logString("ERROR: Failed to initialize MC modules: %d\n", res);
     goto fail;
   }
-  if ((res = initHDD(ELF_BASE_PATH)) != 0) {
-    logString("Failed to initialize HDD modules: %d\n", res);
+  if ((res = initBDM(ELF_BASE_PATH)) != 0) {
+    logString("Failed to initialize BDM modules: %d\n", res);
     goto fail;
   }
   logString("Modules loaded\n\n");

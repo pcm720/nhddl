@@ -45,6 +45,7 @@ int init() {
 
 // List of HDD modules to load from storage, in order
 // Paths are relative to ELF current working directory
+#ifndef MX4SIO
 const int HDD_MODULE_COUNT = 5;
 const char *hddmodules[] = {
     // BDM
@@ -56,10 +57,24 @@ const char *hddmodules[] = {
     // DEV9
     "modules/dev9_ns.irx",
     // ATA
-    "modules/ata_bd.irx"};
+    "modules/ata_bd.irx"
+};
+#else
+const int HDD_MODULE_COUNT = 4;
+const char *hddmodules[] = {
+    // BDM
+    "modules/bdm.irx",
+    // Required for getting title ID from ISO
+    "modules/isofs.irx",
+    // exFAT
+    "modules/bdmfs_fatfs.irx",
+    // MX4SIO
+    "modules/mx4sio_bd_mini.irx",
+};
+#endif
 
 // Loads HDD modules from basePath
-int initHDD(char *basePath) {
+int initBDM(char *basePath) {
   // Allocate memory for module paths
   char pathBuf[PATH_MAX + 1];
   strcpy(pathBuf, basePath);
