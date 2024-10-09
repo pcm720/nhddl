@@ -2,6 +2,8 @@
 
 EE_BIN = nhddl_unc.elf
 EE_BIN_PKD = nhddl.elf
+EE_BIN_M4S = nhddl_m4s_unc.elf
+EE_BIN_PKD_M4S = nhddl_m4s.elf
 
 EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o pad.o launcher.o
 IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx
@@ -24,12 +26,14 @@ EE_CFLAGS := -mno-gpopt -G0
 BIN2C = $(PS2SDK)/bin/bin2c
 
 ifeq ($(MX4SIO), 1)
- EE_BIN = nhddl_m4s_unc.elf
- EE_BIN_PKD = nhddl_m4s.elf
+ EE_BIN = $(EE_BIN_M4S)
+ EE_BIN_PKD = $(EE_BIN_PKD_M4S)
  EE_CFLAGS += -DMX4SIO
 endif
 
-.PHONY: all run reset clean rebuild format format-check
+.PHONY: all clean .FORCE
+
+.FORCE:
 
 all: $(EE_BIN_PKD)
 
@@ -37,9 +41,7 @@ $(EE_BIN_PKD): $(EE_BIN)
 	ps2-packer $< $@
 
 clean:
-	rm -rf $(EE_BIN) $(EE_BIN_PKD) $(EE_ASM_DIR) $(EE_OBJS_DIR)
-
-rebuild: clean all
+	rm -rf $(EE_BIN) $(EE_BIN_PKD) $(EE_BIN_M4S) $(EE_BIN_PKD_M4S) $(EE_ASM_DIR) $(EE_OBJS_DIR)
 
 # IRX files
 %_irx.c:
@@ -54,7 +56,7 @@ $(EE_ASM_DIR):
 $(EE_OBJS_DIR):
 	@mkdir -p $@
 
-$(EE_OBJS_DIR)%.o: $(EE_SRC_DIR)%.c | $(EE_OBJS_DIR)
+$(EE_OBJS_DIR)%.o: $(EE_SRC_DIR)%.c .FORCE | $(EE_OBJS_DIR)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 
 $(EE_OBJS_DIR)%.o: $(EE_ASM_DIR)%.c | $(EE_OBJS_DIR)
