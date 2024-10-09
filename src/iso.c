@@ -191,16 +191,17 @@ void inline insertIntoList(struct TargetList *result, struct Target *title) {
 // Loads SYSTEM.CNF from ISO and extracts title ID
 // This function was copied from Neutrino with minimal changes
 char *getTitleID(char *path) {
+  char *titleID = calloc(sizeof(char), 12);
   if (fileXioMount("iso:", path, FIO_MT_RDONLY) < 0) {
     logString("ERROR: Unable to mount %s as iso\n", path);
-    return NULL;
+    return titleID;
   }
 
   int system_cnf_fd = open("iso:/SYSTEM.CNF;1", O_RDONLY);
   if (system_cnf_fd < 0) {
     logString("ERROR: Unable to open SYSTEM.CNF: %s\n", path);
     fileXioUmount("iso:");
-    return NULL;
+    return titleID;
   }
 
   // Read file contents
@@ -214,15 +215,13 @@ char *getTitleID(char *path) {
   if (selfFile == NULL || fname_end == NULL) {
     logString("ERROR: File name not found in SYSTEM.CNF: %s\n", path);
     fileXioUmount("iso:");
-    return NULL;
+    return titleID;
   }
   fname_end[1] = '1';
   fname_end[2] = '\0';
 
-  char *titleID = malloc(12);
   // Locate and set title ID
   memcpy(titleID, &selfFile[8], 11);
-  titleID[11] = '\0';
 
   fileXioUmount("iso:");
 
