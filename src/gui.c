@@ -101,7 +101,7 @@ int uiInit(int enable480p) {
   return 0;
 }
 
-// Invalidates the current loaded texture and loads a new one
+// Invalidates currently loaded texture and loads a new one
 int loadCoverArt(char *titleID) {
   gsKit_vram_clear(gsGlobal);
 
@@ -127,7 +127,7 @@ int loadCoverArt(char *titleID) {
   return 1;
 }
 
-// Closes gamepad driver and clears up gsKit
+// Closes gamepad driver and deinits gsKit
 void uiCleanup() {
   gpadClose();
   gsKit_vram_clear(gsGlobal);
@@ -139,11 +139,9 @@ void uiCleanup() {
 // Main UI loop. Displays the target list.
 int uiLoop(struct TargetList *titles) {
   int res = 0;
-  if (gsGlobal == NULL) {
-    if ((res = uiInit(0))) {
-      printf("ERROR: Failed to init UI: %d\n", res);
-      goto exit;
-    };
+  if ((gsGlobal == NULL) && (res = uiInit(0))) {
+    printf("ERROR: Failed to init UI: %d\n", res);
+    goto exit;
   }
 
   int isCoverUninitialized = 1;
@@ -236,10 +234,12 @@ exit:
 // Title options screen handler
 int uiTitleOptionsLoop(struct Target *target) {
   int res = 0;
-  struct ArgumentList *titleArguments = loadLaunchArgumentLists(target);
-
   uint8_t modes = 0;
 
+  // Load arguments from config files
+  struct ArgumentList *titleArguments = loadLaunchArgumentLists(target);
+
+  // Parse compatibility modes
   if ((titleArguments->total != 0) && !strcmp(COMPAT_MODES_ARG, titleArguments->first->arg)) {
     modes = parseCompatModes(titleArguments->first->value);
   } else {
@@ -277,7 +277,6 @@ int uiTitleOptionsLoop(struct Target *target) {
 
     gsKit_queue_exec(gsGlobal);
     gsKit_sync_flip(gsGlobal);
-    gsKit_TexManager_nextFrame(gsGlobal);
 
     // Process user inputs
     input = getInput(-1);
@@ -378,6 +377,7 @@ void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *s
   }
 }
 
+// Draws title arguments
 void drawArgumentList(struct ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx) {
   int startY = 75;
   int idx = 0;
@@ -454,7 +454,6 @@ void uiLaunchTitle(struct Target *target, struct ArgumentList *arguments) {
 
   gsKit_queue_exec(gsGlobal);
   gsKit_sync_flip(gsGlobal);
-  gsKit_TexManager_nextFrame(gsGlobal);
 
   // Wait a litle bit, cleanup the UI and launch title
   sleep(2);

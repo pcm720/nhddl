@@ -335,9 +335,9 @@ int parseOptionsFile(struct ArgumentList *result, FILE *file) {
     size_t valueLength = substrIdx - startIdx;
     if (!strcmp(COMPAT_MODES_ARG, arg->arg) && valueLength > CM_NUM_MODES + 1) {
       // Always allocate at least (CM_NUM_MODES + 1) bytes for compatibility mode string
-      arg->value = calloc(CM_NUM_MODES + 1, sizeof(char));
+      arg->value = calloc(sizeof(char), CM_NUM_MODES + 1);
     } else {
-      arg->value = calloc(valueLength + 1, sizeof(char));
+      arg->value = calloc(sizeof(char), valueLength + 1);
     }
 
     // Copy the value and add argument to the list
