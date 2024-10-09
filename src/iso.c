@@ -86,7 +86,7 @@ int _findISO(DIR *directory, struct TargetList *result) {
         strcat(titlePath, entry->d_name);
 
         // Initialize target
-        struct Target *title = calloc(sizeof(char), sizeof(struct Target));
+        struct Target *title = calloc(sizeof(struct Target), 1);
         title->prev = NULL;
         title->next = NULL;
         title->fullPath = calloc(sizeof(char), strlen(titlePath) + 1);
