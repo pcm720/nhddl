@@ -16,7 +16,6 @@
 
 int _findISO(DIR *directory, struct TargetList *result);
 void insertIntoList(struct TargetList *result, struct Target *title);
-char toUppercase(char a);
 char *getTitleID(char *path);
 
 struct TargetList *findISO() {
@@ -128,17 +127,36 @@ int _findISO(DIR *directory, struct TargetList *result) {
   return 0;
 }
 
+// Converts lowercase ASCII string into uppercase
+void toUppercase(char *str) {
+  for (int i = 0; i <= strlen(str); i++)
+    if (str[i] >= 0x61 && str[i] <= 0x7A) {
+      str[i] -= 32;
+    }
+}
+
 // Inserts title in the list while keeping the alphabetical order
 void inline insertIntoList(struct TargetList *result, struct Target *title) {
   // Traverse the list in reverse
   struct Target *curTitle = result->last;
-  char current = toUppercase(title->name[0]);
-  char last;
-  while (1) {
-    // Compare first letters of the new title and the current title
-    last = toUppercase(curTitle->name[0]);
 
-    if ((current - last) >= 0) {
+  // Covert title name to uppercase
+  char *curUppercase = calloc(sizeof(char), strlen(title->name) + 1);
+  strcpy(curUppercase, title->name);
+  toUppercase(curUppercase);
+
+  // Overall, title name should not exceed PATH_MAX
+  char *lastUppercase = calloc(sizeof(char), PATH_MAX+1);
+
+  while (1) {
+    // Reset string buffer
+    lastUppercase[0] = '\0';
+    // Convert name of the last title to uppercase
+    strcpy(lastUppercase, curTitle->name);
+    toUppercase(lastUppercase);
+
+    // Compare new title name and the current title name
+    if (strcmp(curUppercase, lastUppercase) >= 0) {
       // First letter of the new title is after or the same as the current one
       // New title must be inserted after the current list element
       if (curTitle->next != NULL) {
@@ -166,19 +184,12 @@ void inline insertIntoList(struct TargetList *result, struct Target *title) {
     // Keep traversing the list
     curTitle = curTitle->prev;
   }
+  free(curUppercase);
+  free(lastUppercase);
 }
-
-// Converts lower-case ASCII letter into upper-case
-char toUppercase(char a) {
-  if (a >= 0x61 && a <= 0x7A) {
-    return a - 32;
-  }
-  return a;
-}
-
-// The following code was copied from neutrino with minimal changes:
 
 // Loads SYSTEM.CNF from ISO and extracts title ID
+// This function was copied from Neutrino with minimal changes
 char *getTitleID(char *path) {
   if (fileXioMount("iso:", path, FIO_MT_RDONLY) < 0) {
     logString("ERROR: Unable to mount %s as iso\n", path);
@@ -264,11 +275,11 @@ struct Target *copyTarget(struct Target *src) {
   struct Target *copy = calloc(sizeof(struct Target), 1);
   copy->idx = src->idx;
 
-  copy->fullPath = malloc(strlen(src->fullPath)+1);
+  copy->fullPath = malloc(strlen(src->fullPath) + 1);
   strcpy(copy->fullPath, src->fullPath);
-  copy->name = malloc(strlen(src->name)+1);
+  copy->name = malloc(strlen(src->name) + 1);
   strcpy(copy->name, src->name);
-  copy->id = malloc(strlen(src->id)+1);
+  copy->id = malloc(strlen(src->id) + 1);
   strcpy(copy->id, src->id);
 
   return copy;
