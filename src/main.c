@@ -159,7 +159,7 @@ void initOptions(char *basePath) {
       } else if (strcmp(OPTION_MODE, arg->arg) == 0) {
         LAUNCHER_OPTIONS.mode = parseMode(arg->value);
       } else if (strcmp(OPTION_UDPBD_IP, arg->arg) == 0) {
-        strlcpy(LAUNCHER_OPTIONS.udpbdIp, arg->value, sizeof(LAUNCHER_OPTIONS.udpbdIp) - 1);
+        strlcpy(LAUNCHER_OPTIONS.udpbdIp, arg->value, sizeof(LAUNCHER_OPTIONS.udpbdIp));
       }
     }
     arg = arg->next;
