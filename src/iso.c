@@ -88,8 +88,7 @@ int _findISO(DIR *directory, struct TargetList *result) {
         struct Target *title = calloc(sizeof(struct Target), 1);
         title->prev = NULL;
         title->next = NULL;
-        title->fullPath = calloc(sizeof(char), strlen(titlePath) + 1);
-        strcpy(title->fullPath, titlePath);
+        title->fullPath = strdup(titlePath);
 
         // Get file name without the extension
         int nameLength = (int)(fileext - entry->d_name);
@@ -139,8 +138,7 @@ void inline insertIntoList(struct TargetList *result, struct Target *title) {
   struct Target *curTitle = result->last;
 
   // Covert title name to uppercase
-  char *curUppercase = calloc(sizeof(char), strlen(title->name) + 1);
-  strcpy(curUppercase, title->name);
+  char *curUppercase = strdup(title->name);
   toUppercase(curUppercase);
 
   // Overall, title name should not exceed PATH_MAX
@@ -271,12 +269,9 @@ struct Target *copyTarget(struct Target *src) {
   struct Target *copy = calloc(sizeof(struct Target), 1);
   copy->idx = src->idx;
 
-  copy->fullPath = malloc(strlen(src->fullPath) + 1);
-  strcpy(copy->fullPath, src->fullPath);
-  copy->name = malloc(strlen(src->name) + 1);
-  strcpy(copy->name, src->name);
-  copy->id = malloc(strlen(src->id) + 1);
-  strcpy(copy->id, src->id);
+  copy->fullPath = strdup(src->fullPath);
+  copy->name = strdup(src->name);
+  copy->id = strdup(src->id);
 
   return copy;
 }
