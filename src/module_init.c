@@ -4,6 +4,7 @@
 #include <ps2sdkapi.h>
 #include <sbv_patches.h>
 #include <sifrpc.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "common.h"
@@ -43,53 +44,136 @@ int init() {
   return 0;
 }
 
-// List of HDD modules to load from storage, in order
-// Paths are relative to ELF current working directory
-#ifndef MX4SIO
-const int HDD_MODULE_COUNT = 5;
-const char *hddmodules[] = {
-    // BDM
-    "modules/bdm.irx",
-    // Required for getting title ID from ISO
-    "modules/isofs.irx",
-    // exFAT
-    "modules/bdmfs_fatfs.irx",
-    // DEV9
-    "modules/dev9_ns.irx",
-    // ATA
-    "modules/ata_bd.irx"
-};
-#else
-const int HDD_MODULE_COUNT = 4;
-const char *hddmodules[] = {
-    // BDM
-    "modules/bdm.irx",
-    // Required for getting title ID from ISO
-    "modules/isofs.irx",
-    // exFAT
-    "modules/bdmfs_fatfs.irx",
-    // MX4SIO
-    "modules/mx4sio_bd_mini.irx",
-};
-#endif
-
-// Loads HDD modules from basePath
-int initBDM(char *basePath) {
+// Loads modules from basePath
+int initExtraModules(char *basePath, int numModules, const char *modules[]) {
   // Allocate memory for module paths
   char pathBuf[PATH_MAX + 1];
+  pathBuf[0] = '\0';
   strcpy(pathBuf, basePath);
 
   // Load the needed modules
   int ret;
-  for (int i = 0; i < HDD_MODULE_COUNT; i++) {
-    strcat(pathBuf, hddmodules[i]); // append module path to base path
+  for (int i = 0; i < numModules; i++) {
+    strcat(pathBuf, modules[i]); // append module path to base path
     logString("\tloading %s\n", pathBuf);
     if ((ret = SifLoadModule(pathBuf, 0, NULL)) < 0) {
-      logString("ERROR: Failed to load the module %s\n", pathBuf);
       return ret;
     }
     pathBuf[strlen(basePath)] = '\0'; // end bufferred string at basePath for the next strcat in the loop
   }
 
   return 0;
+}
+
+// Base BDM modules
+const int BDM_BASE_MODULE_COUNT = 3;
+const char *bdm_base_modules[] = {
+    // BDM
+    "modules/bdm.irx",
+    // Required for getting title ID from ISO
+    "modules/isofs.irx",
+    // FAT/exFAT
+    "modules/bdmfs_fatfs.irx",
+};
+
+// ATA modules
+const int ATA_MODULE_COUNT = 2;
+const char *ata_modules[] = {
+    // DEV9
+    "modules/dev9_ns.irx",
+    // ATA
+    "modules/ata_bd.irx"};
+
+// MX4SIO modules
+const int MX4SIO_MODULE_COUNT = 1;
+const char *mx4sio_modules[] = {
+    "modules/mx4sio_bd_mini.irx",
+};
+
+// UDPBD modules
+const int UDPBD_MODULE_COUNT = 2;
+const char *udpbd_modules[] = {
+    // DEV9
+    "modules/dev9_ns.irx",
+    // SMAP driver.
+    // Treated as a special case because of the IP address argument
+    "modules/smap_udpbd.irx",
+};
+
+// USB modules
+const int USB_MODULE_COUNT = 2;
+const char *usb_modules[] = {
+    // USBD
+    "modules/usbd_mini.irx",
+    // USB Mass Storage
+    "modules/usbmass_bd_mini.irx",
+};
+
+int initATA(char *basePath) {
+  int res = 0;
+  if ((res = initExtraModules(basePath, BDM_BASE_MODULE_COUNT, bdm_base_modules))) {
+    return res;
+  }
+  return initExtraModules(basePath, ATA_MODULE_COUNT, ata_modules);
+}
+
+int initMX4SIO(char *basePath) {
+  int res = 0;
+  if ((res = initExtraModules(basePath, BDM_BASE_MODULE_COUNT, bdm_base_modules))) {
+    return res;
+  }
+  return initExtraModules(basePath, MX4SIO_MODULE_COUNT, mx4sio_modules);
+}
+
+int initUDPBD(char *basePath, char *hostIPAddr) {
+  if (strlen(hostIPAddr) == 0) {
+    logString("ERROR: invalid IP address length\n");
+    return -EINVAL;
+  }
+
+  int res = 0;
+  if ((res = initExtraModules(basePath, BDM_BASE_MODULE_COUNT, bdm_base_modules))) {
+    return res;
+  }
+
+  // Treating last module as a special case because it needs an argument to work
+  if ((res = initExtraModules(basePath, UDPBD_MODULE_COUNT - 1, udpbd_modules))) {
+    return res;
+  }
+
+  // Allocate memory for module path and argument
+  char pathBuf[PATH_MAX + 1];
+  pathBuf[0] = '\0';
+  strcpy(pathBuf, basePath);
+  char ipArg[19]; // 15 bytes for IP string + 3 bytes for 'ip='
+  snprintf(ipArg, sizeof(ipArg), "ip=%s", hostIPAddr);
+
+  strcat(pathBuf, udpbd_modules[UDPBD_MODULE_COUNT - 1]); // append module path to base path
+  logString("\tloading %s\n\twith %s\n", pathBuf, ipArg);
+  if ((res = SifLoadModule(pathBuf, sizeof(ipArg), ipArg)) < 0) {
+    return res;
+  }
+  return 0;
+}
+
+int initUSB(char *basePath) {
+  int res = 0;
+  if ((res = initExtraModules(basePath, BDM_BASE_MODULE_COUNT, bdm_base_modules))) {
+    return res;
+  }
+  return initExtraModules(basePath, USB_MODULE_COUNT, usb_modules);
+}
+
+// Initializes BDM modules depending on launcher mode
+int initBDM(char *basePath) {
+  switch (LAUNCHER_OPTIONS.mode) {
+  case MODE_MX4SIO:
+    return initMX4SIO(ELF_BASE_PATH);
+  case MODE_UDPBD:
+    return initUDPBD(ELF_BASE_PATH, LAUNCHER_OPTIONS.udpbdIp);
+  case MODE_USB:
+    return initUSB(ELF_BASE_PATH);
+  default:
+    return initATA(ELF_BASE_PATH);
+  }
 }
