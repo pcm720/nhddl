@@ -3,6 +3,7 @@
 #include "iso.h"
 #include "module_init.h"
 #include <debug.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,13 +32,14 @@ int main(int argc, char *argv[]) {
   strcat(ELF_BASE_PATH, "/");
   logString("Current working directory is %s\n", ELF_BASE_PATH);
 
-  // Init HDD and MC modules
   logString("Loading modules...\n");
+  // Init MC modules
   int res;
   if ((res = init()) != 0) {
     logString("ERROR: Failed to initialize MC modules: %d\n", res);
     goto fail;
   }
+  // Init BDM modules
   if ((res = initBDM(ELF_BASE_PATH)) != 0) {
     logString("Failed to initialize BDM modules: %d\n", res);
     goto fail;
@@ -54,14 +56,20 @@ int main(int argc, char *argv[]) {
   // If ELF file name ends with _p.elf or
   // progressiveFile exists in current working directory, enable 480p mode
   int enable480p = 0;
+  
   char *suffix = strrchr(argv[0], '_');
-  char *progFile = calloc(sizeof(char), PATH_MAX + 1);
-  snprintf(progFile, PATH_MAX + 1, "%s/%s", ELF_BASE_PATH, progressiveFile);
-  if (((suffix != NULL) && !strcmp(suffix, "_p.elf")) || (!access(progFile, R_OK))) {
-    printf("Starting UI in progressive mode\n");
+  char progFile[PATH_MAX + 1];
+  snprintf(progFile, PATH_MAX, "%s/%s", ELF_BASE_PATH, progressiveFile);
+
+  if (suffix && strcmp(suffix, "_p.elf") == 0) {
     enable480p = 1;
+  } else {
+    int fd = open(progFile, O_RDONLY);
+    if (fd >= 0) {
+      close(fd);
+      enable480p = 1;
+    }
   }
-  free(progFile);
 
   if ((res = uiInit(enable480p))) {
     printf("ERROR: Failed to init UI: %d\n", res);
