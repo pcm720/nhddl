@@ -1,7 +1,8 @@
 # NHDDL — a PS2 exFAT HDD launcher for Neutrino
 
 NHDDL is a memory card-based launcher that scans internal exFAT-formatted HDD for ISO files,
-lists them and boots selected ISO via Neutrino.
+lists them and boots selected ISO via Neutrino.  
+It also supports MX4SIO via a separate executable.
 
 It displays visual Game ID to trigger per-game settings on the Pixel FX line of products and writes to memory card history file before launching the title, triggering per-title memory cards on SD2PSX and MemCard PRO 2.
 
@@ -25,6 +26,12 @@ Make sure that Neutrino `modules` directory contains the following IRX files:
 - `ata_bd.irx`
 
 Those are required to find ISO files on exFAT-formatted HDD, retrieve title ID from ISO, read cover art and config files.
+
+MX4SIO variant requires the following IRX files in Neutrino `modules` directory:
+- `bdm.irx` 
+- `isofs.irx`
+- `bdmfs_fatfs.irx`
+- `mx4sio_bd_mini.irx`
 
 ### Storing ISO
 
