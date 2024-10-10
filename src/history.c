@@ -69,6 +69,11 @@ int createSystemDataDir() {
 
 // Adds title ID to the history file on both mc0 and mc1
 int updateHistoryFile(const char *titleID) {
+  // Refuse to write entry if title ID is less than expected
+  if ((titleID == NULL) || (strlen(titleID) < 11)) {
+    printf("WARN: will not invalid title ID to history files\n");
+    return 0;
+  }
   // Detect system directory
   if (initSystemDataDir())
     return -ENOENT;
