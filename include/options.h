@@ -86,4 +86,7 @@ void insertCompatModeArg(struct ArgumentList *target, uint8_t modes);
 // Loads both global and title launch arguments, returning pointer to a merged list
 struct ArgumentList *loadLaunchArgumentLists(struct Target *target);
 
+// Parses options file into ArgumentList
+int loadArgumentList(struct ArgumentList *options, char *filePath);
+
 #endif
