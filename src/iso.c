@@ -54,10 +54,9 @@ int _findISO(DIR *directory, struct TargetList *result) {
   // Read directory entries
   struct dirent *entry;
   char *fileext;
-  char *titlePath = calloc(sizeof(char), PATH_MAX + 1);
+  char titlePath[PATH_MAX + 1];
   if (!getcwd(titlePath, PATH_MAX + 1)) { // Initialize titlePath with current working directory
     logString("ERROR: Failed to get cwd\n");
-    free(titlePath);
     return -ENOENT;
   }
   int cwdLen = strlen(titlePath); // Get the length of base path string
@@ -123,7 +122,6 @@ int _findISO(DIR *directory, struct TargetList *result) {
     curTitle = curTitle->next;
   }
 
-  free(titlePath);
   return 0;
 }
 
@@ -146,13 +144,13 @@ void inline insertIntoList(struct TargetList *result, struct Target *title) {
   toUppercase(curUppercase);
 
   // Overall, title name should not exceed PATH_MAX
-  char *lastUppercase = calloc(sizeof(char), PATH_MAX+1);
+  char lastUppercase[PATH_MAX];
 
   while (1) {
     // Reset string buffer
     lastUppercase[0] = '\0';
     // Convert name of the last title to uppercase
-    strcpy(lastUppercase, curTitle->name);
+    strlcpy(lastUppercase, curTitle->name, PATH_MAX);
     toUppercase(lastUppercase);
 
     // Compare new title name and the current title name
@@ -185,7 +183,6 @@ void inline insertIntoList(struct TargetList *result, struct Target *title) {
     curTitle = curTitle->prev;
   }
   free(curUppercase);
-  free(lastUppercase);
 }
 
 // Loads SYSTEM.CNF from ISO and extracts title ID

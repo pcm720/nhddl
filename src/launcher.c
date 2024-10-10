@@ -69,7 +69,7 @@ void launchTitle(struct Target *target, struct ArgumentList *arguments) {
   }
 
   if (updateLastLaunchedTitle(target->fullPath)) {
-    printf("ERROR: Failed to update last played title\n");
+    printf("ERROR: Failed to update last launched title\n");
   }
   updateHistoryFile(target->id);
 

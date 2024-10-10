@@ -50,14 +50,14 @@ void buildConfigFilePath(char *targetPath, const char *basePath, const char *tar
 // Gets last launched title path into titlePath
 int getLastLaunchedTitle(char *titlePath) {
   printf("Reading last launched title\n");
-  char *targetPath = calloc(sizeof(char), MAX_LAST_LAUNCHED_LENGTH);
+  char targetPath[MAX_LAST_LAUNCHED_LENGTH];
+  targetPath[0] = '\0';
   buildConfigFilePath(targetPath, STORAGE_BASE_PATH, lastTitlePath);
 
   // Open last launched title file and read it
   int fd = open(targetPath, O_RDONLY);
   if (fd < 0) {
     printf("WARN: Failed to open last launched title file: %d\n", fd);
-    free(targetPath);
     return -ENOENT;
   }
 
@@ -65,25 +65,23 @@ int getLastLaunchedTitle(char *titlePath) {
   struct stat st;
   if (fstat(fd, &st)) {
     close(fd);
-    free(targetPath);
     return -EIO;
   }
   // Read file contents into titlePath
   if (read(fd, titlePath, st.st_size) < 0) {
     close(fd);
-    free(targetPath);
     printf("WARN: Failed to read last launched title\n");
     return -EIO;
   }
   close(fd);
-  free(targetPath);
   return 0;
 }
 
 // Writes last launched title path into lastTitle file
 int updateLastLaunchedTitle(char *titlePath) {
   printf("Writing last launched title as %s\n", titlePath);
-  char *targetPath = calloc(sizeof(char), MAX_LAST_LAUNCHED_LENGTH);
+  char targetPath[MAX_LAST_LAUNCHED_LENGTH];
+  targetPath[0] = '\0';
   buildConfigFilePath(targetPath, titlePath, NULL);
 
   // Make sure config directory exists
@@ -100,27 +98,24 @@ int updateLastLaunchedTitle(char *titlePath) {
   int fd = open(targetPath, O_WRONLY | O_CREAT | O_TRUNC);
   if (fd < 0) {
     printf("ERROR: Failed to open last launched title file: %d\n", fd);
-    free(targetPath);
     return -ENOENT;
   }
   size_t writeLen = strlen(titlePath) + 1;
   if (write(fd, titlePath, writeLen) != writeLen) {
     printf("ERROR: Failed to write last launched title\n");
     close(fd);
-    free(targetPath);
     return -EIO;
   }
   close(fd);
-  free(targetPath);
   return 0;
 }
 
 // Generates ArgumentList from global config file
 int getGlobalLaunchArguments(struct ArgumentList *result) {
-  char *targetPath = calloc(sizeof(char), PATH_MAX + 1);
+  char targetPath[PATH_MAX + 1];
+  targetPath[0] = '\0';
   buildConfigFilePath(targetPath, STORAGE_BASE_PATH, globalOptionsPath);
   int ret = loadArgumentList(result, targetPath);
-  free(targetPath);
 
   struct Argument *curArg = result->first;
   while (curArg != NULL) {
@@ -133,18 +128,19 @@ int getGlobalLaunchArguments(struct ArgumentList *result) {
 // Generates ArgumentList from global and title-specific config file
 int getTitleLaunchArguments(struct ArgumentList *result, struct Target *target) {
   printf("Looking for title-specific config for %s (%s)\n", target->name, target->id);
-  char *targetPath = calloc(sizeof(char), PATH_MAX + 1);
+  char targetPath[PATH_MAX + 1];
+  targetPath[0] = '\0';
   buildConfigFilePath(targetPath, target->fullPath, NULL);
   // Determine actual title options file from config directory contents
   DIR *directory = opendir(targetPath);
   if (directory == NULL) {
     printf("ERROR: Can't open %s\n", targetPath);
-    free(targetPath);
     return -ENOENT;
   }
 
   // Find title config in config directory
-  char *configPath = calloc(sizeof(char), PATH_MAX + 1);
+  char configPath[PATH_MAX + 1];
+  configPath[0] = '\0';
   struct dirent *entry;
   while ((entry = readdir(directory)) != NULL) {
     if (entry->d_type != DT_DIR) {
@@ -160,11 +156,10 @@ int getTitleLaunchArguments(struct ArgumentList *result, struct Target *target) 
     }
   }
   closedir(directory);
-  free(targetPath);
 
   if (configPath[0] == '\0') {
     printf("Title-specific config not found\n");
-    goto out;
+    return 0;
   }
 
   // Load arguments
@@ -174,8 +169,6 @@ int getTitleLaunchArguments(struct ArgumentList *result, struct Target *target) 
     printf("ERROR: Failed to load argument list: %d\n", ret);
   }
 
-out:
-  free(configPath);
   return 0;
 }
 
@@ -184,21 +177,21 @@ out:
 // Empty value means that the argument is empty, but still should be used without the value.
 int updateTitleLaunchArguments(struct Target *target, struct ArgumentList *options) {
   // Build file path
-  char *targetPath = calloc(sizeof(char), PATH_MAX + 1);
-  buildConfigFilePath(targetPath, target->fullPath, target->name);
-  strcat(targetPath, ".yaml");
-  printf("Saving title-specific config to %s\n", targetPath);
+  char lineBuffer[PATH_MAX + 1];
+  lineBuffer[0] = '\0';
+  buildConfigFilePath(lineBuffer, target->fullPath, target->name);
+  strcat(lineBuffer, ".yaml");
+  printf("Saving title-specific config to %s\n", lineBuffer);
 
   // Open file, truncating it
-  int fd = open(targetPath, O_WRONLY | O_CREAT | O_TRUNC);
+  int fd = open(lineBuffer, O_WRONLY | O_CREAT | O_TRUNC);
   if (fd < 0) {
     printf("ERROR: Failed to open file\n");
-    free(targetPath);
     return fd;
   }
 
   // Write each argument into the file
-  char *lineBuffer = calloc(sizeof(char), PATH_MAX + 1);
+  lineBuffer[0] = '\0'; // reuse buffer
   int len = 0;
   int ret = 0;
   struct Argument *tArg = options->first;
@@ -220,7 +213,6 @@ int updateTitleLaunchArguments(struct Target *target, struct ArgumentList *optio
     tArg = tArg->next;
   }
 out:
-  free(lineBuffer);
   close(fd);
   return ret;
 }
@@ -252,7 +244,8 @@ int loadArgumentList(struct ArgumentList *options, char *filePath) {
 // Parses file into ArgumentList. Result may contain parsed arguments even if an error is returned.
 int parseOptionsFile(struct ArgumentList *result, FILE *file) {
   // Our lines will mostly consist of file paths, which aren't likely to exceed 300 characters due to 255 character limit in exFAT path component
-  char *lineBuffer = calloc(sizeof(char), PATH_MAX + 1);
+  char lineBuffer[PATH_MAX + 1];
+  lineBuffer[0] = '\0';
   int startIdx;
   int substrIdx;
   int argEndIdx;
@@ -261,7 +254,7 @@ int parseOptionsFile(struct ArgumentList *result, FILE *file) {
     startIdx = 0;
     isDisabled = 0;
     argEndIdx = 0;
-    
+
     //
     // Parse argument
     //
@@ -348,11 +341,9 @@ int parseOptionsFile(struct ArgumentList *result, FILE *file) {
   }
   if (ferror(file) || !feof(file)) {
     printf("ERROR: Failed to read config file\n");
-    free(lineBuffer);
     return -EIO;
   }
 
-  free(lineBuffer);
   return 0;
 }
 
