@@ -20,7 +20,7 @@ EE_OBJS := $(EE_OBJS:%=$(EE_OBJS_DIR)%)
 EE_INCS := -Iinclude -I$(PS2DEV)/gsKit/include -I$(PS2SDK)/ports/include
 
 EE_LDFLAGS := -L$(PS2DEV)/gsKit/lib -L$(PS2SDK)/ports/lib -s
-EE_LIBS = -ldebug -lfileXio -lpatches -lelf-loader -lgsKit -ldmaKit -lgskit_toolkit -ljpeg -lpng -lz -ltiff -lpad
+EE_LIBS = -ldebug -lfileXio -lpatches -lelf-loader -lgsKit -ldmaKit -lgskit_toolkit -lpng -lz -ltiff -lpad
 EE_CFLAGS := -mno-gpopt -G0
 
 BIN2C = $(PS2SDK)/bin/bin2c

@@ -38,7 +38,8 @@ To enable 480p output mode for the launcher (not the game) either rename the ELF
 ### Displaying cover art
 
 NHDDL uses the same file naming convention and file format used by OPL.  
-Just put **140x200** JPG or PNG files named `<title ID>_COV.jpg/png` (e.g. `SLUS_200.02_COV.jpg`) into the `ART` directory on the root of your HDD.
+Just put **140x200 PNG** files named `<title ID>_COV.png` (e.g. `SLUS_200.02_COV.png`) into the `ART` directory on the root of your HDD.  
+If unsure where to get your cover art from, check out the latest version of [OPL Manager](https://oplmanager.com).
 
 ### Configuration files
 

@@ -63,6 +63,7 @@ int uiInit(int enable480p) {
   gsGlobal->ZBuffering = GS_SETTING_OFF;
 
   if (enable480p) {
+    printf("Starting UI in progressive mode\n");
     init480p(gsGlobal);
   } else if (gsGlobal->Mode == GS_MODE_PAL) {
     maxTitlesPerPage = MAX_TITLES_PER_PAGE_PAL;
@@ -107,24 +108,10 @@ int loadCoverArt(char *titleID) {
 
   // Texture is loaded immediately by gsKit_texture_{jpeg,png} since Delayed is not set,
   // so there is no need to use gsKit_TexManager calls.
-  int res = 0;
+
   // Reuse line buffer for building texture path
-  int len = snprintf(lineBuffer, 255, "%s%s/%s_COV.jpg", STORAGE_BASE_PATH, artPath, titleID);
-  if (!access(lineBuffer, R_OK)) {
-    // Try to load JPEG first
-    if (!(res = gsKit_texture_jpeg(gsGlobal, coverTexture, lineBuffer))) {
-      return res;
-    }
-  }
-  // If failed, try to load PNG
-  // Replace "jp" in "jpg" with "pn" to make "png"
-  lineBuffer[len - 2] = 'n';
-  lineBuffer[len - 3] = 'p';
-  if (!access(lineBuffer, R_OK)) {
-    return gsKit_texture_png(gsGlobal, coverTexture, lineBuffer);
-  }
-  printf("%s: cover not found\n", titleID);
-  return 1;
+  snprintf(lineBuffer, 255, "%s%s/%s_COV.png", STORAGE_BASE_PATH, artPath, titleID);
+  return gsKit_texture_png(gsGlobal, coverTexture, lineBuffer);
 }
 
 // Closes gamepad driver and deinits gsKit
@@ -149,7 +136,7 @@ int uiLoop(struct TargetList *titles) {
   int input = 0;
   struct Target *curTarget = titles->first;
 
-  // Get last played title and find it in the target list
+  // Get last launched title and find it in the target list
   char *lastTitle = calloc(sizeof(char), PATH_MAX + 1);
   if (!getLastLaunchedTitle(lastTitle)) {
     while (curTarget != NULL) {
@@ -159,7 +146,7 @@ int uiLoop(struct TargetList *titles) {
       }
       curTarget = curTarget->next;
     }
-    // Reinitialize target if last played title couldn't be loaded
+    // Reinitialize target if last launched title couldn't be loaded
     if (curTarget == NULL) {
       curTarget = titles->first;
     }
@@ -372,8 +359,13 @@ void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *s
 
   // Draw cover art if it exists
   if (selectedTitleCover != NULL) {
+    // Temproraily disable alpha blending
+    // Some PNGs require inverted alpha channel value to display properly
+    // Since cover art has nothing to blend, we can bypass the issue altogether
+    gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
     gsKit_prim_sprite_texture(gsGlobal, selectedTitleCover, coverArtX1, coverArtY1, 0.0f, 0.0f, coverArtX2, coverArtY2, selectedTitleCover->Width,
                               selectedTitleCover->Height, 1, GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80));
+    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
   }
 }
 
