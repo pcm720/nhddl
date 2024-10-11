@@ -155,7 +155,7 @@ void initOptions(char *basePath) {
   while (arg != NULL) {
     if (!arg->isDisabled) {
       if (strcmp(OPTION_480P, arg->arg) == 0) {
-        LAUNCHER_OPTIONS.is480pEnabled = 0;
+        LAUNCHER_OPTIONS.is480pEnabled = 1;
       } else if (strcmp(OPTION_MODE, arg->arg) == 0) {
         LAUNCHER_OPTIONS.mode = parseMode(arg->value);
       } else if (strcmp(OPTION_UDPBD_IP, arg->arg) == 0) {
