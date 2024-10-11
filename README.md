@@ -66,8 +66,8 @@ See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
 
 ### Storing ISO
 
-ISOs can be stored anywhere on the storage device.   
-OPL-like folder structure is also supported.
+Just like OPL, NHDDL looks for ISOs in directories named `CD` or `DVD`.
+There is no distinction between CD and DVD images, both can be placed in any of those two directories.
 
 ### Displaying cover art
 
@@ -81,9 +81,9 @@ NHDDL uses YAML-like files to load and store its configuration options.
 
 ### Launcher configuration file
 
-Launcher configuration is loaded from `nhddl.yaml` in `nhddl.elf` folder.  
-The file completely optional and must be used only to enable 480p or use any device other than ATA.  
-By default, 480p is disabled and ATA device is used to look for ISO files.
+Launcher configuration is read from the `nhddl.yaml` file, which must be located in the same directory as `nhddl.elf`.  
+This file is completely optional and must be used only to enable 480p or use any device other than ATA.  
+By default, 480p is disabled and the ATA device is used to look for ISO files.
 
 Example of a valid config file:
 ```yaml
@@ -91,6 +91,7 @@ Example of a valid config file:
 mode: ata # supported modes: ata (default), mx4sio, udpbd, usb
 udpbd_ip: 192.168.1.6 # PS2 IP address for UDPBD mode
 ```
+To disable a flag, you can add `$` before the argument name or just comment it out with `#`.
 
 ### Configuration files on storage device
 
@@ -117,8 +118,8 @@ $mc1: mass:/memcard1.bin # disabled argument
 dbc:
 logo:
 ```
+To disable an argument by default, place a `$` before the argument name.
 
-To mark an argument as disabled by default, `$` is used before the argument name.
 
 NHDDL supports two kinds of argument files:
 
