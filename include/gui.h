@@ -3,7 +3,7 @@
 
 #include "iso.h"
 
-int uiInit(int enable480p);
+int uiInit();
 int uiLoop(struct TargetList *titles);
 void uiCleanup();
 

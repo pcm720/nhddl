@@ -377,10 +377,8 @@ struct Argument *copyArgument(struct Argument *src) {
   struct Argument *copy = calloc(sizeof(struct Argument), 1);
   copy->isGlobal = src->isGlobal;
   copy->isDisabled = src->isDisabled;
-  copy->arg = malloc(strlen(src->arg) + 1);
-  strcpy(copy->arg, src->arg);
-  copy->value = malloc(strlen(src->value) + 1);
-  strcpy(copy->value, src->value);
+  copy->arg = strdup(src->arg);
+  copy->value = strdup(src->value);
   return copy;
 }
 
@@ -392,10 +390,8 @@ void replaceArgument(struct Argument *dst, struct Argument *src) {
   free(dst->value);
   dst->isGlobal = src->isGlobal;
   dst->isDisabled = src->isDisabled;
-  dst->arg = malloc(strlen(src->arg) + 1);
-  strcpy(dst->arg, src->arg);
-  dst->value = malloc(strlen(src->value) + 1);
-  strcpy(dst->value, src->value);
+  dst->arg = strdup(src->arg);
+  dst->value = strdup(src->value);
 }
 
 // Creates new Argument with passed argName and value (without copying)
@@ -512,8 +508,7 @@ void storeCompatModes(struct Argument *target, uint8_t modes) {
 // Inserts a new compat mode arg into the argument list
 void insertCompatModeArg(struct ArgumentList *target, uint8_t modes) {
   struct Argument *newArg = calloc(sizeof(struct Argument), 1);
-  newArg->arg = calloc(sizeof(char), strlen(COMPAT_MODES_ARG) + 1);
-  strcpy(newArg->arg, COMPAT_MODES_ARG);
+  newArg->arg = strdup(COMPAT_MODES_ARG);
 
   newArg->value = calloc(sizeof(char), CM_NUM_MODES + 1);
   storeCompatModes(newArg, modes);

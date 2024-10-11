@@ -11,11 +11,12 @@
 static const char neutrinoELF[] = "neutrino.elf";
 static char isoArgument[] = "dvd";
 static char bsdArgument[] = "bsd";
-#ifndef MX4SIO
-static char bsdValue[] = "ata";
-#else
-static char bsdValue[] = "mx4sio";
-#endif
+
+// Neutrino bsd values
+#define BSD_ATA "ata"
+#define BSD_MX4SIO "mx4sio"
+#define BSD_UDPBD "udpbd"
+#define BSD_USB "usb"
 
 // Assembles argument lists into argv for Neutrino.
 // Expects argv to be initialized with at least (arguments->total) elements.
@@ -56,6 +57,24 @@ int assembleArgv(struct ArgumentList *arguments, char **argv) {
 // Expects arguments to be initialized
 void launchTitle(struct Target *target, struct ArgumentList *arguments) {
   // Append arguments
+  char *bsdValue;
+  switch (LAUNCHER_OPTIONS.mode) {
+  case MODE_ATA:
+    bsdValue = BSD_ATA;
+    break;
+  case MODE_MX4SIO:
+    bsdValue = BSD_MX4SIO;
+    break;
+  case MODE_UDPBD:
+    bsdValue = BSD_UDPBD;
+    break;
+  case MODE_USB:
+    bsdValue = BSD_USB;
+    break;
+  default:
+    printf("ERROR: Unsupported mode\n");
+    return;
+  }
   appendArgument(arguments, newArgument(bsdArgument, bsdValue));
   appendArgument(arguments, newArgument(isoArgument, target->fullPath));
 
@@ -74,6 +93,7 @@ void launchTitle(struct Target *target, struct ArgumentList *arguments) {
   updateHistoryFile(target->id);
 
   char neutrinoPath[PATH_MAX + 1];
+  neutrinoPath[0] = '\0';
   strcpy(neutrinoPath, ELF_BASE_PATH);
   strcat(neutrinoPath, neutrinoELF);
   printf("ERROR: failed to load %s: %d\n", neutrinoELF, LoadELFFromFile(neutrinoPath, argCount, argv));

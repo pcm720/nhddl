@@ -56,13 +56,13 @@ void init480p(GSGLOBAL *gsGlobal) {
   gsGlobal->Height = 448;
 }
 
-int uiInit(int enable480p) {
+int uiInit() {
   gsGlobal = gsKit_init_global();
   gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
   gsGlobal->DoubleBuffering = GS_SETTING_OFF;
   gsGlobal->ZBuffering = GS_SETTING_OFF;
 
-  if (enable480p) {
+  if (LAUNCHER_OPTIONS.is480pEnabled) {
     printf("Starting UI in progressive mode\n");
     init480p(gsGlobal);
   } else if (gsGlobal->Mode == GS_MODE_PAL) {
