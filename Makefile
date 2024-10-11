@@ -21,7 +21,7 @@ EE_LDFLAGS := -L$(PS2DEV)/gsKit/lib -L$(PS2SDK)/ports/lib -s
 EE_LIBS = -ldebug -lfileXio -lpatches -lelf-loader -lgsKit -ldmaKit -lgskit_toolkit -lpng -lz -ltiff -lpad
 EE_CFLAGS := -mno-gpopt -G0
 
-BIN2C = $(PS2SDK)/bin/BIN2C
+BIN2C = $(PS2SDK)/bin/bin2c
 
 .PHONY: all clean
 
