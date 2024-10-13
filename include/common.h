@@ -20,6 +20,7 @@ typedef struct {
 
 // Storage device base path. Initialized in main.c
 extern const char STORAGE_BASE_PATH[];
+extern const size_t STORAGE_BASE_PATH_LEN;
 // ELF base path. Initialized in main() during init.
 extern char ELF_BASE_PATH[PATH_MAX + 1];
 // Options

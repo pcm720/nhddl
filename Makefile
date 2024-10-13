@@ -3,7 +3,7 @@
 EE_BIN = nhddl_unc.elf
 EE_BIN_PKD = nhddl.elf
 
-EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o pad.o launcher.o
+EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o pad.o launcher.o iso_cache.o
 IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx
 RES_FILES += icon_A.sys icon_C.sys icon_J.sys
 

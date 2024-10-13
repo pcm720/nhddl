@@ -20,8 +20,8 @@ static char bsdArgument[] = "bsd";
 
 // Assembles argument lists into argv for Neutrino.
 // Expects argv to be initialized with at least (arguments->total) elements.
-int assembleArgv(struct ArgumentList *arguments, char **argv) {
-  struct Argument *curArg = arguments->first;
+int assembleArgv(ArgumentList *arguments, char **argv) {
+  Argument *curArg = arguments->first;
   int argCount = 0;
   int argSize = 0;
   while (curArg != NULL) {
@@ -55,7 +55,7 @@ int assembleArgv(struct ArgumentList *arguments, char **argv) {
 
 // Launches target, passing arguments to Neutrino.
 // Expects arguments to be initialized
-void launchTitle(struct Target *target, struct ArgumentList *arguments) {
+void launchTitle(Target *target, ArgumentList *arguments) {
   // Append arguments
   char *bsdValue;
   switch (LAUNCHER_OPTIONS.mode) {
@@ -93,7 +93,6 @@ void launchTitle(struct Target *target, struct ArgumentList *arguments) {
   updateHistoryFile(target->id);
 
   char neutrinoPath[PATH_MAX + 1];
-  neutrinoPath[0] = '\0';
   strcpy(neutrinoPath, ELF_BASE_PATH);
   strcat(neutrinoPath, neutrinoELF);
   printf("ERROR: failed to load %s: %d\n", neutrinoELF, LoadELFFromFile(neutrinoPath, argCount, argv));

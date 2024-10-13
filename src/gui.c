@@ -20,11 +20,11 @@
 #define COVER_ART_RES_W 140
 #define COVER_ART_RES_H 200
 
-int uiLoop(struct TargetList *titles);
-int uiTitleOptionsLoop(struct Target *title);
-void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *selectedTitleCover);
-void drawArgumentList(struct ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx);
-void uiLaunchTitle(struct Target *target, struct ArgumentList *arguments);
+int uiLoop(TargetList *titles);
+int uiTitleOptionsLoop(Target *title);
+void drawTitleList(TargetList *titles, int selectedTitleIdx, GSTEXTURE *selectedTitleCover);
+void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx);
+void uiLaunchTitle(Target *target, ArgumentList *arguments);
 void drawGameID(const char *game_id);
 
 static GSGLOBAL *gsGlobal;
@@ -124,7 +124,7 @@ void uiCleanup() {
 }
 
 // Main UI loop. Displays the target list.
-int uiLoop(struct TargetList *titles) {
+int uiLoop(TargetList *titles) {
   int res = 0;
   if ((gsGlobal == NULL) && (res = uiInit(0))) {
     printf("ERROR: Failed to init UI: %d\n", res);
@@ -134,7 +134,7 @@ int uiLoop(struct TargetList *titles) {
   int isCoverUninitialized = 1;
   int selectedTitleIdx = 0;
   int input = 0;
-  struct Target *curTarget = titles->first;
+  Target *curTarget = titles->first;
 
   // Get last launched title and find it in the target list
   char *lastTitle = calloc(sizeof(char), PATH_MAX + 1);
@@ -179,7 +179,7 @@ int uiLoop(struct TargetList *titles) {
     input = getInput(-1);
     if (input & (PAD_CROSS | PAD_CIRCLE)) {
       // Copy target, free title list and launch
-      struct Target *target = copyTarget(curTarget);
+      Target *target = copyTarget(curTarget);
       freeTargetList(titles);
       uiLaunchTitle(target, NULL);
       goto exit;
@@ -219,12 +219,12 @@ exit:
 }
 
 // Title options screen handler
-int uiTitleOptionsLoop(struct Target *target) {
+int uiTitleOptionsLoop(Target *target) {
   int res = 0;
   uint8_t modes = 0;
 
   // Load arguments from config files
-  struct ArgumentList *titleArguments = loadLaunchArgumentLists(target);
+  ArgumentList *titleArguments = loadLaunchArgumentLists(target);
 
   // Parse compatibility modes
   if ((titleArguments->total != 0) && !strcmp(COMPAT_MODES_ARG, titleArguments->first->arg)) {
@@ -242,7 +242,7 @@ int uiTitleOptionsLoop(struct Target *target) {
 
   // Always start with the second element since the first
   // is guaranteed to be a compatibility mode flag
-  struct Argument *curArgument = titleArguments->first->next;
+  Argument *curArgument = titleArguments->first->next;
 
   while (1) {
     gsKit_clear(gsGlobal, BlackBG);
@@ -310,7 +310,7 @@ exit:
 }
 
 // Draws title list
-void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *selectedTitleCover) {
+void drawTitleList(TargetList *titles, int selectedTitleIdx, GSTEXTURE *selectedTitleCover) {
   int curPage = selectedTitleIdx / maxTitlesPerPage;
 
   // Draw header and footer
@@ -327,7 +327,7 @@ void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *s
                            "Press \f0090 to launch the title, \f0097 to open launch options\nPress START to exit");
 
   // Draw title list
-  struct Target *curTitle = titles->first;
+  Target *curTitle = titles->first;
   while (curTitle != NULL) {
     // Do not display titles before the current page
     if (curTitle->idx < maxTitlesPerPage * curPage) {
@@ -370,7 +370,7 @@ void drawTitleList(struct TargetList *titles, int selectedTitleIdx, GSTEXTURE *s
 }
 
 // Draws title arguments
-void drawArgumentList(struct ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx) {
+void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx) {
   int startY = 75;
   int idx = 0;
 
@@ -391,7 +391,7 @@ void drawArgumentList(struct ArgumentList *arguments, uint8_t compatModes, int s
 
   // Always start with the second element since the first
   // is guaranteed to be a compatibility mode flag
-  struct Argument *argument = arguments->first->next;
+  Argument *argument = arguments->first->next;
   int curPage = (selectedArgIdx - CM_NUM_MODES) / MAX_ARGUMENTS;
   // Advance start Y offset and add some space after compatibility modes
   startY += (CM_NUM_MODES * 15) + 10;
@@ -430,7 +430,7 @@ void drawArgumentList(struct ArgumentList *arguments, uint8_t compatModes, int s
 }
 
 // Displays Game ID and launches the title
-void uiLaunchTitle(struct Target *target, struct ArgumentList *arguments) {
+void uiLaunchTitle(Target *target, ArgumentList *arguments) {
   // Initialize arugments if not set
   if (arguments == NULL) {
     arguments = loadLaunchArgumentLists(target);

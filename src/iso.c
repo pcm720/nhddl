@@ -1,5 +1,6 @@
 #include "iso.h"
 #include "common.h"
+#include "iso_cache.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <kernel.h>
@@ -14,11 +15,19 @@
 #include <fileXio_rpc.h>
 #include <io_common.h>
 
-int _findISO(DIR *directory, struct TargetList *result);
-void insertIntoList(struct TargetList *result, struct Target *title);
+int _findISO(DIR *directory, TargetList *result);
+void insertIntoList(TargetList *result, Target *title);
 char *getTitleID(char *path);
+void processTitleID(TargetList *result);
 
-struct TargetList *findISO() {
+// Directories to skip when browsing for ISOs
+const char *ignoredDirs[] = {
+    "config", "APPS", "ART", "CFG", "CHT", "LNG", "THM", "VMC", "XEBPLUS",
+};
+
+// Looks for ISO images in searchDirs.
+// Returns NULL if no targets were found or an error occurs
+TargetList *findISO() {
   DIR *directory;
   // Try to open directory, giving a chance to IOP modules to init
   for (int i = 0; i < 1000; i++) {
@@ -33,7 +42,7 @@ struct TargetList *findISO() {
     return NULL;
   }
 
-  struct TargetList *result = malloc(sizeof(struct TargetList));
+  TargetList *result = malloc(sizeof(TargetList));
   result->total = 0;
   result->first = NULL;
   result->last = NULL;
@@ -44,11 +53,13 @@ struct TargetList *findISO() {
     return NULL;
   }
   closedir(directory);
+
+  processTitleID(result);
   return result;
 }
 
 // Searches rootpath and adds discovered ISOs to TargetList
-int _findISO(DIR *directory, struct TargetList *result) {
+int _findISO(DIR *directory, TargetList *result) {
   if (directory == NULL)
     return -ENOENT;
   // Read directory entries
@@ -64,6 +75,13 @@ int _findISO(DIR *directory, struct TargetList *result) {
     // Check if the entry is a directory using d_type
     switch (entry->d_type) {
     case DT_DIR:
+      if ((entry->d_name[0] == '.') || (entry->d_name[0] == '$')) // Ignore hidden and special folders
+        continue;
+      for (int i = 0; i < sizeof(ignoredDirs) / sizeof(char *); i++) {
+        if (!strcmp(ignoredDirs[i], entry->d_name)) {
+          goto skipDirectory;
+        }
+      }
       // Open dir and change cwd
       DIR *d = opendir(entry->d_name);
       chdir(entry->d_name);
@@ -72,6 +90,7 @@ int _findISO(DIR *directory, struct TargetList *result) {
       // Return back to root directory
       chdir("..");
       closedir(d);
+    skipDirectory:
       continue;
     default:
       if (entry->d_name[0] == '.') // Ignore .files (most likely macOS doubles)
@@ -85,7 +104,7 @@ int _findISO(DIR *directory, struct TargetList *result) {
         strcat(titlePath, entry->d_name);
 
         // Initialize target
-        struct Target *title = calloc(sizeof(struct Target), 1);
+        Target *title = calloc(sizeof(Target), 1);
         title->prev = NULL;
         title->next = NULL;
         title->fullPath = strdup(titlePath);
@@ -94,9 +113,6 @@ int _findISO(DIR *directory, struct TargetList *result) {
         int nameLength = (int)(fileext - entry->d_name);
         title->name = calloc(sizeof(char), nameLength + 1);
         strncpy(title->name, entry->d_name, nameLength);
-
-        // Get title ID
-        title->id = getTitleID(title->fullPath);
 
         // Increment title counter and update target list
         result->total++;
@@ -114,7 +130,7 @@ int _findISO(DIR *directory, struct TargetList *result) {
 
   // Set indexes for each title
   int idx = 0;
-  struct Target *curTitle = result->first;
+  Target *curTitle = result->first;
   while (curTitle != NULL) {
     curTitle->idx = idx;
     idx++;
@@ -133,9 +149,9 @@ void toUppercase(char *str) {
 }
 
 // Inserts title in the list while keeping the alphabetical order
-void inline insertIntoList(struct TargetList *result, struct Target *title) {
+void inline insertIntoList(TargetList *result, Target *title) {
   // Traverse the list in reverse
-  struct Target *curTitle = result->last;
+  Target *curTitle = result->last;
 
   // Covert title name to uppercase
   char *curUppercase = strdup(title->name);
@@ -183,6 +199,55 @@ void inline insertIntoList(struct TargetList *result, struct Target *title) {
   free(curUppercase);
 }
 
+// Fills in title ID for every entry in the list
+void processTitleID(TargetList *result) {
+  if (result->total == 0)
+    return;
+
+  // Load title cache
+  TitleIDCache *cache = malloc(sizeof(TitleIDCache));
+  int isCacheUpdateNeeded = 0;
+  if (loadTitleIDCache(cache)) {
+    logString("Failed to load title ID cache, all ISOs will be rescanned\n");
+    free(cache);
+    cache = NULL;
+  } else if (cache->total != result->total) {
+    // Set flag if number of entries is different
+    isCacheUpdateNeeded = 1;
+  }
+
+  // For every entry in target list, try to get title ID from cache
+  // If cache doesn't have title ID for the path,
+  // get it from ISO
+  int cacheMisses = 0;
+  char *titleID = NULL;
+  Target *curTarget = result->first;
+  while (curTarget != NULL) {
+    // Try to get title ID from cache
+    if (cache != NULL) {
+      titleID = getCachedTitleID(curTarget->fullPath, cache);
+    }
+
+    if (titleID != NULL) {
+      curTarget->id = strdup(titleID);
+    } else { // Get title ID from ISO
+      cacheMisses++;
+      printf("Cache miss for %s\n", curTarget->fullPath);
+      curTarget->id = getTitleID(curTarget->fullPath);
+    }
+
+    curTarget = curTarget->next;
+  }
+  freeTitleCache(cache);
+
+  if ((cacheMisses > 0) || (isCacheUpdateNeeded)) {
+    logString("Updating title ID cache\n");
+    if (storeTitleIDCache(result)) {
+      logString("Failed to save title ID cache\n");
+    }
+  }
+}
+
 // Loads SYSTEM.CNF from ISO and extracts title ID
 // This function was copied from Neutrino with minimal changes
 char *getTitleID(char *path) {
@@ -224,8 +289,8 @@ char *getTitleID(char *path) {
 }
 
 // Completely frees Target and returns pointer to a previous argument in the list
-struct Target *freeTarget(struct Target *target) {
-  struct Target *prev = NULL;
+Target *freeTarget(Target *target) {
+  Target *prev = NULL;
   free(target->fullPath);
   free(target->name);
   free(target->id);
@@ -237,8 +302,8 @@ struct Target *freeTarget(struct Target *target) {
 }
 
 // Completely frees TargetList. Passed pointer will not be valid after this function executes
-void freeTargetList(struct TargetList *result) {
-  struct Target *target = result->last;
+void freeTargetList(TargetList *result) {
+  Target *target = result->last;
   while (target != NULL) {
     target = freeTarget(target);
   }
@@ -249,8 +314,8 @@ void freeTargetList(struct TargetList *result) {
 }
 
 // Finds target with given index in the list and returns a pointer to it
-struct Target *getTargetByIdx(struct TargetList *targets, int idx) {
-  struct Target *current = targets->first;
+Target *getTargetByIdx(TargetList *targets, int idx) {
+  Target *current = targets->first;
   while (1) {
     if (current->idx == idx) {
       return current;
@@ -265,8 +330,8 @@ struct Target *getTargetByIdx(struct TargetList *targets, int idx) {
 }
 
 // Makes and returns a deep copy of src without prev/next pointers.
-struct Target *copyTarget(struct Target *src) {
-  struct Target *copy = calloc(sizeof(struct Target), 1);
+Target *copyTarget(Target *src) {
+  Target *copy = calloc(sizeof(Target), 1);
   copy->idx = src->idx;
 
   copy->fullPath = strdup(src->fullPath);

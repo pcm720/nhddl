@@ -12,6 +12,7 @@
 
 // Path to ISO storage
 const char STORAGE_BASE_PATH[] = "mass:";
+const size_t STORAGE_BASE_PATH_LEN = sizeof(STORAGE_BASE_PATH) / sizeof(char);
 // Path to ELF directory
 char ELF_BASE_PATH[PATH_MAX + 1];
 // Launcher options
@@ -27,6 +28,8 @@ static char ipconfigPath[] = "mcX:/SYS-CONF/IPCONFIG.DAT";
 #define OPTION_UDPBD_IP "udpbd_ip"
 
 void initOptions(char *basePath);
+
+#include "iso_cache.h"
 
 int main(int argc, char *argv[]) {
   // Initialize the screen
@@ -58,17 +61,17 @@ int main(int argc, char *argv[]) {
   // Init BDM modules
   logString("Loading BDM modules...\n");
   if ((res = initBDM(ELF_BASE_PATH)) != 0) {
-    logString("Failed to initialize modules: %d\n", res);
+    logString("ERROR: Failed to initialize modules: %d\n", res);
     goto fail;
   }
 
   logString("\n\nSearching for ISO on %s\n", STORAGE_BASE_PATH);
-  struct TargetList *titles = findISO();
+  TargetList *titles = findISO();
   if (titles == NULL) {
     logString("No targets found\n");
     goto fail;
   }
-
+  
   if ((res = uiInit())) {
     printf("ERROR: Failed to init UI: %d\n", res);
     goto fail;
@@ -143,7 +146,7 @@ void initOptions(char *basePath) {
   snprintf(lineBuffer, sizeof(lineBuffer), "%s/%s", basePath, optionsFile);
 
   // Load NHDDL options file into ArgumentList
-  struct ArgumentList *options = calloc(1, sizeof(struct ArgumentList));
+  ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, lineBuffer)) {
     logString("Can't load options file, will use defaults\n");
     freeArgumentList(options);
@@ -151,7 +154,7 @@ void initOptions(char *basePath) {
   }
 
   // Parse the list into Options
-  struct Argument *arg = options->first;
+  Argument *arg = options->first;
   while (arg != NULL) {
     if (!arg->isDisabled) {
       if (strcmp(OPTION_480P, arg->arg) == 0) {
