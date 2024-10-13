@@ -29,8 +29,6 @@ static char ipconfigPath[] = "mcX:/SYS-CONF/IPCONFIG.DAT";
 
 void initOptions(char *basePath);
 
-#include "iso_cache.h"
-
 int main(int argc, char *argv[]) {
   // Initialize the screen
   init_scr();
@@ -71,7 +69,7 @@ int main(int argc, char *argv[]) {
     logString("No targets found\n");
     goto fail;
   }
-  
+
   if ((res = uiInit())) {
     printf("ERROR: Failed to init UI: %d\n", res);
     goto fail;
