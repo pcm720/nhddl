@@ -5,13 +5,7 @@ lists them and boots selected ISO via Neutrino.
 
 It displays visual Game ID to trigger per-game settings on the Pixel FX line of products and writes to memory card history file before launching the title, triggering per-title memory cards on SD2PSX and MemCard PRO 2.
 
-## Why it exists
-
-I have a SCPH-70000 PS2 with internal IDE—microSD mod and RetroGEM installed and I'm tired of dealing with APA-formatted drives.
-
-## What this is not
-
-This not an attempt at making a Neutrino-based Open PS2 Loader replacement.  
+Note this not an attempt at making a Neutrino-based Open PS2 Loader replacement.  
 It __will not__ boot ISOs from anything other than BDM devices.  
 GSM, PADEMU, IGR and other stuff is out-of-scope of this launcher.
 
@@ -66,8 +60,17 @@ See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
 
 ### Storing ISO
 
-Just like OPL, NHDDL looks for ISOs in directories named `CD` or `DVD`.
-There is no distinction between CD and DVD images, both can be placed in any of those two directories.
+ISOs can be stored almost anywhere on the storage device.
+Only directories that start with `.`, `$` and the following directories are ignored:
+ - `config`
+ - `APPS`
+ - `ART`
+ - `CFG`
+ - `CHT`
+ - `LNG`
+ - `THM`
+ - `VMC`
+ - `XEBPLUS`
 
 ### Displaying cover art
 
@@ -89,23 +92,29 @@ Example of a valid config file:
 ```yaml
 480p: # if this flag exists and is not disabled, enables 480 output
 mode: ata # supported modes: ata (default), mx4sio, udpbd, usb
-udpbd_ip: 192.168.1.6 # PS2 IP address for UDPBD mode
+#udpbd_ip: 192.168.1.6 # PS2 IP address for UDPBD mode (commented out)
 ```
-To disable a flag, you can add `$` before the argument name or just comment it out with `#`.
+To disable a flag, you can just comment it out with `#`.
 
 ### Configuration files on storage device
 
-NHDDL stores its Neutrino-related config files in `config` directory in the root of BDM device.
+NHDDL stores its ISO-related config files in `config` directory in the root of BDM device.  
 
 #### lastTitle.txt
 
 To point to the last launched title, NHDDL writes the full ISO path to `lastTitle.txt`.  
 This file is created automatically.
 
+#### cache.bin
+
+Contains title ID cache for all ISOs located during the previous launch.  
+This makes loading ISO list way faster.
+
 #### Argument files
 
-These files store arbitrary arguments that are passed to Neutrino on title launch.  
-For a list of valid arguments, see Neutrino README.
+These files store arbitrary arguments that are passed to Neutrino on title launch. Arguments stored in those files __are passed to `neutrino.elf` as-is__.
+
+_For a list of valid arguments, see Neutrino README._
 
 Example of a valid file:
 ```yaml
@@ -118,8 +127,9 @@ $mc1: mass:/memcard1.bin # disabled argument
 dbc:
 logo:
 ```
-To disable an argument by default, place a `$` before the argument name.
 
+To be able to parse those arguments and allow you to dynamically enable or disable them in UI, NHDDL uses a dollar sign (`$`) to mark arguments as enabled or disabled by default.  
+Only enabled arguments get passed to Neutrino.
 
 NHDDL supports two kinds of argument files:
 
