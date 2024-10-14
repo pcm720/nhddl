@@ -62,6 +62,7 @@ TargetList *findISO() {
 int _findISO(DIR *directory, TargetList *result) {
   if (directory == NULL)
     return -ENOENT;
+
   // Read directory entries
   struct dirent *entry;
   char *fileext;
@@ -70,18 +71,22 @@ int _findISO(DIR *directory, TargetList *result) {
     logString("ERROR: Failed to get cwd\n");
     return -ENOENT;
   }
+
   int cwdLen = strlen(titlePath); // Get the length of base path string
   while ((entry = readdir(directory)) != NULL) {
     // Check if the entry is a directory using d_type
     switch (entry->d_type) {
     case DT_DIR:
-      if ((entry->d_name[0] == '.') || (entry->d_name[0] == '$')) // Ignore hidden and special folders
+      // Ignore hidden, special and invalid directories (non-ASCII paths seem to return '?' and cause crashes when used with opendir)
+      if ((entry->d_name[0] == '.') || (entry->d_name[0] == '$') || (entry->d_name[0] == '?'))
         continue;
+
       for (int i = 0; i < sizeof(ignoredDirs) / sizeof(char *); i++) {
         if (!strcmp(ignoredDirs[i], entry->d_name)) {
           goto skipDirectory;
         }
       }
+
       // Open dir and change cwd
       DIR *d = opendir(entry->d_name);
       chdir(entry->d_name);
