@@ -12,19 +12,30 @@
 
 // Path to ISO storage
 const char STORAGE_BASE_PATH[] = "mass:";
+const size_t STORAGE_BASE_PATH_LEN = sizeof(STORAGE_BASE_PATH) / sizeof(char);
 // Path to ELF directory
 char ELF_BASE_PATH[PATH_MAX + 1];
+// Path to Neutrino ELF
+char NEUTRINO_ELF_PATH[PATH_MAX + 1];
 // Launcher options
 LauncherOptions LAUNCHER_OPTIONS;
 // Options file name relative to ELF_BASE_PATH
 static const char optionsFile[] = "nhddl.yaml";
 // The 'X' in "mcX" will be replaced with memory card number in parseIPConfig
 static char ipconfigPath[] = "mcX:/SYS-CONF/IPCONFIG.DAT";
+// Neutrino ELF name
+static const char neutrinoELF[] = "neutrino.elf";
 
 // Supported options
 #define OPTION_480P "480p"
 #define OPTION_MODE "mode"
 #define OPTION_UDPBD_IP "udpbd_ip"
+
+#ifndef GIT_VERSION
+#define GIT_VERSION "v-0.0.0-unknown"
+#endif
+// Used as ELF_BASE_PATH if DEBUG is defined
+#define DEBUG_PATH "mc1:/APPS/neutrino"
 
 void initOptions(char *basePath);
 
@@ -33,14 +44,26 @@ int main(int argc, char *argv[]) {
   init_scr();
 
   printf("*************\n");
-  logString("\n\nNHDDL - a Neutrino launcher by pcm720\n\n");
+  logString("\n\nNHDDL %s\nA Neutrino launcher by pcm720\n\n", GIT_VERSION);
   printf("*************\n");
 
-  // Get base path
+// If DEBUG is not defined
+#ifndef DEBUG
+  // Get base path from current working directory
   if (!getcwd(ELF_BASE_PATH, PATH_MAX + 1)) {
     logString("ERROR: Failed to get cwd\n");
     goto fail;
   }
+#else
+  // Get base path from hardcoded DEBUG_PATH
+  strcpy(ELF_BASE_PATH, DEBUG_PATH);
+#endif
+
+  if (strncmp("mc", ELF_BASE_PATH, 2) && strncmp("host", ELF_BASE_PATH, 4)) {
+    logString("ERROR: NHDDL can only be run from the memory card");
+    goto fail;
+  }
+
   // Append '/' to current working directory
   strcat(ELF_BASE_PATH, "/");
   logString("Current working directory is %s\n", ELF_BASE_PATH);
@@ -53,17 +76,26 @@ int main(int argc, char *argv[]) {
     goto fail;
   }
 
+  strcpy(NEUTRINO_ELF_PATH, ELF_BASE_PATH);
+  strcat(NEUTRINO_ELF_PATH, neutrinoELF);
+  int neutrinoFd = open(NEUTRINO_ELF_PATH, O_RDONLY);
+  if (neutrinoFd < 0) {
+    logString("ERROR: %s doesn't exist\n", NEUTRINO_ELF_PATH);
+    goto fail;
+  }
+  close(neutrinoFd);
+
   initOptions(ELF_BASE_PATH);
 
   // Init BDM modules
   logString("Loading BDM modules...\n");
   if ((res = initBDM(ELF_BASE_PATH)) != 0) {
-    logString("Failed to initialize modules: %d\n", res);
+    logString("ERROR: Failed to initialize modules: %d\n", res);
     goto fail;
   }
 
-  logString("\n\nSearching for ISO on %s\n", STORAGE_BASE_PATH);
-  struct TargetList *titles = findISO();
+  logString("\n\nBuilding target list...\n");
+  TargetList *titles = findISO();
   if (titles == NULL) {
     logString("No targets found\n");
     goto fail;
@@ -143,7 +175,7 @@ void initOptions(char *basePath) {
   snprintf(lineBuffer, sizeof(lineBuffer), "%s/%s", basePath, optionsFile);
 
   // Load NHDDL options file into ArgumentList
-  struct ArgumentList *options = calloc(1, sizeof(struct ArgumentList));
+  ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, lineBuffer)) {
     logString("Can't load options file, will use defaults\n");
     freeArgumentList(options);
@@ -151,7 +183,7 @@ void initOptions(char *basePath) {
   }
 
   // Parse the list into Options
-  struct Argument *arg = options->first;
+  Argument *arg = options->first;
   while (arg != NULL) {
     if (!arg->isDisabled) {
       if (strcmp(OPTION_480P, arg->arg) == 0) {

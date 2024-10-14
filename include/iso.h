@@ -15,23 +15,22 @@ typedef struct Target {
 } Target;
 
 // A linked list of launch candidates
-struct TargetList {
+typedef struct {
   int total;            // Total number of targets
-  struct Target *first; // First target
-  struct Target *last;  // Last target
-};
+  Target *first; // First target
+  Target *last;  // Last target
+} TargetList;
 
 // Generates a list of launch candidates found in STORAGE_BASE_PATH
-struct TargetList *findISO();
+TargetList *findISO();
 
 // Completely frees TargetList. Passed pointer will not be valid after this function executes
-void freeTargetList(struct TargetList *result);
+void freeTargetList(TargetList *result);
 
 // Finds target with given index in the list and returns a pointer to it
-struct Target *getTargetByIdx(struct TargetList *targets, int idx);
-
+Target *getTargetByIdx(TargetList *targets, int idx);
 
 // Makes and returns a deep copy of src without prev/next pointers.
-struct Target *copyTarget(struct Target *src);
+Target *copyTarget(Target *src);
 
 #endif

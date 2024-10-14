@@ -4,7 +4,7 @@
 #include "iso.h"
 
 int uiInit();
-int uiLoop(struct TargetList *titles);
+int uiLoop(TargetList *titles);
 void uiCleanup();
 
 #endif

@@ -4,6 +4,7 @@ obj/
 *.irx
 *.yaml
 *.toml
+!examples/*.yaml
 # Created by https://www.toptal.com/developers/gitignore/api/macos,windows,linux
 
 ### Linux ###

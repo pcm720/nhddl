@@ -2,6 +2,12 @@
 #define _OPTIONS_H_
 
 #include <iso.h>
+#include <ps2sdkapi.h>
+
+
+// Location of configuration directory relative to STORAGE_BASE_PATH
+extern const char BASE_CONFIG_PATH[];
+extern const size_t BASE_CONFIG_PATH_LEN;
 
 // Compatibility modes definitions
 
@@ -31,11 +37,15 @@ typedef struct Argument {
 } Argument;
 
 // A linked list of options from config file
-struct ArgumentList {
+typedef struct {
   int total;              // Total number of arguments
-  struct Argument *first; // First target
-  struct Argument *last;  // Last target
-};
+  Argument *first; // First target
+  Argument *last;  // Last target
+} ArgumentList;
+
+// Writes full path to targetFileName into targetPath.
+// If targetFileName is NULL, will return path to config directory
+void buildConfigFilePath(char *targetPath, const char *targetFileName);
 
 // Sets last launched title path in global config
 int updateLastLaunchedTitle(char *titlePath);
@@ -45,48 +55,48 @@ int getLastLaunchedTitle(char *titlePath);
 
 // Generates ArgumentList from global config file.
 // Will reinitialize result without clearing existing contents. On error, result will contain invalid pointer.
-int getGlobalLaunchArguments(struct ArgumentList *result);
+int getGlobalLaunchArguments(ArgumentList *result);
 
 // Generates ArgumentList from title-specific config file.
 // Will reinitialize result without clearing existing contents. On error, result will contain invalid pointer.
-int getTitleLaunchArguments(struct ArgumentList *result, struct Target *target);
+int getTitleLaunchArguments(ArgumentList *result, Target *target);
 
 // Saves title launch arguments to title-specific config file.
 // '$' before the argument name is used as 'disabled' flag.
 // Empty value means that the argument is empty, but still should be used without the value.
-int updateTitleLaunchArguments(struct Target *target, struct ArgumentList *options);
+int updateTitleLaunchArguments(Target *target, ArgumentList *options);
 
 // Completely frees ArgumentList. Passed pointer will not be valid after this function executes
-void freeArgumentList(struct ArgumentList *result);
+void freeArgumentList(ArgumentList *result);
 
 // Creates new Argument with passed argName and value (without copying)
-struct Argument *newArgument(char *argName, char *value);
+Argument *newArgument(char *argName, char *value);
 
 // Appends arg to the end of target
-void appendArgument(struct ArgumentList *target, struct Argument *arg);
+void appendArgument(ArgumentList *target, Argument *arg);
 
 // Does a deep copy of arg and inserts it into target.
 // Always places COMPAT_MODES_ARG on the top of the list.
-void insertArgumentCopy(struct ArgumentList *target, struct Argument *arg);
+void insertArgumentCopy(ArgumentList *target, Argument *arg);
 
 // Merges two lists into one, ignoring arguments in the second list that already exist in the first list.
 // Expects result to be initialized with zeroes. All arguments in resulting list are a deep copy of arguments in source lists.
-void mergeArgumentLists(struct ArgumentList *list1, struct ArgumentList *list2);
+void mergeArgumentLists(ArgumentList *list1, ArgumentList *list2);
 
 // Parses compatibility mode argument value into a bitmask
 uint8_t parseCompatModes(char *stringValue);
 
 // Stores compatibility mode from bitmask into argument value and sets isDisabled flag accordingly.
 // Target must be at least 6 bytes long, including null terminator
-void storeCompatModes(struct Argument *target, uint8_t modes);
+void storeCompatModes(Argument *target, uint8_t modes);
 
 // Inserts a new compat mode arg into the argument list
-void insertCompatModeArg(struct ArgumentList *target, uint8_t modes);
+void insertCompatModeArg(ArgumentList *target, uint8_t modes);
 
 // Loads both global and title launch arguments, returning pointer to a merged list
-struct ArgumentList *loadLaunchArgumentLists(struct Target *target);
+ArgumentList *loadLaunchArgumentLists(Target *target);
 
 // Parses options file into ArgumentList
-int loadArgumentList(struct ArgumentList *options, char *filePath);
+int loadArgumentList(ArgumentList *options, char *filePath);
 
 #endif

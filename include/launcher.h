@@ -6,6 +6,6 @@
 
 // Launches target, passing arguments to Neutrino.
 // Expects arguments to be initialized
-void launchTitle(struct Target *target, struct ArgumentList *arguments);
+void launchTitle(Target *target, ArgumentList *arguments);
 
 #endif

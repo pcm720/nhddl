@@ -10,6 +10,19 @@
 #include "common.h"
 #include "module_init.h"
 
+// Macros for loading embedded IOP modules
+#define IRX_DEFINE(mod)                                                                                                                              \
+  extern unsigned char mod##_irx[] __attribute__((aligned(16)));                                                                                     \
+  extern unsigned int size_##mod##_irx
+
+#define IRX_LOAD(mod)                                                                                                                                \
+  logString("\tloading " #mod "\n");                                                                                                                 \
+  if (SifExecModuleBuffer(mod##_irx, size_##mod##_irx, 0, NULL, &iopret) < 0)                                                                        \
+    return ret;                                                                                                                                      \
+  if (iopret == 1) {                                                                                                                                 \
+    return iopret;                                                                                                                                   \
+  }
+
 // Embedded IOP modules required for reading from memory card
 IRX_DEFINE(iomanX);
 IRX_DEFINE(fileXio);
@@ -20,17 +33,21 @@ IRX_DEFINE(freepad);
 
 // Initializes basic modules required for reading from memory card
 int init() {
+  int ret = 0;
+
+// If DEBUG is defined, skip IOP reinitialization
+#ifndef DEBUG
   // Reset IOP
   SifIopReset("", 0);
   // Initialize the RPC manager
   SifInitRpc(0);
 
-  int ret;
   // Apply patches required to load modules from EE RAM
   if ((ret = sbv_patch_enable_lmb()))
     return ret;
   if ((ret = sbv_patch_disable_prefix_check()))
     return ret;
+#endif
 
   // Load modules
   int iopret = 0;
@@ -47,26 +64,31 @@ int init() {
 // Loads modules from basePath
 int initExtraModules(char *basePath, int numModules, const char *modules[]) {
   // Allocate memory for module paths
+  int basePathLen = strlen(basePath);
   char pathBuf[PATH_MAX + 1];
   pathBuf[0] = '\0';
   strcpy(pathBuf, basePath);
 
-  // Load the needed modules
-  int ret;
+  // Load modules
+  int ret, iopret;
   for (int i = 0; i < numModules; i++) {
-    strcat(pathBuf, modules[i]); // append module path to base path
+    strcat(pathBuf, modules[i]); // Append module path to base path
     logString("\tloading %s\n", pathBuf);
-    if ((ret = SifLoadModule(pathBuf, 0, NULL)) < 0) {
+    ret = SifLoadStartModule(pathBuf, 0, NULL, &iopret);
+    if (ret < 0) {
       return ret;
     }
-    pathBuf[strlen(basePath)] = '\0'; // end bufferred string at basePath for the next strcat in the loop
+    if (iopret == 1) {
+      return iopret;
+    }
+    pathBuf[basePathLen] = '\0'; // End bufferred string at basePath for the next strcat in the loop
   }
 
   return 0;
 }
 
+#define MODULE_COUNT(a) sizeof(a) / sizeof(char *)
 // Base BDM modules
-const int BDM_BASE_MODULE_COUNT = 3;
 const char *bdm_base_modules[] = {
     // BDM
     "modules/bdm.irx",
@@ -77,21 +99,19 @@ const char *bdm_base_modules[] = {
 };
 
 // ATA modules
-const int ATA_MODULE_COUNT = 2;
 const char *ata_modules[] = {
     // DEV9
     "modules/dev9_ns.irx",
     // ATA
-    "modules/ata_bd.irx"};
+    "modules/ata_bd.irx",
+};
 
 // MX4SIO modules
-const int MX4SIO_MODULE_COUNT = 1;
 const char *mx4sio_modules[] = {
     "modules/mx4sio_bd_mini.irx",
 };
 
 // UDPBD modules
-const int UDPBD_MODULE_COUNT = 2;
 const char *udpbd_modules[] = {
     // DEV9
     "modules/dev9_ns.irx",
@@ -101,7 +121,6 @@ const char *udpbd_modules[] = {
 };
 
 // USB modules
-const int USB_MODULE_COUNT = 2;
 const char *usb_modules[] = {
     // USBD
     "modules/usbd_mini.irx",
@@ -111,18 +130,18 @@ const char *usb_modules[] = {
 
 int initATA(char *basePath) {
   int res = 0;
-  if ((res = initExtraModules(basePath, BDM_BASE_MODULE_COUNT, bdm_base_modules))) {
+  if ((res = initExtraModules(basePath, MODULE_COUNT(bdm_base_modules), bdm_base_modules))) {
     return res;
   }
-  return initExtraModules(basePath, ATA_MODULE_COUNT, ata_modules);
+  return initExtraModules(basePath, MODULE_COUNT(ata_modules), ata_modules);
 }
 
 int initMX4SIO(char *basePath) {
   int res = 0;
-  if ((res = initExtraModules(basePath, BDM_BASE_MODULE_COUNT, bdm_base_modules))) {
+  if ((res = initExtraModules(basePath, MODULE_COUNT(bdm_base_modules), bdm_base_modules))) {
     return res;
   }
-  return initExtraModules(basePath, MX4SIO_MODULE_COUNT, mx4sio_modules);
+  return initExtraModules(basePath, MODULE_COUNT(mx4sio_modules), mx4sio_modules);
 }
 
 int initUDPBD(char *basePath, char *hostIPAddr) {
@@ -131,37 +150,43 @@ int initUDPBD(char *basePath, char *hostIPAddr) {
     return -EINVAL;
   }
 
-  int res = 0;
-  if ((res = initExtraModules(basePath, BDM_BASE_MODULE_COUNT, bdm_base_modules))) {
-    return res;
+  int ret = 0;
+  if ((ret = initExtraModules(basePath, MODULE_COUNT(bdm_base_modules), bdm_base_modules))) {
+    return ret;
   }
 
   // Treating last module as a special case because it needs an argument to work
-  if ((res = initExtraModules(basePath, UDPBD_MODULE_COUNT - 1, udpbd_modules))) {
-    return res;
+  if ((ret = initExtraModules(basePath, MODULE_COUNT(udpbd_modules) - 1, udpbd_modules))) {
+    return ret;
   }
 
   // Allocate memory for module path and argument
+  int iopret;
   char pathBuf[PATH_MAX + 1];
   pathBuf[0] = '\0';
   strcpy(pathBuf, basePath);
   char ipArg[19]; // 15 bytes for IP string + 3 bytes for 'ip='
   snprintf(ipArg, sizeof(ipArg), "ip=%s", hostIPAddr);
 
-  strcat(pathBuf, udpbd_modules[UDPBD_MODULE_COUNT - 1]); // append module path to base path
+  // Append module path to base path
+  strcat(pathBuf, udpbd_modules[MODULE_COUNT(udpbd_modules) - 1]);
   logString("\tloading %s\n\twith %s\n", pathBuf, ipArg);
-  if ((res = SifLoadModule(pathBuf, sizeof(ipArg), ipArg)) < 0) {
-    return res;
+  ret = SifLoadStartModule(pathBuf, sizeof(ipArg), ipArg, &iopret);
+  if (ret < 0) {
+    return ret;
+  }
+  if (iopret == 1) {
+    return iopret;
   }
   return 0;
 }
 
 int initUSB(char *basePath) {
   int res = 0;
-  if ((res = initExtraModules(basePath, BDM_BASE_MODULE_COUNT, bdm_base_modules))) {
+  if ((res = initExtraModules(basePath, MODULE_COUNT(bdm_base_modules), bdm_base_modules))) {
     return res;
   }
-  return initExtraModules(basePath, USB_MODULE_COUNT, usb_modules);
+  return initExtraModules(basePath, MODULE_COUNT(usb_modules), usb_modules);
 }
 
 // Initializes BDM modules depending on launcher mode
