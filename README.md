@@ -107,7 +107,7 @@ By default, 480p is disabled and the ATA device is used to look for ISO files.
 
 To disable a flag, you can just comment it out with `#`.
 
-See [this file](examples/nhddl.yaml) for an example of a valid nhddl.yaml file.
+See [this file](examples/nhddl.yaml) for an example of a valid `nhddl.yaml` file.
 
 ### Configuration files on storage device
 
