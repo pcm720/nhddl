@@ -15,12 +15,16 @@ const char STORAGE_BASE_PATH[] = "mass:";
 const size_t STORAGE_BASE_PATH_LEN = sizeof(STORAGE_BASE_PATH) / sizeof(char);
 // Path to ELF directory
 char ELF_BASE_PATH[PATH_MAX + 1];
+// Path to Neutrino ELF
+char NEUTRINO_ELF_PATH[PATH_MAX + 1];
 // Launcher options
 LauncherOptions LAUNCHER_OPTIONS;
 // Options file name relative to ELF_BASE_PATH
 static const char optionsFile[] = "nhddl.yaml";
 // The 'X' in "mcX" will be replaced with memory card number in parseIPConfig
 static char ipconfigPath[] = "mcX:/SYS-CONF/IPCONFIG.DAT";
+// Neutrino ELF name
+static const char neutrinoELF[] = "neutrino.elf";
 
 // Supported options
 #define OPTION_480P "480p"
@@ -46,6 +50,12 @@ int main(int argc, char *argv[]) {
     logString("ERROR: Failed to get cwd\n");
     goto fail;
   }
+
+  if (strncmp("mc", ELF_BASE_PATH, 2) && strncmp("host", ELF_BASE_PATH, 4)) {
+    logString("ERROR: NHDDL can only be run from the memory card");
+    goto fail;
+  }
+
   // Append '/' to current working directory
   strcat(ELF_BASE_PATH, "/");
   logString("Current working directory is %s\n", ELF_BASE_PATH);
@@ -57,6 +67,15 @@ int main(int argc, char *argv[]) {
     logString("ERROR: Failed to initialize modules: %d\n", res);
     goto fail;
   }
+
+  strcpy(NEUTRINO_ELF_PATH, ELF_BASE_PATH);
+  strcat(NEUTRINO_ELF_PATH, neutrinoELF);
+  int neutrinoFd = open(NEUTRINO_ELF_PATH, O_RDONLY);
+  if (neutrinoFd < 0) {
+    logString("ERROR: %s doesn't exist\n", NEUTRINO_ELF_PATH);
+    goto fail;
+  }
+  close(neutrinoFd);
 
   initOptions(ELF_BASE_PATH);
 

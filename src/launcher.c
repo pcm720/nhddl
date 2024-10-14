@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char neutrinoELF[] = "neutrino.elf";
 static char isoArgument[] = "dvd";
 static char bsdArgument[] = "bsd";
 
@@ -92,8 +91,5 @@ void launchTitle(Target *target, ArgumentList *arguments) {
   }
   updateHistoryFile(target->id);
 
-  char neutrinoPath[PATH_MAX + 1];
-  strcpy(neutrinoPath, ELF_BASE_PATH);
-  strcat(neutrinoPath, neutrinoELF);
-  printf("ERROR: failed to load %s: %d\n", neutrinoELF, LoadELFFromFile(neutrinoPath, argCount, argv));
+  printf("ERROR: failed to load %s: %d\n", NEUTRINO_ELF_PATH, LoadELFFromFile(NEUTRINO_ELF_PATH, argCount, argv));
 }
