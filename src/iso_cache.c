@@ -46,8 +46,8 @@ int storeTitleIDCache(TargetList *list) {
   buildConfigFilePath(cachePath, titleIDCacheFile);
   FILE *file = fopen(cachePath, "wb");
   if (file == NULL) {
-    printf("ERROR: failed to open cache file for writing: %d\n", errno);
-    return -errno;
+    printf("ERROR: failed to open cache file for writing\n");
+    return -EIO;
   }
   Target *curTitle = list->first;
 
@@ -99,19 +99,10 @@ int loadTitleIDCache(TitleIDCache *cache) {
   char cachePath[MAX_CACHE_PATH_LEN];
   buildConfigFilePath(cachePath, titleIDCacheFile);
 
-  // For some reason, fopen with non-existing file causes
-  // all consecutive calls to fopen for the same path to fail
-  // with errno 12 with trap exception in PCSX2.
-  // To work around that, check if cache file exists first
-  if (access(cachePath, F_OK)) {
-    printf("Cache file doesn't exist\n");
-    return -ENOENT;
-  }
-
   FILE *file = fopen(cachePath, "rb");
   if (file == NULL) {
-    printf("ERROR: failed to open cache file: %d\n", -errno);
-    return -errno;
+    printf("ERROR: failed to open cache file\n");
+    return -ENOENT;
   }
   int result;
 
