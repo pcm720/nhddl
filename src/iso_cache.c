@@ -3,16 +3,10 @@
 #include "common.h"
 #include "iso.h"
 #include "options.h"
-#include <fcntl.h>
 #include <malloc.h>
 #include <ps2sdkapi.h>
-#include <stddef.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #define CACHE_MAGIC "NIDC"
 #define CACHE_VERSION 1
@@ -205,6 +199,10 @@ char *getCachedTitleID(char *fullPath, TitleIDCache *cache) {
 void freeTitleCache(TitleIDCache *cache) {
   if (cache == NULL)
     return;
+
+  for (int i = 0; i < cache->total; i++) {
+    free(cache->entries[i].fullPath);
+  }
 
   free(cache->entries);
   free(cache);
