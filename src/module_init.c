@@ -19,7 +19,7 @@
   logString("\tloading " #mod "\n");                                                                                                                 \
   if (SifExecModuleBuffer(mod##_irx, size_##mod##_irx, 0, NULL, &iopret) < 0)                                                                        \
     return ret;                                                                                                                                      \
-  if (iopret == 1) {                                                                                                                                      \
+  if (iopret == 1) {                                                                                                                                 \
     return iopret;                                                                                                                                   \
   }
 
@@ -33,17 +33,21 @@ IRX_DEFINE(freepad);
 
 // Initializes basic modules required for reading from memory card
 int init() {
+  int ret = 0;
+
+// If DEBUG is defined, skip IOP reinitialization
+#ifndef DEBUG
   // Reset IOP
   SifIopReset("", 0);
   // Initialize the RPC manager
   SifInitRpc(0);
 
-  int ret;
   // Apply patches required to load modules from EE RAM
   if ((ret = sbv_patch_enable_lmb()))
     return ret;
   if ((ret = sbv_patch_disable_prefix_check()))
     return ret;
+#endif
 
   // Load modules
   int iopret = 0;

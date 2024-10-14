@@ -34,6 +34,8 @@ static const char neutrinoELF[] = "neutrino.elf";
 #ifndef GIT_VERSION
 #define GIT_VERSION "v-0.0.0-unknown"
 #endif
+// Used as ELF_BASE_PATH if DEBUG is defined
+#define DEBUG_PATH "mc1:/APPS/neutrino"
 
 void initOptions(char *basePath);
 
@@ -45,11 +47,17 @@ int main(int argc, char *argv[]) {
   logString("\n\nNHDDL %s\nA Neutrino launcher by pcm720\n\n", GIT_VERSION);
   printf("*************\n");
 
-  // Get base path
+// If DEBUG is not defined
+#ifndef DEBUG
+  // Get base path from current working directory
   if (!getcwd(ELF_BASE_PATH, PATH_MAX + 1)) {
     logString("ERROR: Failed to get cwd\n");
     goto fail;
   }
+#else
+  // Get base path from hardcoded DEBUG_PATH
+  strcpy(ELF_BASE_PATH, DEBUG_PATH);
+#endif
 
   if (strncmp("mc", ELF_BASE_PATH, 2) && strncmp("host", ELF_BASE_PATH, 4)) {
     logString("ERROR: NHDDL can only be run from the memory card");
