@@ -27,6 +27,10 @@ static char ipconfigPath[] = "mcX:/SYS-CONF/IPCONFIG.DAT";
 #define OPTION_MODE "mode"
 #define OPTION_UDPBD_IP "udpbd_ip"
 
+#ifndef GIT_VERSION
+#define GIT_VERSION "v-0.0.0-unknown"
+#endif
+
 void initOptions(char *basePath);
 
 int main(int argc, char *argv[]) {
@@ -34,7 +38,7 @@ int main(int argc, char *argv[]) {
   init_scr();
 
   printf("*************\n");
-  logString("\n\nNHDDL - a Neutrino launcher by pcm720\n\n");
+  logString("\n\nNHDDL %s\nA Neutrino launcher by pcm720\n\n", GIT_VERSION);
   printf("*************\n");
 
   // Get base path
@@ -63,7 +67,7 @@ int main(int argc, char *argv[]) {
     goto fail;
   }
 
-  logString("\n\nSearching for ISO on %s\n", STORAGE_BASE_PATH);
+  logString("\n\nBuilding target list...\n");
   TargetList *titles = findISO();
   if (titles == NULL) {
     logString("No targets found\n");

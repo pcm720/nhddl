@@ -1,7 +1,9 @@
 #.SILENT:
 
-EE_BIN = nhddl_unc.elf
-EE_BIN_PKD = nhddl.elf
+GIT_VERSION:= $(shell git describe --always --dirty --tags)
+
+EE_BIN = nhddl-$(GIT_VERSION)_unc.elf
+EE_BIN_PKD = nhddl-$(GIT_VERSION).elf
 
 EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o pad.o launcher.o iso_cache.o
 IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx
@@ -18,8 +20,8 @@ EE_OBJS := $(EE_OBJS:%=$(EE_OBJS_DIR)%)
 EE_INCS := -Iinclude -I$(PS2DEV)/gsKit/include -I$(PS2SDK)/ports/include
 
 EE_LDFLAGS := -L$(PS2DEV)/gsKit/lib -L$(PS2SDK)/ports/lib -s
-EE_LIBS = -ldebug -lfileXio -lpatches -lelf-loader -lgsKit -ldmaKit -lgskit_toolkit -lpng -lz -ltiff -lpad
-EE_CFLAGS := -mno-gpopt -G0
+EE_LIBS = -ldebug -lfileXio -lpatches -lelf-loader -lgskit -ldmakit -lgskit_toolkit -lpng -lz -ltiff -lpad
+EE_CFLAGS := -mno-gpopt -G0 -DGIT_VERSION="\"${GIT_VERSION}\""
 
 BIN2C = $(PS2SDK)/bin/bin2c
 
