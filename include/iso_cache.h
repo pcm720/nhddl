@@ -9,9 +9,9 @@ typedef struct {
 } CacheEntry;
 
 typedef struct TitleIDCache {
-  int total;            // Total number of elements in cache
-  int lastVisitedIndex; // Used to skip ahead to the last unvisited entry
-  CacheEntry *entries;  // Pointer to cache entry array
+  int total;           // Total number of elements in cache
+  int lastMatchedIdx;  // Used to skip ahead to the last matched entry when getting title ID from cache
+  CacheEntry *entries; // Pointer to cache entry array
 } TitleIDCache;
 
 // Saves TargetList into title ID cache
@@ -24,7 +24,7 @@ int loadTitleIDCache(TitleIDCache *cache);
 char *getCachedTitleID(char *fullPath, TitleIDCache *cache);
 
 // Frees memory used by title ID cache
-// All pointers to cache entries (including title IDs) will be invalid 
+// All pointers to cache entries (including title IDs) will be invalid
 void freeTitleCache(TitleIDCache *cache);
 
 #endif

@@ -93,7 +93,7 @@ int storeTitleIDCache(TargetList *list) {
 // Loads title ID cache from storage into cache
 int loadTitleIDCache(TitleIDCache *cache) {
   cache->total = 0;
-  cache->lastVisitedIndex = 0;
+  cache->lastMatchedIdx = 0;
 
   // Open cache file for reading
   char cachePath[MAX_CACHE_PATH_LEN];
@@ -138,8 +138,8 @@ int loadTitleIDCache(TitleIDCache *cache) {
 
   // Allocate memory for cache entries based on total entry count from header metadata
   int readIndex = 0;
-  CacheEntry *cacheEntries = malloc((sizeof(CacheEntry) * meta.total));
-  if (cacheEntries == NULL) {
+  cache->entries = malloc((sizeof(CacheEntry) * meta.total));
+  if (cache->entries == NULL) {
     printf("ERROR: Can't allocate enough memory\n");
     fclose(file);
     return -ENOMEM;
@@ -170,24 +170,27 @@ int loadTitleIDCache(TitleIDCache *cache) {
     memcpy(entry.titleID, header.titleID, sizeof(entry.titleID));
     header.titleID[11] = '\0';
     entry.fullPath = strdup(pathBuf);
-    cacheEntries[readIndex] = entry;
+    cache->entries[readIndex] = entry;
     readIndex++;
   }
   fclose(file);
 
   // Free unused memory
   if (readIndex != meta.total)
-    cacheEntries = realloc(cacheEntries, sizeof(CacheEntry) * readIndex);
+    cache->entries = realloc(cache->entries, sizeof(CacheEntry) * readIndex);
 
   cache->total = readIndex;
-  cache->entries = cacheEntries;
   return 0;
 }
 
-// Returns a pointer to title ID or NULL if path doesn't exist in cache
+// Returns a pointer to title ID or NULL if fullPath is not found in the cache
 char *getCachedTitleID(char *fullPath, TitleIDCache *cache) {
-  for (int i = 0; i < cache->total; i++) {
+  // This code takes advantage of all entries in the title list being sorted alphabetically.
+  // By starting from the index of the last matched entry, we can skip comparing fullPath with entries
+  // that have already been matched to a title ID, improving lookup speeds for very large lists.
+  for (int i = cache->lastMatchedIdx; i < cache->total; i++) {
     if (!strcmp(cache->entries[i].fullPath, fullPath)) {
+      cache->lastMatchedIdx = i;
       return cache->entries[i].titleID;
     }
   }
