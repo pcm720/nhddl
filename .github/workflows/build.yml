@@ -10,6 +10,12 @@ jobs:
     container: ghcr.io/ps2homebrew/ps2homebrew:main
     steps:
     - uses: actions/checkout@v4
+
+    - name: Fetch full clone
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        git fetch --prune --unshallow
+
     - name: Compile project
       run: |
         make
