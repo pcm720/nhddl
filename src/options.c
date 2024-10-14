@@ -21,14 +21,15 @@ const CompatiblityModeMap COMPAT_MODE_MAP[CM_NUM_MODES] = {
     {CM_EE_UNHOOK_SYSCALLS, '3', "EE : Unhook syscalls"},
     {CM_IOP_EMULATE_DVD_DL, '5', "IOP: Emulate DVD-DL"},
 };
-const char BASE_CONFIG_PATH[] = "/config";
-const size_t BASE_CONFIG_PATH_LEN = sizeof(BASE_CONFIG_PATH) / sizeof(char);
-const char globalOptionsPath[] = "/global.yaml";
-const char lastTitlePath[] = "/lastTitle.txt";
 
-// Device + BASE_CONFIG_PATH + lastTitlePath
-#define MAX_LAST_LAUNCHED_LEN (STORAGE_BASE_PATH_LEN + (sizeof(BASE_CONFIG_PATH) + sizeof(lastTitlePath)) / sizeof(char))
+const char BASE_CONFIG_PATH[] = "/nhddl";
+const size_t BASE_CONFIG_PATH_LEN = sizeof(BASE_CONFIG_PATH) / sizeof(char);
+
+const char globalOptionsPath[] = "/global.yaml";
 #define MAX_GLOBAL_OPTS_LEN (STORAGE_BASE_PATH_LEN + BASE_CONFIG_PATH_LEN + (sizeof(globalOptionsPath) / sizeof(char)))
+
+const char lastTitlePath[] = "/lastTitle.txt";
+#define MAX_LAST_TITLE_LEN (STORAGE_BASE_PATH_LEN + BASE_CONFIG_PATH_LEN + (sizeof(lastTitlePath) / sizeof(char)))
 
 // Writes full path to targetFileName into targetPath.
 // If targetFileName is NULL, will return path to config directory
@@ -48,7 +49,7 @@ void buildConfigFilePath(char *targetPath, const char *targetFileName) {
 // Gets last launched title path into titlePath
 int getLastLaunchedTitle(char *titlePath) {
   printf("Reading last launched title\n");
-  char targetPath[MAX_LAST_LAUNCHED_LEN];
+  char targetPath[MAX_LAST_TITLE_LEN];
   targetPath[0] = '\0';
   buildConfigFilePath(targetPath, lastTitlePath);
 
@@ -78,7 +79,7 @@ int getLastLaunchedTitle(char *titlePath) {
 // Writes last launched title path into lastTitle file
 int updateLastLaunchedTitle(char *titlePath) {
   printf("Writing last launched title as %s\n", titlePath);
-  char targetPath[MAX_LAST_LAUNCHED_LEN];
+  char targetPath[MAX_LAST_TITLE_LEN];
   buildConfigFilePath(targetPath, NULL);
 
   // Make sure config directory exists
@@ -138,14 +139,10 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
   struct dirent *entry;
   while ((entry = readdir(directory)) != NULL) {
     if (entry->d_type != DT_DIR) {
+      // Find file that starts with ISO name (without the extension)
       if (!strncmp(entry->d_name, target->name, strlen(target->name))) {
-        // If file starts with ISO name
-        // Prefer ISO name config to title ID config
         buildConfigFilePath(targetPath, entry->d_name);
         break;
-      } else if (!strncmp(entry->d_name, target->id, strlen(target->id))) {
-        // If file starts with title ID
-        buildConfigFilePath(targetPath, entry->d_name);
       }
     }
   }

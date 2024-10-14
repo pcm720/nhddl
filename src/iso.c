@@ -22,7 +22,7 @@ void processTitleID(TargetList *result);
 
 // Directories to skip when browsing for ISOs
 const char *ignoredDirs[] = {
-    "config", "APPS", "ART", "CFG", "CHT", "LNG", "THM", "VMC", "XEBPLUS",
+    "nhddl", "APPS", "ART", "CFG", "CHT", "LNG", "THM", "VMC", "XEBPLUS",
 };
 
 // Looks for ISO images in searchDirs.
