@@ -1,6 +1,6 @@
 #.SILENT:
 
-GIT_VERSION := $(shell git describe --always --dirty --tags)
+GIT_VERSION := $(shell git describe --always --dirty --tags --exclude nightly)
 
 EE_BIN = nhddl-$(GIT_VERSION)_unc.elf
 EE_BIN_PKD = nhddl-$(GIT_VERSION).elf
