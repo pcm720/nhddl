@@ -107,12 +107,7 @@ By default, 480p is disabled and the ATA device is used to look for ISO files.
 
 To disable a flag, you can just comment it out with `#`.
 
-Example of a valid `nhddl.yaml` file:
-```yaml
-#480p: # uncomment to enable 480p in NHDDL UI
-mode: ata # supported modes: ata (default), mx4sio, udpbd, usb
-#udpbd_ip: 192.168.1.6 # PS2 IP address for UDPBD mode (commented out)
-```
+See [this file](examples/nhddl.yaml) for an example of a valid nhddl.yaml file.
 
 ### Configuration files on storage device
 
