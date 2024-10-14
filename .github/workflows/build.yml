@@ -1,0 +1,30 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/ps2homebrew/ps2homebrew:main
+    steps:
+    - uses: actions/checkout@v4
+    - name: Compile project
+      run: |
+        make
+
+    - name: Upload artifact ELF
+      uses: actions/upload-artifact@v4
+      with:
+        name: nhddl
+        path: |
+          nhddl-*.elf
+          !nhddl-*_unc.elf
+
+    - name: Upload artifact YAML examples
+      uses: actions/upload-artifact@v4
+      with:
+        name: config-examples
+        path: |
+          examples/*.yaml
