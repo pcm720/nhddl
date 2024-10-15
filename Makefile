@@ -24,7 +24,7 @@ EE_OBJS := $(EE_OBJS:%=$(EE_OBJS_DIR)%)
 EE_INCS := -Iinclude -I$(PS2DEV)/gsKit/include -I$(PS2SDK)/ports/include
 
 EE_LDFLAGS := -L$(PS2DEV)/gsKit/lib -L$(PS2SDK)/ports/lib -s
-EE_LIBS = -ldebug -lfileXio -lpatches -lelf-loader -lgskit -ldmakit -lgskit_toolkit -lpng -lz -ltiff -lpad
+EE_LIBS = -ldebug -lfileXio -lpatches -lgskit -ldmakit -lgskit_toolkit -lpng -lz -ltiff -lpad
 EE_CFLAGS := -mno-gpopt -G0 -DGIT_VERSION="\"${GIT_VERSION}\""
 
 BIN2C = $(PS2SDK)/bin/bin2c
@@ -34,13 +34,18 @@ ifeq ($(DEBUG), 1)
 # If DEBUG=1, output targets to debug names
 	EE_BIN = $(EE_BIN_DEBUG)
  	EE_BIN_PKD = $(EE_BIN_DEBUG_PKD)
-# Define DEBUG
+# Define DEBUG and link to ELF loader with debug colors
  	EE_CFLAGS += -DDEBUG
+	EE_LIBS += -lelf-loader
 # Set rebuild flag
 	NEEDS_REBUILD = 1
-else ifneq ("$(wildcard $(EE_BIN_DEBUG))","")
-# Else, set rebuild flag if EE_BIN_DEBUG exists
-  	NEEDS_REBUILD = 1
+else 
+# Link to ELF loader without debug colors
+	EE_LIBS += -lelf-loader-nocolour
+	ifneq ("$(wildcard $(EE_BIN_DEBUG))","")
+# Set rebuild flag if EE_BIN_DEBUG exists
+  		NEEDS_REBUILD = 1
+	endif
 endif
 
 .PHONY: all clean .FORCE
