@@ -172,7 +172,8 @@ void initOptions(char *basePath) {
   LAUNCHER_OPTIONS.udpbdIp[0] = '\0';
 
   char lineBuffer[PATH_MAX + sizeof(optionsFile) + 1];
-  snprintf(lineBuffer, sizeof(lineBuffer), "%s/%s", basePath, optionsFile);
+  strcpy(lineBuffer, basePath);
+  strcat(lineBuffer, optionsFile);
 
   // Load NHDDL options file into ArgumentList
   ArgumentList *options = calloc(1, sizeof(ArgumentList));

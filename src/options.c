@@ -209,7 +209,7 @@ out:
 
 // Parses options file into ArgumentList
 int loadArgumentList(ArgumentList *options, char *filePath) {
-  // Open global settings file and read it
+  // Open options file
   FILE *file = fopen(filePath, "r");
   if (file == NULL) {
     printf("ERROR: Failed to open %s\n", filePath);
@@ -221,6 +221,7 @@ int loadArgumentList(ArgumentList *options, char *filePath) {
   options->first = NULL;
   options->last = NULL;
 
+  // Parse options file
   if (parseOptionsFile(options, file)) {
     fclose(file);
     freeArgumentList(options);
