@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <libcdvd.h>
+#include <libmc.h>
 #include <ps2sdkapi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,11 +79,25 @@ int updateHistoryFile(const char *titleID) {
   if (initSystemDataDir())
     return -ENOENT;
 
+  if (mcInit(MC_TYPE_XMC)) {
+    printf("ERROR: failed to initialize libmc\n");
+    return -ENODEV;
+  }
+
   // Try opening history file on mc0 and mc1
-  int histfileFd, count;
+  int histfileFd, count, mcType, format;
   struct historyListEntry historyList[MAX_HISTORY_ENTRIES];
-  for (char i = '0'; i < '2'; i++) { // Skipping int-char conversions thanks to ASCII code ordering
-    historyFilePath[2] = i;
+
+  for (char i = 0; i < 2; i++) {
+    // Check that memory card exists, connected and is a formatted PS2 memory card
+    mcGetInfo(i, 0, &mcType, NULL, &format);
+    mcSync(0, NULL, &histfileFd);
+    if ((mcType != sceMcTypePS2) || (format != MC_FORMATTED)) {
+      printf("WARN: refusing to write to memory card at mc%d\n", i);
+      continue;
+    }
+
+    historyFilePath[2] = i + '0'; // Skipping int-char conversions thanks to ASCII code ordering
     // Attempt to open history file
     histfileFd = open(historyFilePath, O_RDONLY);
     if (histfileFd < 0) {
@@ -122,6 +137,7 @@ int updateHistoryFile(const char *titleID) {
     }
     close(histfileFd);
   }
+  mcReset();
   return 0;
 }
 

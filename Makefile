@@ -13,21 +13,12 @@ EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o pad.o la
 IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx
 RES_FILES += icon_A.sys icon_C.sys icon_J.sys
 
+EE_LIBS = -ldebug -lfileXio -lpatches -lgskit -ldmakit -lgskit_toolkit -lpng -lz -ltiff -lpad -lmc
+EE_CFLAGS := -mno-gpopt -G0 -DGIT_VERSION="\"${GIT_VERSION}\""
+
 EE_OBJS_DIR = obj/
 EE_ASM_DIR = asm/
 EE_SRC_DIR = src/
-
-EE_OBJS += $(IRX_FILES:.irx=_irx.o)
-EE_OBJS += $(RES_FILES:.sys=_sys.o)
-EE_OBJS := $(EE_OBJS:%=$(EE_OBJS_DIR)%)
-
-EE_INCS := -Iinclude -I$(PS2DEV)/gsKit/include -I$(PS2SDK)/ports/include
-
-EE_LDFLAGS := -L$(PS2DEV)/gsKit/lib -L$(PS2SDK)/ports/lib -s
-EE_LIBS = -ldebug -lfileXio -lpatches -lgskit -ldmakit -lgskit_toolkit -lpng -lz -ltiff -lpad
-EE_CFLAGS := -mno-gpopt -G0 -DGIT_VERSION="\"${GIT_VERSION}\""
-
-BIN2C = $(PS2SDK)/bin/bin2c
 
 NEEDS_REBUILD := 0
 ifeq ($(DEBUG), 1)
@@ -48,6 +39,16 @@ else
 	endif
 endif
 
+EE_OBJS += $(IRX_FILES:.irx=_irx.o)
+EE_OBJS += $(RES_FILES:.sys=_sys.o)
+EE_OBJS := $(EE_OBJS:%=$(EE_OBJS_DIR)%)
+
+EE_INCS := -Iinclude -I$(PS2DEV)/gsKit/include -I$(PS2SDK)/ports/include
+
+EE_LDFLAGS := -L$(PS2DEV)/gsKit/lib -L$(PS2SDK)/ports/lib -s
+
+BIN2C = $(PS2SDK)/bin/bin2c
+
 .PHONY: all clean .FORCE
 
 .FORCE:
@@ -64,6 +65,7 @@ clean:
 %_irx.c:
 	$(BIN2C) $(PS2SDK)/iop/irx/$(*:$(EE_SRC_DIR)%=%).irx $@ $(*:$(EE_SRC_DIR)%=%)_irx
 
+# Resource files
 %_sys.c:
 	$(BIN2C) res/$(*:$(EE_SRC_DIR)%=%).sys $@ $(*:$(EE_SRC_DIR)%=%)_sys
 
