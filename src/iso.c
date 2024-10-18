@@ -103,7 +103,7 @@ int _findISO(DIR *directory, TargetList *result) {
 
       // Make sure file has .iso extension
       fileext = strrchr(entry->d_name, '.');
-      if ((fileext != NULL) && !strcmp(fileext, ".iso")) {
+      if ((fileext != NULL) && (!strcmp(fileext, ".iso") || !strcmp(fileext, ".ISO"))) {
         // Generate full path
         strcat(titlePath, "/");
         strcat(titlePath, entry->d_name);
