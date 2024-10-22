@@ -72,15 +72,21 @@ int createSystemDataDir() {
 int updateHistoryFile(const char *titleID) {
   // Refuse to write entry if title ID is less than expected
   if ((titleID == NULL) || (strlen(titleID) < 11)) {
-    printf("WARN: will not write invalid title ID to history files\n");
+    printf("WARN: Will not write invalid title ID to history files\n");
     return 0;
   }
   // Detect system directory
   if (initSystemDataDir())
     return -ENOENT;
 
+  // Initialize libcdvd to get timestamp
+  if (!sceCdInit(SCECdINoD)) {
+    printf("ERROR: Failed to init libcdvd\n");
+    return -ENODEV;
+  }
+
   if (mcInit(MC_TYPE_XMC)) {
-    printf("ERROR: failed to initialize libmc\n");
+    printf("ERROR: Failed to initialize libmc\n");
     return -ENODEV;
   }
 
@@ -93,7 +99,7 @@ int updateHistoryFile(const char *titleID) {
     mcGetInfo(i, 0, &mcType, NULL, &format);
     mcSync(0, NULL, &histfileFd);
     if ((mcType != sceMcTypePS2) || (format != MC_FORMATTED)) {
-      printf("WARN: refusing to write to memory card at mc%d\n", i);
+      printf("WARN: Refusing to write to memory card at mc%d\n", i);
       continue;
     }
 
@@ -131,13 +137,13 @@ int updateHistoryFile(const char *titleID) {
     // Return error if not all bytes were written
     count = write(histfileFd, historyList, HISTORY_FILE_SIZE);
     if (count != HISTORY_FILE_SIZE) {
-      close(histfileFd);
       printf("ERROR: Failed to write: %d/%d bytes written\n", count, HISTORY_FILE_SIZE);
-      continue;
     }
     close(histfileFd);
   }
+  // Clean up
   mcReset();
+  sceCdInit(SCECdEXIT);
   return 0;
 }
 
