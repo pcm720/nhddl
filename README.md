@@ -30,6 +30,9 @@ These files should already be present in Neutrino release ZIP by default.
 By default, NHDDL initializes ATA modules and looks for ISOs on internal FAT/exFAT-formatted HDD, devices other than ATA require additional configuration.  
 See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
 
+**Do not plug in any USB mass storage devices while running NHDDL!**  
+Doing so might crash NHDDL and/or possibly corrupt the files on your target device due to how BDM drivers work.
+
 #### ATA
 This is the default device mode.  
 Make sure that Neutrino `modules` directory contains the following IRX files:
