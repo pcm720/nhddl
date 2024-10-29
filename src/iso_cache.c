@@ -42,6 +42,20 @@ int storeTitleIDCache(TargetList *list) {
     mkdir(cachePath, 0777);
   }
 
+  // Get total number of valid cache entries
+  int total = 0;
+  Target *curTitle = list->first;
+  while (curTitle != NULL) {
+    if (strlen(curTitle->id) == 11) {
+      total++;
+    }
+    curTitle = curTitle->next;
+  }
+  if (total == 0) {
+    printf("WARN: No valid cache entries found\n");
+    return 0;
+  }
+
   // Open cache file for writing
   buildConfigFilePath(cachePath, titleIDCacheFile);
   FILE *file = fopen(cachePath, "wb");
@@ -49,11 +63,10 @@ int storeTitleIDCache(TargetList *list) {
     printf("ERROR: failed to open cache file for writing\n");
     return -EIO;
   }
-  Target *curTitle = list->first;
 
   int result;
   // Write cache file header
-  CacheMetadata meta = {.magic = CACHE_MAGIC, .version = CACHE_VERSION, .total = list->total};
+  CacheMetadata meta = {.magic = CACHE_MAGIC, .version = CACHE_VERSION, .total = total};
   result = fwrite(&meta, sizeof(CacheMetadata), 1, file);
   if (!result) {
     printf("failed to write metadata: %d\n", errno);
@@ -64,7 +77,14 @@ int storeTitleIDCache(TargetList *list) {
 
   // Write each entry
   CacheEntryHeader header;
+  curTitle = list->first;
   while (curTitle != NULL) {
+    if (strlen(curTitle->id) < 11) {
+      // Ignore empty entries
+      curTitle = curTitle->next;
+      continue;
+    }
+
     // Write entry header
     memcpy(header.titleID, curTitle->id, sizeof(header.titleID));
     header.titleID[11] = '\0';
