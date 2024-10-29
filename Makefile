@@ -30,12 +30,12 @@ ifeq ($(DEBUG), 1)
 	EE_LIBS += -lelf-loader
 # Set rebuild flag
 	NEEDS_REBUILD = 1
-else 
+else
 # Link to ELF loader without debug colors
 	EE_LIBS += -lelf-loader-nocolour
 	ifneq ("$(wildcard $(EE_BIN_DEBUG))","")
 # Set rebuild flag if EE_BIN_DEBUG exists
-  		NEEDS_REBUILD = 1
+		NEEDS_REBUILD = 1
 	endif
 endif
 
