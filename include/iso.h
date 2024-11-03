@@ -33,4 +33,7 @@ Target *getTargetByIdx(TargetList *targets, int idx);
 // Makes and returns a deep copy of src without prev/next pointers.
 Target *copyTarget(Target *src);
 
+// Completely frees Target and returns pointer to a previous argument in the list
+Target *freeTarget(Target *target);
+
 #endif
