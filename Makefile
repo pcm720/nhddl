@@ -12,6 +12,7 @@ EE_BIN_DEBUG_PKD := $(ELF_BASE_NAME)-debug.elf
 EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o pad.o launcher.o iso_cache.o
 IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx
 RES_FILES += icon_A.sys icon_C.sys icon_J.sys
+ELF_FILES += loader.elf
 
 EE_LIBS = -ldebug -lfileXio -lpatches -lgskit -ldmakit -lgskit_toolkit -lpng -lz -ltiff -lpad -lmc
 EE_CFLAGS := -mno-gpopt -G0 -DGIT_VERSION="\"${GIT_VERSION}\""
@@ -20,27 +21,9 @@ EE_OBJS_DIR = obj/
 EE_ASM_DIR = asm/
 EE_SRC_DIR = src/
 
-NEEDS_REBUILD := 0
-ifeq ($(DEBUG), 1)
-# If DEBUG=1, output targets to debug names
-	EE_BIN = $(EE_BIN_DEBUG)
- 	EE_BIN_PKD = $(EE_BIN_DEBUG_PKD)
-# Define DEBUG and link to ELF loader with debug colors
- 	EE_CFLAGS += -DDEBUG
-	EE_LIBS += -lelf-loader
-# Set rebuild flag
-	NEEDS_REBUILD = 1
-else
-# Link to ELF loader without debug colors
-	EE_LIBS += -lelf-loader-nocolour
-	ifneq ("$(wildcard $(EE_BIN_DEBUG))","")
-# Set rebuild flag if EE_BIN_DEBUG exists
-		NEEDS_REBUILD = 1
-	endif
-endif
-
 EE_OBJS += $(IRX_FILES:.irx=_irx.o)
 EE_OBJS += $(RES_FILES:.sys=_sys.o)
+EE_OBJS += $(ELF_FILES:.elf=_elf.o)
 EE_OBJS := $(EE_OBJS:%=$(EE_OBJS_DIR)%)
 
 EE_INCS := -Iinclude -I$(PS2DEV)/gsKit/include -I$(PS2SDK)/ports/include
@@ -59,7 +42,15 @@ $(EE_BIN_PKD): $(EE_BIN)
 	ps2-packer $< $@
 
 clean:
+	$(MAKE) -C loader clean
 	rm -rf $(EE_BIN) $(EE_BIN_PKD) $(EE_BIN_DEBUG) $(EE_BIN_DEBUG_PKD) $(EE_ASM_DIR) $(EE_OBJS_DIR)
+
+# ELF loader
+loader/loader.elf: loader
+	$(MAKE) -C $<
+
+%loader_elf.c: loader/loader.elf
+	$(BIN2C) $(*:$(EE_SRC_DIR)%=loader/%)loader.elf $@ $(*:$(EE_SRC_DIR)%=%)loader_elf
 
 # IRX files
 %_irx.c:
