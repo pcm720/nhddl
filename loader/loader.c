@@ -10,21 +10,16 @@
 # Modified to not reset IOP for use with NHDDL
 */
 
-#include <errno.h>
-#include <iopcontrol.h>
 #include <kernel.h>
 #include <loadfile.h>
 #include <ps2sdkapi.h>
 #include <sifrpc.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 //--------------------------------------------------------------
 // Redefinition of init/deinit libc:
 //--------------------------------------------------------------
 // DON'T REMOVE is for reducing binary size.
-// These funtios are defined as weak in /libc/src/init.c
+// These functions are defined as weak in /libc/src/init.c
 //--------------------------------------------------------------
 void _libcglue_init() {}
 void _libcglue_deinit() {}
@@ -53,25 +48,13 @@ static void wipeUserMem(void) {
 
 int main(int argc, char *argv[]) {
   static t_ExecData elfdata;
-  int ret, i;
+  int ret;
 
   elfdata.epc = 0;
 
-  // arg[0] partition if exists, otherwise is ""
-  // arg[1]=path to ELF
+  // arg[0] is path to ELF
   if (argc < 1) {
     return -EINVAL;
-  }
-
-  char *new_argv[argc - 1];
-  int fullPath_length = 1 + strlen(argv[0]);
-  char fullPath[fullPath_length];
-  // strcpy(fullPath, argv[0]);
-  strcpy(fullPath, argv[0]);
-  // final new_argv[0] is partition + path to elf
-  new_argv[0] = fullPath;
-  for (i = 2; i < argc; i++) {
-    new_argv[i - 1] = argv[i];
   }
 
   // Initialize
@@ -86,7 +69,7 @@ int main(int argc, char *argv[]) {
   if (ret == 0 && elfdata.epc != 0) {
     FlushCache(0);
     FlushCache(2);
-    return ExecPS2((void *)elfdata.epc, (void *)elfdata.gp, argc - 1, new_argv);
+    return ExecPS2((void *)elfdata.epc, (void *)elfdata.gp, argc, argv);
   } else {
     SifExitRpc();
     return -ENOENT;
