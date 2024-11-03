@@ -89,18 +89,16 @@ void launchTitle(Target *target, ArgumentList *arguments) {
   char **argv = malloc(((arguments->total) + 1) * sizeof(char *));
   int argCount = assembleArgv(arguments, argv);
 
-  printf("Launching %s (%s) with arguments:\n", target->name, target->id);
-  for (int i = 0; i < argCount; i++) {
-    printf("%d: %s\n", i + 1, argv[i]);
-  }
-
+  printf("Updating history file and last launched title\n");
   if (updateLastLaunchedTitle(target->fullPath)) {
     printf("ERROR: Failed to update last launched title\n");
   }
   updateHistoryFile(target->id);
 
-  freeTarget(target);
-  freeArgumentList(arguments);
+  printf("Launching %s (%s) with arguments:\n", target->name, target->id);
+  for (int i = 0; i < argCount; i++) {
+    printf("%d: %s\n", i + 1, argv[i]);
+  }
 
   printf("ERROR: failed to load %s: %d\n", NEUTRINO_ELF_PATH, LoadELFFromFile(argCount, argv));
 }
