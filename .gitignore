@@ -1,6 +1,7 @@
 obj/
 .vscode/settings.json
 *.elf
+*.o
 *.irx
 *.yaml
 *.toml
