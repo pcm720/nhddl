@@ -15,7 +15,7 @@ GSM, PADEMU, IGR and other stuff is out-of-scope of this launcher.
 - Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
 - Unpack Neutrino release
 - Copy `nhddl.elf` to Neutrino folder next to `neutrino.elf`
-- _Additional step if you need USB, MX4SIO or UDPBD_:  
+- _Additional step if you need only ATA, USB, MX4SIO or UDPBD_:  
   Modify `nhddl.yaml` [accordingly](#common-use-cases) and copy it next to `nhddl.elf`
 - Copy Neutrino folder to your PS2 memory card.  
   Any folder (e.g. `APPS`) will do, it doesn't have to be in the root of your memory card.
@@ -25,21 +25,22 @@ Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest versi
 ### Supported BDM devices
 
 NHDDL reuses Neutrino modules for BDM support and requires them to be present in Neutrino `modules` directory.
-These files should already be present in Neutrino release ZIP by default.
+These files should already be present in Neutrino release ZIP.
 
-By default, NHDDL initializes ATA modules and looks for ISOs on internal FAT/exFAT-formatted HDD, devices other than ATA require additional configuration.  
+By default, NHDDL initializes all modules and looks for ISOs on FAT/exFAT-formatted BDM devices.  
 See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
 
 **Do not plug in any USB mass storage devices while running NHDDL!**  
 Doing so might crash NHDDL and/or possibly corrupt the files on your target device due to how BDM drivers work.
 
 #### ATA
-This is the default device mode.  
 Make sure that Neutrino `modules` directory contains the following IRX files:
 - `bdm.irx` 
 - `bdmfs_fatfs.irx`
 - `dev9_ns.irx`
 - `ata_bd.irx`
+
+To skip all other BDM devices, `mode: ata` must be present in `nhddl.yaml`.
 
 #### MX4SIO
 The following files are required for MX4SIO:
@@ -47,7 +48,7 @@ The following files are required for MX4SIO:
 - `bdmfs_fatfs.irx`
 - `mx4sio_bd_mini.irx`
 
-`mode: mx4sio` must be present in `nhddl.yaml`.
+To skip all other BDM devices, `mode: mx4sio` must be present in `nhddl.yaml` to initialize only MX4SIO.
 
 #### USB
 The following files are required for USB:
@@ -56,7 +57,7 @@ The following files are required for USB:
 - `usbd_mini.irx`
 - `usbmass_bd_mini.irx`
 
-`mode: usb` must be present in `nhddl.yaml`.
+To skip all other BDM devices, `mode: usb` must be present in `nhddl.yaml`.
 
 #### UDPBD
 The following files are required for UDPBD:
@@ -65,7 +66,7 @@ The following files are required for UDPBD:
 - `dev9_ns.irx`
 - `smap_udpbd.irx`
 
-`mode: udpbd` must be present in `nhddl.yaml`.
+To skip all other BDM devices, `mode: udpbd` must be present in `nhddl.yaml`.
 
 UDPBD module requires PS2 IP address to work.  
 NHDDL attempts to retrieve PS2 IP address from the following sources:
@@ -73,6 +74,15 @@ NHDDL attempts to retrieve PS2 IP address from the following sources:
 - `SYS-CONF/IPCONFIG.DAT` on the memory card (usually created by w/uLaunchELF)
 
 `udpbd_ip` flag takes priority over `IPCONFIG.DAT`.
+
+#### iLink
+The following files are required for iLink:
+- `bdm.irx` 
+- `bdmfs_fatfs.irx`
+- `iLinkman.irx`
+- `IEEE1394_bd_mini.irx`
+
+To skip all other BDM devices, `mode: ilink` must be present in `nhddl.yaml`.
 
 ### Storing ISO
 
@@ -102,7 +112,7 @@ NHDDL uses YAML-like files to load and store its configuration options.
 
 Launcher configuration is read from the `nhddl.yaml` file, which must be located in the same directory as `nhddl.elf`.  
 This file is _completely optional_ and must be used only to enable 480p in NHDDL UI or switch NHDDL mode to something other than `ata`.  
-By default, 480p is disabled and the ATA device is used to look for ISO files.
+By default, 480p is disabled and the all devices are used to look for ISO files.
 
 To disable a flag, you can just comment it out with `#`.
 
