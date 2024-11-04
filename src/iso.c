@@ -1,6 +1,7 @@
 #include "iso.h"
 #include "common.h"
 #include "iso_cache.h"
+#include "iso_title_id.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <kernel.h>
@@ -10,14 +11,8 @@
 #include <string.h>
 #include <unistd.h>
 
-// Required for mounting and loading ISOs to retrieve Title ID
-#define NEWLIB_PORT_AWARE
-#include <fileXio_rpc.h>
-#include <io_common.h>
-
 int _findISO(DIR *directory, TargetList *result);
 void insertIntoList(TargetList *result, Target *title);
-char *getTitleID(char *path);
 void processTitleID(TargetList *result);
 
 // Directories to skip when browsing for ISOs
@@ -251,46 +246,6 @@ void processTitleID(TargetList *result) {
       logString("Failed to save title ID cache\n");
     }
   }
-}
-
-// Loads SYSTEM.CNF from ISO and extracts title ID
-// This function was copied from Neutrino with minimal changes
-char *getTitleID(char *path) {
-  char *titleID = calloc(sizeof(char), 12);
-  if (fileXioMount("iso:", path, FIO_MT_RDONLY) < 0) {
-    logString("ERROR: Unable to mount %s as iso\n", path);
-    return titleID;
-  }
-
-  int system_cnf_fd = open("iso:/SYSTEM.CNF;1", O_RDONLY);
-  if (system_cnf_fd < 0) {
-    logString("ERROR: Unable to open SYSTEM.CNF: %s\n", path);
-    fileXioUmount("iso:");
-    return titleID;
-  }
-
-  // Read file contents
-  char system_cnf_data[128];
-  read(system_cnf_fd, system_cnf_data, 128);
-  close(system_cnf_fd);
-
-  // Locate and set ELF file name
-  char *selfFile = strstr(system_cnf_data, "cdrom0:");
-  char *fname_end = strstr(system_cnf_data, ";");
-  if (selfFile == NULL || fname_end == NULL) {
-    logString("ERROR: File name not found in SYSTEM.CNF: %s\n", path);
-    fileXioUmount("iso:");
-    return titleID;
-  }
-  fname_end[1] = '1';
-  fname_end[2] = '\0';
-
-  // Locate and set title ID
-  memcpy(titleID, &selfFile[8], 11);
-
-  fileXioUmount("iso:");
-
-  return titleID;
 }
 
 // Completely frees Target and returns pointer to a previous argument in the list

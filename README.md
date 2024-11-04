@@ -37,7 +37,6 @@ Doing so might crash NHDDL and/or possibly corrupt the files on your target devi
 This is the default device mode.  
 Make sure that Neutrino `modules` directory contains the following IRX files:
 - `bdm.irx` 
-- `isofs.irx`
 - `bdmfs_fatfs.irx`
 - `dev9_ns.irx`
 - `ata_bd.irx`
@@ -45,7 +44,6 @@ Make sure that Neutrino `modules` directory contains the following IRX files:
 #### MX4SIO
 The following files are required for MX4SIO:
 - `bdm.irx` 
-- `isofs.irx`
 - `bdmfs_fatfs.irx`
 - `mx4sio_bd_mini.irx`
 
@@ -54,7 +52,6 @@ The following files are required for MX4SIO:
 #### USB
 The following files are required for USB:
 - `bdm.irx` 
-- `isofs.irx`
 - `bdmfs_fatfs.irx`
 - `usbd_mini.irx`
 - `usbmass_bd_mini.irx`
@@ -64,7 +61,6 @@ The following files are required for USB:
 #### UDPBD
 The following files are required for UDPBD:
 - `bdm.irx` 
-- `isofs.irx`
 - `bdmfs_fatfs.irx`
 - `dev9_ns.irx`
 - `smap_udpbd.irx`

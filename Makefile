@@ -9,7 +9,7 @@ EE_BIN_PKD = $(ELF_BASE_NAME).elf
 EE_BIN_DEBUG := $(ELF_BASE_NAME)-debug_unc.elf
 EE_BIN_DEBUG_PKD := $(ELF_BASE_NAME)-debug.elf
 
-EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o pad.o launcher.o iso_cache.o
+EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o pad.o launcher.o iso_cache.o iso_title_id.o
 IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx
 RES_FILES += icon_A.sys icon_C.sys icon_J.sys
 ELF_FILES += loader.elf
