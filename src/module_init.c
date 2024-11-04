@@ -37,7 +37,7 @@ typedef struct ExternalModule {
   u32 size;           // IRX size
   u32 argLength;      // Argument string length
   char *argStr;       // Argument string
-  int canFail;        // Indicates if module can fail to load
+  ModeType mode;      // Used to ignore modules not required for target mode
 
   struct ExternalModule *next; // Next module in the list
 } ExternalModule;
@@ -57,7 +57,7 @@ typedef struct ExternalModuleEntry {
   char *name;                     // Module name
   char *path;                     // Relative path to module
   moduleArgFunc argumentFunction; // Function used to initialize module arguments
-  int canFail;                    // If not zero, module failing to load will not be considered a critical error
+  ModeType mode;                  // Used to ignore modules not required for target mode
 } ExternalModuleEntry;
 
 // Initializes SMAP arguments
@@ -66,27 +66,25 @@ int initSMAPArguments(ExternalModule *mod);
 #define MODULE_COUNT(a) sizeof(a) / sizeof(ExternalModuleEntry)
 const ExternalModuleEntry external_modules[] = {
     // DEV9
-    {"dev9", "modules/dev9_ns.irx", NULL, 0},
+    {"dev9", "modules/dev9_ns.irx", NULL, MODE_ALL},
     // BDM
-    {"bdm", "modules/bdm.irx", NULL, 0},
-    // Required for getting title ID from ISO
-    {"isofs", "modules/isofs.irx", NULL, 0},
+    {"bdm", "modules/bdm.irx", NULL, MODE_ALL},
     // FAT/exFAT
-    {"bdmfs_fatfs", "modules/bdmfs_fatfs.irx", NULL, 0},
+    {"bdmfs_fatfs", "modules/bdmfs_fatfs.irx", NULL, MODE_ALL},
     // ATA
-    {"ata_bd", "modules/ata_bd.irx", NULL, 1},
+    {"ata_bd", "modules/ata_bd.irx", NULL, MODE_ATA},
     // USBD
-    {"usbd_mini", "modules/usbd_mini.irx", NULL, 1},
+    {"usbd_mini", "modules/usbd_mini.irx", NULL, MODE_USB},
     // USB Mass Storage
-    {"usbmass_bd_mini", "modules/usbmass_bd_mini.irx", NULL, 1},
+    {"usbmass_bd_mini", "modules/usbmass_bd_mini.irx", NULL, MODE_USB},
     // MX4SIO
-    {"mx4sio_bd_mini", "modules/mx4sio_bd_mini.irx", NULL, 1},
+    {"mx4sio_bd_mini", "modules/mx4sio_bd_mini.irx", NULL, MODE_MX4SIO},
     // SMAP driver. Actually includes small IP stack and UDPTTY
-    {"smap_udpbd", "modules/smap_udpbd.irx", &initSMAPArguments, 1},
+    {"smap_udpbd", "modules/smap_udpbd.irx", &initSMAPArguments, MODE_UDPBD},
     // iLink
-    // {"iLinkman", "modules/iLinkman.irx", NULL, 1},
+    {"iLinkman", "modules/iLinkman.irx", NULL, MODE_ILINK},
     // iLink Mass Storage
-    // {"IEEE1394_bd_mini", "modules/IEEE1394_bd_mini.irx", NULL, 1},
+    {"IEEE1394_bd_mini", "modules/IEEE1394_bd_mini.irx", NULL, MODE_ILINK},
 };
 
 // Initializes IOP modules
@@ -94,7 +92,8 @@ int init_modules(char *basePath) {
   // Load optional modules into EE memory before resetting IOP
   ExternalModule *modules = buildExternalModuleList(basePath);
   if (modules == NULL) {
-    logString("WARN: No external modules will be loaded\n");
+    logString("ERROR: Failed to prepare external modules\n");
+    return -EIO;
   }
 
   // Initialize the RPC manager and reset IOP
@@ -131,7 +130,7 @@ int init_modules(char *basePath) {
 
     ret = SifExecModuleBuffer(modules->irx, modules->size, modules->argLength, modules->argStr, &iopret);
     // Ignore error if module can fail
-    if (!modules->canFail) {
+    if ((modules->mode == MODE_ALL) || (modules->mode == LAUNCHER_OPTIONS.mode)) {
       if (ret < 0)
         return ret;
       if (iopret == 1)
@@ -175,6 +174,13 @@ ExternalModule *buildExternalModuleList(char *basePath) {
   ExternalModule *firstModule = NULL;
   int fd, fsize, res;
   for (int i = 0; i < MODULE_COUNT(external_modules); i++) {
+    // Ignore module if:
+    if (external_modules[i].mode != LAUNCHER_OPTIONS.mode && // Target mode doesn't match required mode
+        external_modules[i].mode != MODE_ALL &&              // Module is not required
+        LAUNCHER_OPTIONS.mode != MODE_ALL) {                 // Target mode is not set to ALL
+      continue;
+    }
+
     // End bufferred string at basePath for the next strcat in the loop
     pathBuf[basePathLen] = '\0';
 
@@ -184,7 +190,7 @@ ExternalModule *buildExternalModuleList(char *basePath) {
     // Open module
     if ((fd = open(pathBuf, O_RDONLY)) < 0) {
       logString("%s: Failed to open %s\n", external_modules[i].name, pathBuf);
-      if (!external_modules[i].canFail)
+      if ((external_modules[i].mode == MODE_ALL) || (external_modules[i].mode == LAUNCHER_OPTIONS.mode))
         goto fail;
       continue;
     }
@@ -215,7 +221,7 @@ ExternalModule *buildExternalModuleList(char *basePath) {
     mod->name = external_modules[i].name;
     mod->irx = irxBuf;
     mod->size = fsize;
-    mod->canFail = external_modules[i].canFail;
+    mod->mode = external_modules[i].mode;
 
     // If module has an arugment function, execute it
     if (external_modules[i].argumentFunction != NULL) {
@@ -224,7 +230,7 @@ ExternalModule *buildExternalModuleList(char *basePath) {
         free(irxBuf);
         free(mod);
         // Ignore errors if module can fail
-        if (external_modules[i].canFail) {
+        if ((external_modules[i].mode != MODE_ALL) && (external_modules[i].mode != LAUNCHER_OPTIONS.mode)) {
           logString("\t%s: Failed to initialize arguments, skipping module\n", external_modules[i].name);
           continue;
         } else {
