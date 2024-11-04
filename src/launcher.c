@@ -20,6 +20,7 @@ static char bsdArgument[] = "bsd";
 #define BSD_MX4SIO "mx4sio"
 #define BSD_UDPBD "udpbd"
 #define BSD_USB "usb"
+#define BSD_ILINK "ilink"
 
 int LoadELFFromFile(int argc, char *argv[]);
 
@@ -77,6 +78,9 @@ void launchTitle(Target *target, ArgumentList *arguments) {
     break;
   case MODE_USB:
     bsdValue = BSD_USB;
+    break;
+  case MODE_ILINK:
+    bsdValue = BSD_ILINK;
     break;
   default:
     printf("ERROR: Unsupported mode\n");
