@@ -5,10 +5,12 @@
 
 // Enum for supported modes
 typedef enum {
+  MODE_ALL,
   MODE_ATA,
   MODE_MX4SIO,
   MODE_UDPBD,
-  MODE_USB
+  MODE_USB,
+  MODE_ILINK
 } ModeType;
 
 // Launcher options

@@ -119,7 +119,9 @@ ModeType parseMode(const char *modeStr) {
     return MODE_UDPBD;
   if (!strcmp(modeStr, "usb"))
     return MODE_USB;
-  return MODE_ATA;
+  if (!strcmp(modeStr, "ilink"))
+    return MODE_ILINK;
+  return MODE_ALL;
 }
 
 // Tries to read SYS-CONF/IPCONFIG.DAT from basePath
@@ -157,7 +159,7 @@ void parseIPConfig(LauncherOptions *opts) {
 // Loads NHDDL options from optionsFile on memory card
 void initOptions(char *basePath) {
   LAUNCHER_OPTIONS.is480pEnabled = 0;
-  LAUNCHER_OPTIONS.mode = MODE_ATA;
+  LAUNCHER_OPTIONS.mode = MODE_ALL;
   LAUNCHER_OPTIONS.udpbdIp[0] = '\0';
 
   char lineBuffer[PATH_MAX + sizeof(optionsFile) + 1];
