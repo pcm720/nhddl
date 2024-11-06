@@ -107,13 +107,13 @@ int init_modules(char *basePath) {
   SifInitRpc(0);
 
   int ret, iopret = 0;
-  // // Apply patches required to load modules from EE RAM
+  // Apply patches required to load modules from EE RAM
   if ((ret = sbv_patch_enable_lmb()))
     return ret;
   if ((ret = sbv_patch_disable_prefix_check()))
     return ret;
 
-  // Load modules
+  // Load embedded modules
   IRX_LOAD(iomanX);
   IRX_LOAD(fileXio);
   IRX_LOAD(sio2man);
@@ -202,7 +202,6 @@ ExternalModule *buildExternalModuleList(char *basePath) {
     unsigned char *irxBuf = calloc(sizeof(char), fsize);
     if (irxBuf == NULL) {
       logString("\t%s: Failed to allocate memory\n", external_modules[i].name);
-      free(irxBuf);
       close(fd);
       goto fail;
     }
