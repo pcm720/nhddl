@@ -1,10 +1,10 @@
 #include "iso.h"
 #include "common.h"
+#include "devices.h"
 #include "iso_cache.h"
 #include "iso_title_id.h"
 #include <errno.h>
 #include <fcntl.h>
-#include <kernel.h>
 #include <ps2sdkapi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,35 +20,37 @@ const char *ignoredDirs[] = {
     "nhddl", "APPS", "ART", "CFG", "CHT", "LNG", "THM", "VMC", "XEBPLUS",
 };
 
-// Looks for ISO images in searchDirs.
+// Generates a list of launch candidates found on BDM devices
 // Returns NULL if no targets were found or an error occurs
 TargetList *findISO() {
   DIR *directory;
-  // Try to open directory, giving a chance to IOP modules to init
-  for (int i = 0; i < 1000; i++) {
-    directory = opendir(STORAGE_BASE_PATH);
-    if (directory != NULL)
-      break;
-    nopdelay();
-  }
-  // Check if the directory can be opened
-  if (directory == NULL) {
-    logString("ERROR: Can't open %s\n", STORAGE_BASE_PATH);
-    return NULL;
-  }
-
   TargetList *result = malloc(sizeof(TargetList));
+  char mountpoint[] = MASS_PLACEHOLDER;
   result->total = 0;
   result->first = NULL;
   result->last = NULL;
-  chdir(STORAGE_BASE_PATH);
-  if (_findISO(directory, result)) {
-    free(result);
-    closedir(directory);
-    return NULL;
-  }
-  closedir(directory);
 
+  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
+    if (deviceModeMap[i].mode == MODE_ALL) {
+      break;
+    }
+    mountpoint[4] = i + '0';
+
+    directory = opendir(mountpoint);
+    // Check if the directory can be opened
+    if (directory == NULL) {
+      logString("ERROR: Can't open %s\n", mountpoint);
+      return NULL;
+    }
+
+    chdir(mountpoint);
+    if (_findISO(directory, result)) {
+      free(result);
+      closedir(directory);
+      return NULL;
+    }
+    closedir(directory);
+  }
   processTitleID(result);
   return result;
 }
@@ -100,7 +102,8 @@ int _findISO(DIR *directory, TargetList *result) {
       fileext = strrchr(entry->d_name, '.');
       if ((fileext != NULL) && (!strcmp(fileext, ".iso") || !strcmp(fileext, ".ISO"))) {
         // Generate full path
-        strcat(titlePath, "/");
+        if (titlePath[cwdLen - 1] != '/')
+          strcat(titlePath, "/");
         strcat(titlePath, entry->d_name);
 
         // Initialize target
@@ -108,6 +111,7 @@ int _findISO(DIR *directory, TargetList *result) {
         title->prev = NULL;
         title->next = NULL;
         title->fullPath = strdup(titlePath);
+        title->deviceType = deviceModeMap[titlePath[4] - '0'].mode;
 
         // Get file name without the extension
         int nameLength = (int)(fileext - entry->d_name);
@@ -297,6 +301,7 @@ Target *copyTarget(Target *src) {
   copy->fullPath = strdup(src->fullPath);
   copy->name = strdup(src->name);
   copy->id = strdup(src->id);
+  copy->deviceType = src->deviceType;
 
   return copy;
 }
