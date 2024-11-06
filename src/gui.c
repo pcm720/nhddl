@@ -149,8 +149,15 @@ int uiLoop(TargetList *titles) {
   // Get last launched title and find it in the target list
   char *lastTitle = calloc(sizeof(char), PATH_MAX + 1);
   if (!getLastLaunchedTitle(lastTitle)) {
+    int mountpointLen;
     while (curTarget != NULL) {
-      if (!strcmp(lastTitle, curTarget->fullPath)) {
+      // Compare paths without the mountpoint
+      mountpointLen = 5;
+      if (curTarget->fullPath[5] == ':') {
+        mountpointLen = 6;
+      }
+
+      if (!strcmp(lastTitle, &curTarget->fullPath[mountpointLen])) {
         selectedTitleIdx = curTarget->idx;
         break;
       }
@@ -192,7 +199,8 @@ int uiLoop(TargetList *titles) {
       Target *target = copyTarget(curTarget);
       freeTargetList(titles);
       uiLaunchTitle(target, NULL);
-      goto exit;
+      // Something went wrong, main loop must exit immediately
+      return -1;
     } else if (input & PAD_UP) {
       // Point to the previous title
       if (selectedTitleIdx > 0)
@@ -215,7 +223,7 @@ int uiLoop(TargetList *titles) {
       // Enter title options screen
       if ((res = uiTitleOptionsLoop(curTarget))) {
         // Something went wrong, main loop must exit immediately
-        goto exit;
+        return -1;
       }
     } else if (input & PAD_START) {
       // Quit
@@ -350,8 +358,11 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, GSTEXTURE *selected
 
     // Draw title ID for selected title
     if (selectedTitleIdx == curTitle->idx) {
-      // Draw title ID
-      gsKit_fontm_print_scaled(gsGlobal, gsFontM, coverArtX1, coverArtY2 + 5, 0, 0.7f, WhiteFont, curTitle->id);
+      snprintf(lineBuffer, 255, "%s\n%s", curTitle->id, modeToString(curTitle->deviceType));
+      // Draw title ID and device type
+      gsFontM->Align = GSKIT_FALIGN_CENTER;
+      gsKit_fontm_print_scaled(gsGlobal, gsFontM, (coverArtX1 + (COVER_ART_RES_W / 2 - 4)), coverArtY2 + 5, 0, 0.7f, WhiteFont, lineBuffer);
+      gsFontM->Align = GSKIT_FALIGN_LEFT;
     }
 
     // Draw title name
