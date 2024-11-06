@@ -1,4 +1,5 @@
 #include "common.h"
+#include "devices.h"
 #include "gui.h"
 #include "iso.h"
 #include "module_init.h"
@@ -10,9 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Path to ISO storage
-const char STORAGE_BASE_PATH[] = "mass:";
-const size_t STORAGE_BASE_PATH_LEN = sizeof(STORAGE_BASE_PATH) / sizeof(char);
 // Path to ELF directory
 char ELF_BASE_PATH[PATH_MAX + 1];
 // Path to Neutrino ELF
@@ -76,6 +74,22 @@ int main(int argc, char *argv[]) {
     goto fail;
   }
 
+  logString("Initializing BDM devices...\n");
+  if (initDeviceMap() < 0) {
+    logString("ERROR: failed to initialize device\n");
+    goto fail;
+  }
+  // Count number of initialized devices (reusing res as a counter)
+  for (res = 0; res < MAX_MASS_DEVICES; res++) {
+    if (deviceModeMap[res].mode == MODE_ALL) {
+      break;
+    }
+  }
+  if (res == 0) {
+    logString("ERROR: No BDM devices found\n");
+    goto fail;
+  }
+
   // Make sure neutrino ELF exists
   if (findNeutrinoELF()) {
     goto fail;
@@ -97,7 +111,6 @@ int main(int argc, char *argv[]) {
   if ((res = uiLoop(titles))) {
     init_scr();
     logString("\n\nERROR: UI loop failed: %d\n", res);
-    freeTargetList(titles);
     goto fail;
   }
   printf("UI loop done, exiting\n");
@@ -215,9 +228,13 @@ int findNeutrinoELF() {
   if (tryFile(NEUTRINO_ELF_PATH)) {
     // If neutrino.elf doesn't exist in CWD, try fallback paths
     NEUTRINO_ELF_PATH[0] = '\0';
-    for (int i = '0'; i < '9'; i++) {
-      neutrinoMCFallbackPath[2] = i;
-      neutrinoMassFallbackPath[4] = i;
+    for (int i = 0; i < MAX_MASS_DEVICES; i++) {
+      if ((i > 1) && (deviceModeMap[i].mode == MODE_ALL)) {
+        break;
+      }
+
+      neutrinoMCFallbackPath[2] = i + '0';
+      neutrinoMassFallbackPath[4] = i + '0';
       if ((i < '2') && !tryFile(neutrinoMCFallbackPath)) {
         strcpy(NEUTRINO_ELF_PATH, neutrinoMCFallbackPath);
         goto out;
