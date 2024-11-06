@@ -20,9 +20,8 @@ typedef struct {
   char udpbdIp[16];
 } LauncherOptions;
 
-// Storage device base path. Initialized in main.c
-extern const char STORAGE_BASE_PATH[];
-extern const size_t STORAGE_BASE_PATH_LEN;
+// Maximum size of storage mountpoint (massX:) without the null-terminator
+#define MAX_STORAGE_BASE_PATH_LEN 6 
 // ELF base path. Initialized in main() during init.
 extern char ELF_BASE_PATH[PATH_MAX + 1];
 // Path to Neutrino ELF. Initialized in main() during init.
@@ -32,5 +31,7 @@ extern LauncherOptions LAUNCHER_OPTIONS;
 
 // Logs to screen and debug console
 void logString(const char *str, ...);
+// Maps ModeType to string
+char *modeToString(ModeType mode);
 
 #endif
