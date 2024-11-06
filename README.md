@@ -112,7 +112,7 @@ NHDDL uses YAML-like files to load and store its configuration options.
 ### Launcher configuration file
 
 Launcher configuration is read from the `nhddl.yaml` file, which must be located in the same directory as `nhddl.elf`.  
-This file is _completely optional_ and must be used only to enable 480p in NHDDL UI or switch NHDDL mode to something other than `ata`.  
+This file is _completely optional_ and must be used only to enable 480p in NHDDL UI or switch NHDDL to single device.  
 By default, 480p is disabled and the all devices are used to look for ISO files.
 
 To disable a flag, you can just comment it out with `#`.

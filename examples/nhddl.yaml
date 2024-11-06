@@ -1,3 +1,3 @@
 #480p: # uncomment to enable 480p in NHDDL UI
-mode: ata # supported modes: ata, mx4sio, udpbd, usb, ilink
+mode: ata # supported modes: ata, mx4sio, udpbd, usb, ilink. If not present or commented out, all devices will be used to search for ISO files
 #udpbd_ip: 192.168.1.6 # PS2 IP address for UDPBD mode (commented out)
