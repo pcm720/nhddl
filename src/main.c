@@ -75,17 +75,12 @@ int main(int argc, char *argv[]) {
   }
 
   logString("Initializing BDM devices...\n");
-  if (initDeviceMap() < 0) {
+  res = initDeviceMap();
+  if ((res < 0)) {
     logString("ERROR: failed to initialize device\n");
     goto fail;
   }
-  // Count number of initialized devices (reusing res as a counter)
-  for (res = 0; res < MAX_MASS_DEVICES; res++) {
-    if (deviceModeMap[res].mode == MODE_ALL) {
-      break;
-    }
-  }
-  if (res == 0) {
+  if (!res) {
     logString("ERROR: No BDM devices found\n");
     goto fail;
   }
