@@ -66,15 +66,16 @@ int getDeviceDriver(char *mountpoint, DeviceMapEntry *entry) {
   return 0;
 }
 
-// Initializes device mode map
+// Initializes device mode map and returns device count
 int initDeviceMap() {
   DIR *directory;
   char mountpoint[] = MASS_PLACEHOLDER;
 
+  int deviceCount = 0;
   for (int i = 0; i < MAX_MASS_DEVICES; i++) {
     mountpoint[4] = i + '0';
     // Wait for IOP to initialize device driver
-    for (int i = 0; i < 2; i++) {
+    for (int wait = 0; wait < 2; wait++) {
       delay(2);
       directory = opendir(mountpoint);
       if (directory != NULL) {
@@ -92,6 +93,7 @@ int initDeviceMap() {
       printf("ERROR: failed to get driver for device %s\n", mountpoint);
       return -EIO;
     }
+    deviceCount++;
   }
-  return 0;
+  return deviceCount;
 }

@@ -6,6 +6,7 @@
 #define MAX_MASS_DEVICES 10
 
 #define MASS_PLACEHOLDER "massX:"
+#define MASS_PLACEHOLDER_LEN sizeof(MASS_PLACEHOLDER)/sizeof(char)
 
 // Device map entry
 typedef struct {
@@ -17,7 +18,7 @@ typedef struct {
 // Device must be ignored if mode is MODE_ALL
 extern DeviceMapEntry deviceModeMap[];
 
-// Initializes device mode map
+// Initializes device mode map and returns device count
 int initDeviceMap();
 
 #endif
