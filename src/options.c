@@ -29,10 +29,10 @@ const char BASE_CONFIG_PATH[] = "/nhddl";
 const size_t BASE_CONFIG_PATH_LEN = sizeof(BASE_CONFIG_PATH) / sizeof(char);
 
 const char globalOptionsPath[] = "/global.yaml";
-#define MAX_GLOBAL_OPTS_LEN (MAX_STORAGE_BASE_PATH_LEN + BASE_CONFIG_PATH_LEN + (sizeof(globalOptionsPath) / sizeof(char)))
+#define MAX_GLOBAL_OPTS_LEN (MASS_PLACEHOLDER_LEN + BASE_CONFIG_PATH_LEN + (sizeof(globalOptionsPath) / sizeof(char)))
 
 const char lastTitlePath[] = "/lastTitle.bin";
-#define MAX_LAST_TITLE_LEN (MAX_STORAGE_BASE_PATH_LEN + BASE_CONFIG_PATH_LEN + (sizeof(lastTitlePath) / sizeof(char)))
+#define MAX_LAST_TITLE_LEN (MASS_PLACEHOLDER_LEN + BASE_CONFIG_PATH_LEN + (sizeof(lastTitlePath) / sizeof(char)))
 
 // Writes full path to targetFileName into targetPath.
 // If targetFileName is NULL, will return path to config directory
@@ -378,7 +378,7 @@ int parseOptionsFile(ArgumentList *result, FILE *file, char deviceNumber) {
     // Copy the value and add argument to the list
     strncpy(arg->value, &lineBuffer[startIdx], valueLength);
     // Replace X in path with the actual device number if argument starts with MASS_PLACEHOLDER
-    if (!strncmp(arg->value, MASS_PLACEHOLDER, MAX_STORAGE_BASE_PATH_LEN)) {
+    if (!strncmp(arg->value, MASS_PLACEHOLDER, MASS_PLACEHOLDER_LEN)) {
       arg->value[4] = deviceNumber;
     }
     appendArgument(result, arg);

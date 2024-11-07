@@ -13,7 +13,7 @@
 #define CACHE_VERSION 2
 
 const char titleIDCacheFile[] = "/cache.bin";
-#define MAX_CACHE_PATH_LEN MAX_STORAGE_BASE_PATH_LEN + BASE_CONFIG_PATH_LEN + (sizeof(titleIDCacheFile) / sizeof(char))
+#define MAX_CACHE_PATH_LEN MASS_PLACEHOLDER_LEN + BASE_CONFIG_PATH_LEN + (sizeof(titleIDCacheFile) / sizeof(char))
 
 // Structs used to read and write cache file contents
 typedef struct {
