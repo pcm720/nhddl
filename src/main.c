@@ -234,7 +234,7 @@ int findNeutrinoELF() {
         strcpy(NEUTRINO_ELF_PATH, neutrinoMCFallbackPath);
         goto out;
       }
-      if (tryFile(neutrinoMassFallbackPath)) {
+      if (!tryFile(neutrinoMassFallbackPath)) {
         strcpy(NEUTRINO_ELF_PATH, neutrinoMassFallbackPath);
         goto out;
       }
