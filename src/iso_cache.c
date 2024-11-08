@@ -2,6 +2,7 @@
 #include "iso_cache.h"
 #include "common.h"
 #include "iso.h"
+#include "devices.h"
 #include "options.h"
 #include <malloc.h>
 #include <ps2sdkapi.h>
@@ -9,10 +10,10 @@
 #include <string.h>
 
 #define CACHE_MAGIC "NIDC"
-#define CACHE_VERSION 1
+#define CACHE_VERSION 2
 
 const char titleIDCacheFile[] = "/cache.bin";
-#define MAX_CACHE_PATH_LEN STORAGE_BASE_PATH_LEN + BASE_CONFIG_PATH_LEN + (sizeof(titleIDCacheFile) / sizeof(char))
+#define MAX_CACHE_PATH_LEN MASS_PLACEHOLDER_LEN + BASE_CONFIG_PATH_LEN + (sizeof(titleIDCacheFile) / sizeof(char))
 
 // Structs used to read and write cache file contents
 typedef struct {
@@ -26,20 +27,10 @@ typedef struct {
   int total;       // Total number of elements in cache file
 } CacheMetadata;
 
-// Saves TargetList into title ID cache
+// Saves TargetList into title ID cache on every storage device
 int storeTitleIDCache(TargetList *list) {
   if (list->total == 0) {
     return 0;
-  }
-
-  char cachePath[MAX_CACHE_PATH_LEN];
-
-  // Get path to config directory and make sure it exists
-  buildConfigFilePath(cachePath, NULL);
-  struct stat st;
-  if (stat(cachePath, &st) == -1) {
-    printf("Creating config directory: %s\n", cachePath);
-    mkdir(cachePath, 0777);
   }
 
   // Get total number of valid cache entries
@@ -56,57 +47,85 @@ int storeTitleIDCache(TargetList *list) {
     return 0;
   }
 
-  // Open cache file for writing
-  buildConfigFilePath(cachePath, titleIDCacheFile);
-  FILE *file = fopen(cachePath, "wb");
-  if (file == NULL) {
-    printf("ERROR: failed to open cache file for writing\n");
-    return -EIO;
-  }
+  // Prepare paths and header
+  char cachePath[MAX_CACHE_PATH_LEN];
+  char dirPath[MAX_CACHE_PATH_LEN];
+  buildConfigFilePath(dirPath, MASS_PLACEHOLDER, NULL);
+  buildConfigFilePath(cachePath, MASS_PLACEHOLDER, titleIDCacheFile);
 
-  int result;
-  // Write cache file header
-  CacheMetadata meta = {.magic = CACHE_MAGIC, .version = CACHE_VERSION, .total = total};
-  result = fwrite(&meta, sizeof(CacheMetadata), 1, file);
-  if (!result) {
-    printf("failed to write metadata: %d\n", errno);
-    fclose(file);
-    remove(cachePath);
-    return result;
-  }
-
-  // Write each entry
   CacheEntryHeader header;
-  curTitle = list->first;
-  while (curTitle != NULL) {
-    if (strlen(curTitle->id) < 11) {
-      // Ignore empty entries
-      curTitle = curTitle->next;
+  CacheMetadata meta = {.magic = CACHE_MAGIC, .version = CACHE_VERSION, .total = total};
+  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
+    if (deviceModeMap[i].mode  == MODE_ALL) {
+      break;
+    }
+    cachePath[4] = i + '0';
+    dirPath[4] = i + '0';
+
+    // Get path to config directory and make sure it exists
+    struct stat st;
+    if (stat(dirPath, &st) == -1) {
+      printf("Creating config directory: %s\n", dirPath);
+      if (mkdir(dirPath, 0777)) {
+        printf("ERROR: Failed to create directory\n");
+        continue;
+      }
+    }
+
+    // Open cache file for writing
+    FILE *file = fopen(cachePath, "wb");
+    if (file == NULL) {
+      printf("ERROR: Failed to open cache file for writing\n");
       continue;
     }
 
-    // Write entry header
-    memcpy(header.titleID, curTitle->id, sizeof(header.titleID));
-    header.titleID[11] = '\0';
-    header.pathLength = strlen(curTitle->fullPath) + 1;
-    result = fwrite(&header, sizeof(CacheEntryHeader), 1, file);
+    int result;
+    // Write cache file header
+    result = fwrite(&meta, sizeof(CacheMetadata), 1, file);
     if (!result) {
-      printf("%s: failed to write header: %d\n", curTitle->name, errno);
+      printf("ERROR: Failed to write metadata: %d\n", errno);
       fclose(file);
       remove(cachePath);
       return result;
     }
-    // Write full ISO path
-    result = fwrite(curTitle->fullPath, header.pathLength, 1, file);
-    if (!result) {
-      printf("%s: failed to write full path: %d\n", curTitle->name, errno);
-      fclose(file);
-      remove(cachePath);
-      return result;
+
+    // Write each entry
+    curTitle = list->first;
+    while (curTitle != NULL) {
+      if (strlen(curTitle->id) < 11) {
+        // Ignore empty entries
+        curTitle = curTitle->next;
+        continue;
+      }
+
+      int mountpointLen = 5;
+      if (curTitle->fullPath[5] == ':') {
+        mountpointLen = 6;
+      }
+
+      // Write entry header
+      memcpy(header.titleID, curTitle->id, sizeof(header.titleID));
+      header.titleID[11] = '\0';
+      header.pathLength = strlen(curTitle->fullPath) - mountpointLen + 1;
+      result = fwrite(&header, sizeof(CacheEntryHeader), 1, file);
+      if (!result) {
+        printf("ERROR: %s: Failed to write header: %d\n", curTitle->name, errno);
+        fclose(file);
+        remove(cachePath);
+        return result;
+      }
+      // Write full ISO path without the mountpoint
+      result = fwrite(curTitle->fullPath + mountpointLen, header.pathLength, 1, file);
+      if (!result) {
+        printf("ERROR: %s: Failed to write full path: %d\n", curTitle->name, errno);
+        fclose(file);
+        remove(cachePath);
+        return result;
+      }
+      curTitle = curTitle->next;
     }
-    curTitle = curTitle->next;
+    fclose(file);
   }
-  fclose(file);
   return 0;
 }
 
@@ -117,13 +136,22 @@ int loadTitleIDCache(TitleIDCache *cache) {
 
   // Open cache file for reading
   char cachePath[MAX_CACHE_PATH_LEN];
-  buildConfigFilePath(cachePath, titleIDCacheFile);
+  buildConfigFilePath(cachePath, MASS_PLACEHOLDER, titleIDCacheFile);
 
-  FILE *file = fopen(cachePath, "rb");
-  if (file == NULL) {
-    printf("ERROR: failed to open cache file\n");
-    return -ENOENT;
+  FILE *file;
+  // Load the first found cache file
+  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
+    if (deviceModeMap[i].mode  == MODE_ALL) {
+      printf("ERROR: failed to open cache file\n");
+      return -ENOENT;
+    }
+    cachePath[4] = i + '0';
+
+    file = fopen(cachePath, "rb");
+    if (file != NULL)
+      break;
   }
+
   int result;
 
   // Read cache file header
@@ -199,8 +227,14 @@ char *getCachedTitleID(char *fullPath, TitleIDCache *cache) {
   // This code takes advantage of all entries in the title list being sorted alphabetically.
   // By starting from the index of the last matched entry, we can skip comparing fullPath with entries
   // that have already been matched to a title ID, improving lookup speeds for very large lists.
+
+  int mountpointLen = 5;
+  if (fullPath[5] == ':') {
+    mountpointLen = 6;
+  }
+
   for (int i = cache->lastMatchedIdx; i < cache->total; i++) {
-    if (!strcmp(cache->entries[i].fullPath, fullPath)) {
+    if (!strcmp(cache->entries[i].fullPath, fullPath + mountpointLen)) {
       cache->lastMatchedIdx = i;
       return cache->entries[i].titleID;
     }

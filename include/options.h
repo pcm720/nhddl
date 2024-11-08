@@ -5,7 +5,7 @@
 #include <ps2sdkapi.h>
 
 
-// Location of configuration directory relative to STORAGE_BASE_PATH
+// Location of configuration directory relative to storage mountpoint
 extern const char BASE_CONFIG_PATH[];
 extern const size_t BASE_CONFIG_PATH_LEN;
 
@@ -45,17 +45,18 @@ typedef struct {
 
 // Writes full path to targetFileName into targetPath.
 // If targetFileName is NULL, will return path to config directory
-void buildConfigFilePath(char *targetPath, const char *targetFileName);
-
-// Sets last launched title path in global config
-int updateLastLaunchedTitle(char *titlePath);
+void buildConfigFilePath(char *targetPath, const char *targetMountpoint, const char *targetFileName);
 
 // Gets last launched title path into titlePath
+// Searches for the latest file across all mounted BDM devices
 int getLastLaunchedTitle(char *titlePath);
 
-// Generates ArgumentList from global config file.
+// Writes last launched title path into lastTitle file on title mountpoint
+int updateLastLaunchedTitle(char *titlePath);
+
+// Generates ArgumentList from global config file located at targetMounpoint (usually ISO full path)
 // Will reinitialize result without clearing existing contents. On error, result will contain invalid pointer.
-int getGlobalLaunchArguments(ArgumentList *result);
+int getGlobalLaunchArguments(ArgumentList *result, const char *targetMountpoint);
 
 // Generates ArgumentList from title-specific config file.
 // Will reinitialize result without clearing existing contents. On error, result will contain invalid pointer.

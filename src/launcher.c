@@ -1,4 +1,5 @@
 #include "common.h"
+#include "devices.h"
 #include "history.h"
 #include "iso.h"
 #include "options.h"
@@ -66,7 +67,8 @@ int assembleArgv(ArgumentList *arguments, char *argv[]) {
 void launchTitle(Target *target, ArgumentList *arguments) {
   // Append arguments
   char *bsdValue;
-  switch (LAUNCHER_OPTIONS.mode) {
+  // Map target device index to Neutrino bsd argument
+  switch (target->deviceType) {
   case MODE_ATA:
     bsdValue = BSD_ATA;
     break;
@@ -86,18 +88,21 @@ void launchTitle(Target *target, ArgumentList *arguments) {
     printf("ERROR: Unsupported mode\n");
     return;
   }
-  appendArgument(arguments, newArgument(bsdArgument, bsdValue));
-  appendArgument(arguments, newArgument(isoArgument, target->fullPath));
-
-  // Assemble argv
-  char **argv = malloc(((arguments->total) + 1) * sizeof(char *));
-  int argCount = assembleArgv(arguments, argv);
 
   printf("Updating history file and last launched title\n");
   if (updateLastLaunchedTitle(target->fullPath)) {
     printf("ERROR: Failed to update last launched title\n");
   }
   updateHistoryFile(target->id);
+
+  // Change device path to mass<device index>: since mass%d: path will not be preserved after Neutrino resets the IOP
+  target->fullPath[4] = deviceModeMap[target->fullPath[4] - '0'].index + '0';
+  appendArgument(arguments, newArgument(bsdArgument, bsdValue));
+  appendArgument(arguments, newArgument(isoArgument, target->fullPath));
+
+  // Assemble argv
+  char **argv = malloc(((arguments->total) + 1) * sizeof(char *));
+  int argCount = assembleArgv(arguments, argv);
 
   printf("Launching %s (%s) with arguments:\n", target->name, target->id);
   for (int i = 0; i < argCount; i++) {

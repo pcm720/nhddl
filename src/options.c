@@ -1,17 +1,20 @@
 #include "options.h"
 #include "common.h"
+#include "devices.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <libcdvd.h>
 #include <ps2sdkapi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-int parseOptionsFile(ArgumentList *result, FILE *file);
+int parseOptionsFile(ArgumentList *result, FILE *file, char deviceNumber);
 int loadArgumentList(ArgumentList *options, char *filePath);
 void appendArgument(ArgumentList *target, Argument *arg);
 Argument *newArgument(char *argName, char *value);
+uint32_t getTimestamp();
 
 // Defines all known compatibility modes
 const CompatiblityModeMap COMPAT_MODE_MAP[CM_NUM_MODES] = {
@@ -26,16 +29,22 @@ const char BASE_CONFIG_PATH[] = "/nhddl";
 const size_t BASE_CONFIG_PATH_LEN = sizeof(BASE_CONFIG_PATH) / sizeof(char);
 
 const char globalOptionsPath[] = "/global.yaml";
-#define MAX_GLOBAL_OPTS_LEN (STORAGE_BASE_PATH_LEN + BASE_CONFIG_PATH_LEN + (sizeof(globalOptionsPath) / sizeof(char)))
+#define MAX_GLOBAL_OPTS_LEN (MASS_PLACEHOLDER_LEN + BASE_CONFIG_PATH_LEN + (sizeof(globalOptionsPath) / sizeof(char)))
 
-const char lastTitlePath[] = "/lastTitle.txt";
-#define MAX_LAST_TITLE_LEN (STORAGE_BASE_PATH_LEN + BASE_CONFIG_PATH_LEN + (sizeof(lastTitlePath) / sizeof(char)))
+const char lastTitlePath[] = "/lastTitle.bin";
+#define MAX_LAST_TITLE_LEN (MASS_PLACEHOLDER_LEN + BASE_CONFIG_PATH_LEN + (sizeof(lastTitlePath) / sizeof(char)))
 
 // Writes full path to targetFileName into targetPath.
 // If targetFileName is NULL, will return path to config directory
-void buildConfigFilePath(char *targetPath, const char *targetFileName) {
-  targetPath[0] = '\0';
-  strcat(targetPath, STORAGE_BASE_PATH);
+void buildConfigFilePath(char *targetPath, const char *targetMountpoint, const char *targetFileName) {
+  if (targetMountpoint[4] == ':') {
+    strncpy(targetPath, targetMountpoint, 5);
+    targetPath[5] = '\0';
+  } else { // Handle numbered devices
+    strncpy(targetPath, targetMountpoint, 6);
+    targetPath[6] = '\0';
+  }
+
   strcat(targetPath, BASE_CONFIG_PATH); // Append base config path
   if (targetFileName != NULL) {
     // Append / to path if targetFileName doesn't have it already
@@ -47,40 +56,62 @@ void buildConfigFilePath(char *targetPath, const char *targetFileName) {
 }
 
 // Gets last launched title path into titlePath
+// Searches for the latest file across all mounted BDM devices
 int getLastLaunchedTitle(char *titlePath) {
   printf("Reading last launched title\n");
   char targetPath[MAX_LAST_TITLE_LEN];
   targetPath[0] = '\0';
-  buildConfigFilePath(targetPath, lastTitlePath);
+  buildConfigFilePath(targetPath, MASS_PLACEHOLDER, lastTitlePath);
 
-  // Open last launched title file and read it
-  int fd = open(targetPath, O_RDONLY);
-  if (fd < 0) {
-    printf("WARN: Failed to open last launched title file: %d\n", fd);
-    return -ENOENT;
-  }
+  uint32_t max_timestamp = 0;
+  uint32_t timestamp = 0;
+  size_t fsize = 0;
+  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
+    if (deviceModeMap[i].mode == MODE_ALL) {
+      break;
+    }
+    targetPath[4] = i + '0';
 
-  // Determine file size
-  struct stat st;
-  if (fstat(fd, &st)) {
+    // Open last launched title file and read it
+    int fd = open(targetPath, O_RDONLY);
+    if (fd < 0) {
+      printf("WARN: Failed to open last launched title file on device %d: %d\n", i, fd);
+      continue;
+    }
+
+    // Read file timestamp (first 4 bytes)
+    if (read(fd, &timestamp, sizeof(timestamp)) != sizeof(timestamp)) {
+      printf("WARN: Failed to read last launched title file on device %d\n", i);
+      close(fd);
+      continue;
+    }
+    // Read the rest of the file only if it's newer
+    if (timestamp < max_timestamp) {
+      close(fd);
+      continue;
+    }
+    max_timestamp = timestamp;
+
+    // Get title path size
+    fsize = lseek(fd, 0, SEEK_END) - sizeof(timestamp);
+    lseek(fd, sizeof(timestamp), SEEK_SET);
+    // Read file contents into titlePath
+    if (read(fd, titlePath, fsize) <= 0) {
+      close(fd);
+      printf("WARN: Failed to read last launched title\n");
+      continue;
+    }
     close(fd);
-    return -EIO;
+    return 0;
   }
-  // Read file contents into titlePath
-  if (read(fd, titlePath, st.st_size) < 0) {
-    close(fd);
-    printf("WARN: Failed to read last launched title\n");
-    return -EIO;
-  }
-  close(fd);
   return 0;
 }
 
-// Writes last launched title path into lastTitle file
+// Writes last launched title path into lastTitle file on title mountpoint
 int updateLastLaunchedTitle(char *titlePath) {
   printf("Writing last launched title as %s\n", titlePath);
   char targetPath[MAX_LAST_TITLE_LEN];
-  buildConfigFilePath(targetPath, NULL);
+  buildConfigFilePath(targetPath, titlePath, NULL);
 
   // Make sure config directory exists
   struct stat st;
@@ -98,8 +129,23 @@ int updateLastLaunchedTitle(char *titlePath) {
     printf("ERROR: Failed to open last launched title file: %d\n", fd);
     return -ENOENT;
   }
-  size_t writeLen = strlen(titlePath) + 1;
-  if (write(fd, titlePath, writeLen) != writeLen) {
+
+  // Write timestamp
+  uint32_t timestamp = getTimestamp();
+  if (write(fd, &timestamp, sizeof(timestamp)) != sizeof(timestamp)) {
+    printf("ERROR: Failed to write last launched title timestamp\n");
+    close(fd);
+    return -EIO;
+  }
+
+  // Write path without the mountpoint
+  int mountpointLen = 5;
+  if (titlePath[5] == ':') {
+    mountpointLen = 6;
+  }
+
+  size_t writeLen = strlen(titlePath) + 1 - mountpointLen;
+  if (write(fd, titlePath + mountpointLen, writeLen) != writeLen) {
     printf("ERROR: Failed to write last launched title\n");
     close(fd);
     return -EIO;
@@ -108,10 +154,10 @@ int updateLastLaunchedTitle(char *titlePath) {
   return 0;
 }
 
-// Generates ArgumentList from global config file
-int getGlobalLaunchArguments(ArgumentList *result) {
+// Generates ArgumentList from global config file located at targetMounpoint (usually ISO full path)
+int getGlobalLaunchArguments(ArgumentList *result, const char *targetMountpoint) {
   char targetPath[MAX_GLOBAL_OPTS_LEN];
-  buildConfigFilePath(targetPath, globalOptionsPath);
+  buildConfigFilePath(targetPath, targetMountpoint, globalOptionsPath);
   int ret = loadArgumentList(result, targetPath);
 
   Argument *curArg = result->first;
@@ -126,7 +172,7 @@ int getGlobalLaunchArguments(ArgumentList *result) {
 int getTitleLaunchArguments(ArgumentList *result, Target *target) {
   printf("Looking for title-specific config for %s (%s)\n", target->name, target->id);
   char targetPath[PATH_MAX + 1];
-  buildConfigFilePath(targetPath, NULL);
+  buildConfigFilePath(targetPath, target->fullPath, NULL);
   // Determine actual title options file from config directory contents
   DIR *directory = opendir(targetPath);
   if (directory == NULL) {
@@ -141,7 +187,7 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
     if (entry->d_type != DT_DIR) {
       // Find file that starts with ISO name (without the extension)
       if (!strncmp(entry->d_name, target->name, strlen(target->name))) {
-        buildConfigFilePath(targetPath, entry->d_name);
+        buildConfigFilePath(targetPath, target->fullPath, entry->d_name);
         break;
       }
     }
@@ -169,7 +215,7 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
 int updateTitleLaunchArguments(Target *target, ArgumentList *options) {
   // Build file path
   char lineBuffer[PATH_MAX + 1];
-  buildConfigFilePath(lineBuffer, target->name);
+  buildConfigFilePath(lineBuffer, target->fullPath, target->name);
   strcat(lineBuffer, ".yaml");
   printf("Saving title-specific config to %s\n", lineBuffer);
 
@@ -221,8 +267,11 @@ int loadArgumentList(ArgumentList *options, char *filePath) {
   options->first = NULL;
   options->last = NULL;
 
+  // Get driver device number (will be used by Neutrino)
+  char deviceNumber = deviceModeMap[filePath[4] - '0'].index + '0';
+
   // Parse options file
-  if (parseOptionsFile(options, file)) {
+  if (parseOptionsFile(options, file, deviceNumber)) {
     fclose(file);
     freeArgumentList(options);
     return -EIO;
@@ -233,7 +282,8 @@ int loadArgumentList(ArgumentList *options, char *filePath) {
 }
 
 // Parses file into ArgumentList. Result may contain parsed arguments even if an error is returned.
-int parseOptionsFile(ArgumentList *result, FILE *file) {
+// Replaces 'X' in argument values that start with MASS_PLACEHOLDER with the deviceNumber
+int parseOptionsFile(ArgumentList *result, FILE *file, char deviceNumber) {
   // Our lines will mostly consist of file paths, which aren't likely to exceed 300 characters due to 255 character limit in exFAT path component
   char lineBuffer[PATH_MAX + 1];
   lineBuffer[0] = '\0';
@@ -241,6 +291,7 @@ int parseOptionsFile(ArgumentList *result, FILE *file) {
   int substrIdx;
   int argEndIdx;
   int isDisabled = 0;
+
   while (fgets(lineBuffer, PATH_MAX, file)) { // fgets reutrns NULL if EOF or an error occurs
     startIdx = 0;
     isDisabled = 0;
@@ -326,6 +377,10 @@ int parseOptionsFile(ArgumentList *result, FILE *file) {
 
     // Copy the value and add argument to the list
     strncpy(arg->value, &lineBuffer[startIdx], valueLength);
+    // Replace X in path with the actual device number if argument starts with MASS_PLACEHOLDER
+    if (!strncmp(arg->value, MASS_PLACEHOLDER, MASS_PLACEHOLDER_LEN)) {
+      arg->value[4] = deviceNumber;
+    }
     appendArgument(result, arg);
 
   next:
@@ -518,7 +573,7 @@ ArgumentList *loadLaunchArgumentLists(Target *target) {
   int res = 0;
   // Initialize global argument list
   ArgumentList *globalArguments = calloc(sizeof(ArgumentList), 1);
-  if ((res = getGlobalLaunchArguments(globalArguments))) {
+  if ((res = getGlobalLaunchArguments(globalArguments, target->fullPath))) {
     printf("WARN: Failed to load global launch arguments: %d\n", res);
   }
   // Initialize title list and merge global into it
@@ -536,4 +591,28 @@ ArgumentList *loadLaunchArgumentLists(Target *target) {
   // If there are no title arguments, use global arguments directly
   free(titleArguments);
   return globalArguments;
+}
+
+// Generates 32-bit timestamp from RTC.
+// Will wrap around every 64th year
+uint32_t getTimestamp() {
+  // Initialize libcdvd to get timestamp
+  if (sceCdInit(SCECdINoD)) {
+    // Read clock
+    sceCdCLOCK time;
+    sceCdReadClock(&time);
+    sceCdInit(SCECdEXIT);
+
+    // Pack date into 32-bit timestamp
+    // Y   26 M 22 D  17 H  12 M    6 S    0
+    // 111111 1111 11111 11111 111111 111111
+    uint32_t sum = ((uint32_t)btoi(time.year)) << 26 |        // Year
+                   ((uint32_t)btoi(time.month) & 0xF) << 22 | // Month
+                   ((uint32_t)btoi(time.day)) << 17 |         // Day
+                   ((uint32_t)btoi(time.hour)) << 12 |        // Hour
+                   ((uint32_t)btoi(time.minute)) << 6 |       // Minute
+                   (btoi(time.second) & 0x3F);                // Second
+    return sum;
+  }
+  return 0;
 }

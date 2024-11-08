@@ -1,3 +1,4 @@
+#include "common.h"
 #include <debug.h>
 #include <stdio.h>
 
@@ -10,4 +11,22 @@ void logString(const char *str, ...) {
   scr_vprintf(str, args);
 
   va_end(args);
+}
+
+// Maps ModeType to string
+char *modeToString(ModeType mode) {
+  switch (mode) {
+  case MODE_ATA:
+    return "ATA";
+  case MODE_MX4SIO:
+    return "MX4SIO";
+  case MODE_UDPBD:
+    return "UDPBD";
+  case MODE_USB:
+    return "USB";
+  case MODE_ILINK:
+    return "iLink";
+  default:
+    return "Unknown";
+  }
 }

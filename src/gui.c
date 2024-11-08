@@ -33,7 +33,7 @@ static GSTEXTURE *coverTexture;
 static int maxTitlesPerPage = MAX_TITLES_PER_PAGE_NTSC;
 static char lineBuffer[255];
 
-// Path relative to STORAGE_BASE_PATH.
+// Path relative to storage device mountpoint.
 // Used to load cover art
 static const char artPath[] = "/ART";
 
@@ -103,14 +103,24 @@ int uiInit() {
 }
 
 // Invalidates currently loaded texture and loads a new one
-int loadCoverArt(char *titleID) {
+int loadCoverArt(char *titlePath, char *titleID) {
   gsKit_vram_clear(gsGlobal);
 
   // Texture is loaded immediately by gsKit_texture_{jpeg,png} since Delayed is not set,
   // so there is no need to use gsKit_TexManager calls.
 
   // Reuse line buffer for building texture path
-  snprintf(lineBuffer, 255, "%s%s/%s_COV.png", STORAGE_BASE_PATH, artPath, titleID);
+  // Get device mountpoint into the buffer
+  int pathSize = 5;
+  if (titlePath[4] == ':') {
+    strncpy(lineBuffer, titlePath, 5);
+  } else { // Handle numbered devices
+    strncpy(lineBuffer, titlePath, 6);
+    pathSize = 6;
+  }
+
+  // Append cover art path to the mountpoint
+  snprintf(lineBuffer + pathSize, 255 - pathSize, "%s/%s_COV.png", artPath, titleID);
   return gsKit_texture_png(gsGlobal, coverTexture, lineBuffer);
 }
 
@@ -139,8 +149,15 @@ int uiLoop(TargetList *titles) {
   // Get last launched title and find it in the target list
   char *lastTitle = calloc(sizeof(char), PATH_MAX + 1);
   if (!getLastLaunchedTitle(lastTitle)) {
+    int mountpointLen;
     while (curTarget != NULL) {
-      if (!strcmp(lastTitle, curTarget->fullPath)) {
+      // Compare paths without the mountpoint
+      mountpointLen = 5;
+      if (curTarget->fullPath[5] == ':') {
+        mountpointLen = 6;
+      }
+
+      if (!strcmp(lastTitle, &curTarget->fullPath[mountpointLen])) {
         selectedTitleIdx = curTarget->idx;
         break;
       }
@@ -154,7 +171,7 @@ int uiLoop(TargetList *titles) {
   free(lastTitle);
 
   // Load cover art
-  isCoverUninitialized = loadCoverArt(curTarget->id);
+  isCoverUninitialized = loadCoverArt(curTarget->fullPath, curTarget->id);
 
   // Main UI loop
   while (1) {
@@ -163,7 +180,7 @@ int uiLoop(TargetList *titles) {
     // Reload target if index has changed
     if (curTarget->idx != selectedTitleIdx) {
       curTarget = getTargetByIdx(titles, selectedTitleIdx);
-      isCoverUninitialized = loadCoverArt(curTarget->id);
+      isCoverUninitialized = loadCoverArt(curTarget->fullPath, curTarget->id);
     }
 
     // Draw title list
@@ -182,7 +199,8 @@ int uiLoop(TargetList *titles) {
       Target *target = copyTarget(curTarget);
       freeTargetList(titles);
       uiLaunchTitle(target, NULL);
-      goto exit;
+      // Something went wrong, main loop must exit immediately
+      return -1;
     } else if (input & PAD_UP) {
       // Point to the previous title
       if (selectedTitleIdx > 0)
@@ -205,7 +223,7 @@ int uiLoop(TargetList *titles) {
       // Enter title options screen
       if ((res = uiTitleOptionsLoop(curTarget))) {
         // Something went wrong, main loop must exit immediately
-        goto exit;
+        return -1;
       }
     } else if (input & PAD_START) {
       // Quit
@@ -340,8 +358,11 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, GSTEXTURE *selected
 
     // Draw title ID for selected title
     if (selectedTitleIdx == curTitle->idx) {
-      // Draw title ID
-      gsKit_fontm_print_scaled(gsGlobal, gsFontM, coverArtX1, coverArtY2 + 5, 0, 0.7f, WhiteFont, curTitle->id);
+      snprintf(lineBuffer, 255, "%s\n%s", curTitle->id, modeToString(curTitle->deviceType));
+      // Draw title ID and device type
+      gsFontM->Align = GSKIT_FALIGN_CENTER;
+      gsKit_fontm_print_scaled(gsGlobal, gsFontM, (coverArtX1 + (COVER_ART_RES_W / 2 - 4)), coverArtY2 + 5, 0, 0.7f, WhiteFont, lineBuffer);
+      gsFontM->Align = GSKIT_FALIGN_LEFT;
     }
 
     // Draw title name
