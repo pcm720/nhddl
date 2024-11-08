@@ -39,6 +39,8 @@ static char neutrinoMassFallbackPath[] = "massX:/neutrino/neutrino.elf";
 void initOptions(char *basePath);
 // Attempts to find neutrino.elf at current path or one of fallback paths
 int findNeutrinoELF();
+// Tries to load IPCONFIG.DAT from memory card
+void parseIPConfig();
 
 int main(int argc, char *argv[]) {
   // Initialize the screen
@@ -50,11 +52,6 @@ int main(int argc, char *argv[]) {
 
   if (!getcwd(ELF_BASE_PATH, PATH_MAX + 1)) {
     logString("ERROR: Failed to get cwd\n");
-    goto fail;
-  }
-
-  if (strncmp("mc", ELF_BASE_PATH, 2) && strncmp("host", ELF_BASE_PATH, 4)) {
-    logString("ERROR: NHDDL can only be run from the memory card");
     goto fail;
   }
 
@@ -72,6 +69,13 @@ int main(int argc, char *argv[]) {
   if ((res = init_modules(ELF_BASE_PATH)) != 0) {
     logString("ERROR: Failed to initialize modules: %d\n", res);
     goto fail;
+  }
+
+  // If udpbd_ip was not set, try to get IP from IPCONFIG.DAT
+  // Since MC might not be loaded before init_modules(),
+  // parseIPConfig must be placed after all modules are loaded.
+  if (!strlen(LAUNCHER_OPTIONS.udpbdIp)) {
+    parseIPConfig(&LAUNCHER_OPTIONS);
   }
 
   logString("Initializing BDM devices...\n");
@@ -132,8 +136,8 @@ ModeType parseMode(const char *modeStr) {
   return MODE_ALL;
 }
 
-// Tries to read SYS-CONF/IPCONFIG.DAT from basePath
-void parseIPConfig(LauncherOptions *opts) {
+// Tries to read SYS-CONF/IPCONFIG.DAT from memory card
+void parseIPConfig() {
   int ipconfigFd, count;
   char ipAddr[16]; // IP address will not be longer than 15 characters
   for (char i = '0'; i < '2'; i++) {
@@ -148,7 +152,7 @@ void parseIPConfig(LauncherOptions *opts) {
   }
 
   if ((ipconfigFd < 0) || (count < sizeof(ipAddr) - 1)) {
-    if (opts->mode == MODE_UDPBD)
+    if (LAUNCHER_OPTIONS.mode == MODE_UDPBD)
       logString("WARN: Failed to get IP address from IPCONFIG.DAT\n");
     return;
   }
@@ -160,7 +164,7 @@ void parseIPConfig(LauncherOptions *opts) {
     count++;
   }
 
-  strlcpy(opts->udpbdIp, ipAddr, count + 1);
+  strlcpy(LAUNCHER_OPTIONS.udpbdIp, ipAddr, count + 1);
   return;
 }
 
@@ -178,6 +182,7 @@ void initOptions(char *basePath) {
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, lineBuffer)) {
     logString("Can't load options file, will use defaults\n");
+    parseIPConfig(&LAUNCHER_OPTIONS); // Get IP from IPCONFIG.DAT
     freeArgumentList(options);
     return;
   }
@@ -197,11 +202,6 @@ void initOptions(char *basePath) {
     arg = arg->next;
   }
   freeArgumentList(options);
-
-  // If udpbd_ip was not set, try to get IP from IPCONFIG.DAT
-  if (!strlen(LAUNCHER_OPTIONS.udpbdIp)) {
-    parseIPConfig(&LAUNCHER_OPTIONS);
-  }
 }
 
 // Tests if file exists by opening it
