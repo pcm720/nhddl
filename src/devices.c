@@ -72,10 +72,16 @@ int initDeviceMap() {
   char mountpoint[] = MASS_PLACEHOLDER;
 
   int deviceCount = 0;
+  int delayAttempts = 2;
+  if ((LAUNCHER_OPTIONS.mode == MODE_ALL) || (LAUNCHER_OPTIONS.mode == MODE_UDPBD)) {
+    // UDPBD needs considerably more time to init
+    delayAttempts = 10;
+  }
   for (int i = 0; i < MAX_MASS_DEVICES; i++) {
     mountpoint[4] = i + '0';
+
     // Wait for IOP to initialize device driver
-    for (int wait = 0; wait < 2; wait++) {
+    for (int attempts = 0; attempts < delayAttempts; attempts++) {
       delay(2);
       directory = opendir(mountpoint);
       if (directory != NULL) {
