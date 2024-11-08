@@ -1,6 +1,6 @@
 # NHDDL — a PS2 exFAT BDM launcher for Neutrino
 
-NHDDL is a memory card-based launcher that scans _FAT/exFAT-formatted_ BDM devices for ISO files,
+NHDDL is a Neutrino launcher that scans _FAT/exFAT-formatted_ BDM devices for ISO files,
 lists them and boots selected ISO via Neutrino.  
 
 It displays visual Game ID to trigger per-game settings on the Pixel FX line of products and writes to memory card history file before launching the title, triggering per-title memory cards on SD2PSX and MemCard PRO 2.
@@ -17,10 +17,13 @@ GSM, PADEMU, IGR, IGS and other stuff is out-of-scope of this launcher.
 - Copy `nhddl.elf` to Neutrino folder next to `neutrino.elf`
 - _Additional step if you need only ATA, USB, MX4SIO, UDPBD or iLink_:  
   Modify `nhddl.yaml` [accordingly](#common-use-cases) and copy it next to `nhddl.elf`
-- Copy Neutrino folder to your PS2 memory card.  
-  Any folder (e.g. `APPS`) will do, it doesn't have to be in the root of your memory card.
+- Copy Neutrino folder to your PS2 memory card or your USB device.  
+  Any folder (e.g. `APPS`) will do, it doesn't have to be in the root of your device.
 
 Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest version.
+
+If you're getting `Failed to prepare external modules` error while trying to run NHDDL from the USB drive, make sure your ELF launcher initializes
+USB modules and doesn't reset the IOP before loading NHDDL.
 
 ### Supported BDM devices
 
