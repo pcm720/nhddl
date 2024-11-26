@@ -40,13 +40,11 @@ static struct dirTOCEntry *getTOCEntry(int fd, uint32_t tocLBA, int tocLength);
 
 // Loads SYSTEM.CNF from ISO and extracts title ID
 char *getTitleID(char *path) {
-  char *titleID = calloc(sizeof(char), 12);
-
   // Open ISO
   int fd = open(path, O_RDONLY);
   if (fd < 0) {
     logString("%s:\nERROR: Failed to open file: %d\n", fd, path);
-    return titleID;
+    return NULL;
   }
 
   // Get location of root directory entry
@@ -55,7 +53,7 @@ char *getTitleID(char *path) {
   if (getPVD(fd, &rootLBA, &rootLength) != 0) {
     logString("%s:\nERROR: Failed to parse ISO PVD\n", path);
     close(fd);
-    return titleID;
+    return NULL;
   }
 
   // Get SYSTEM.CNF entry
@@ -63,32 +61,43 @@ char *getTitleID(char *path) {
   if (tocEntry == NULL) {
     logString("%s:\nERROR: Failed to find SYSTEM.CNF\n", path);
     close(fd);
-    return titleID;
+    return NULL;
   }
 
   // Seek to SYSTEM.CNF location and read file contents
   longLseek(fd, tocEntry->fileLBA);
-  char *system_cnf_data = malloc(tocEntry->length);
-  if (read(fd, system_cnf_data, tocEntry->length) != tocEntry->length) {
+  char *systemCNF = malloc(tocEntry->length);
+  if (read(fd, systemCNF, tocEntry->length) != tocEntry->length) {
     logString("%s:\nERROR: Failed to read SYSTEM.CNF\n", path);
-    free(system_cnf_data);
+    free(systemCNF);
     close(fd);
-    return titleID;
+    return NULL;
   }
 
+  char *boot2Arg = strstr(systemCNF, "BOOT2");
+  if (boot2Arg == NULL) {
+    logString("%s:\nERROR: BOOT2 not found in SYSTEM.CNF\n", path);
+    free(systemCNF);
+    close(fd);
+    return NULL;
+  }
+
+  char *titleID = calloc(sizeof(char), 12);
   // Locate and set ELF file name
-  char *selfFile = strstr(system_cnf_data, "cdrom0:");
-  char *fname_end = strstr(system_cnf_data, ";");
-  if (selfFile == NULL || fname_end == NULL) {
+  char *selfFile = strstr(boot2Arg, "cdrom0:");
+  char *argEnd = strstr(boot2Arg, ";");
+  if (selfFile == NULL || argEnd == NULL) {
     logString("%s:\nERROR: File name not found in SYSTEM.CNF\n", path);
+    free(titleID);
+    titleID = NULL;
   } else {
     // Extract title ID
-    fname_end[1] = '1';
-    fname_end[2] = '\0';
+    argEnd[1] = '1';
+    argEnd[2] = '\0';
     memcpy(titleID, &selfFile[8], 11);
   }
 
-  free(system_cnf_data);
+  free(systemCNF);
   close(fd);
   return titleID;
 }

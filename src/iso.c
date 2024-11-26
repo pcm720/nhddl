@@ -52,6 +52,16 @@ TargetList *findISO() {
     closedir(directory);
   }
   processTitleID(result);
+
+  // Set indexes for each title
+  int idx = 0;
+  Target *curTitle = result->first;
+  while (curTitle != NULL) {
+    curTitle->idx = idx;
+    idx++;
+    curTitle = curTitle->next;
+  }
+
   return result;
 }
 
@@ -130,15 +140,6 @@ int _findISO(DIR *directory, TargetList *result) {
         titlePath[cwdLen] = '\0'; // reset titlePath by ending string on base path
       }
     }
-  }
-
-  // Set indexes for each title
-  int idx = 0;
-  Target *curTitle = result->first;
-  while (curTitle != NULL) {
-    curTitle->idx = idx;
-    idx++;
-    curTitle = curTitle->next;
   }
 
   return 0;
@@ -238,6 +239,11 @@ void processTitleID(TargetList *result) {
       cacheMisses++;
       printf("Cache miss for %s\n", curTarget->fullPath);
       curTarget->id = getTitleID(curTarget->fullPath);
+      if (curTarget->id == NULL) {
+        printf("WARN: Removing '%s' from target list\n", curTarget->name);
+        curTarget = freeTarget(curTarget);
+        result->total -= 1;
+      }
     }
 
     curTarget = curTarget->next;
@@ -260,6 +266,10 @@ Target *freeTarget(Target *target) {
   free(target->id);
   if (target->prev != NULL) {
     prev = target->prev;
+  }
+  if (target->next != NULL) {
+    prev->next = target->next;
+    target->next->prev = prev;
   }
   free(target);
   return prev;
