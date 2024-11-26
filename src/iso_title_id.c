@@ -43,7 +43,7 @@ char *getTitleID(char *path) {
   // Open ISO
   int fd = open(path, O_RDONLY);
   if (fd < 0) {
-    logString("%s:\nERROR: Failed to open file: %d\n", fd, path);
+    logString("%s:\nERROR: Failed to open file: %d\n", path, fd);
     return NULL;
   }
 
