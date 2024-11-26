@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 // Macros for loading embedded IOP modules
 #define IRX_DEFINE(mod)                                                                                                                              \
@@ -34,8 +35,8 @@ IRX_DEFINE(freepad);
 typedef struct ExternalModule {
   char *name;         // Module name (without the path and IRX extension)
   unsigned char *irx; // Pointer to IRX module
-  u32 size;           // IRX size
-  u32 argLength;      // Argument string length
+  uint32_t size;      // IRX size
+  uint32_t argLength; // Argument string length
   char *argStr;       // Argument string
   ModeType mode;      // Used to ignore modules not required for target mode
 
@@ -88,7 +89,7 @@ const ExternalModuleEntry external_modules[] = {
 };
 
 // Initializes IOP modules
-int init_modules(char *basePath) {
+int initModules(char *basePath) {
   // Load optional modules into EE memory before resetting IOP
   ExternalModule *modules = buildExternalModuleList(basePath);
   if (modules == NULL) {
