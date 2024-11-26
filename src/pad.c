@@ -1,16 +1,15 @@
+#include "pad.h"
 #include <kernel.h>
 #include <libpad.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <tamtypes.h>
-
-#include "pad.h"
 
 static unsigned char padArea[2][256] ALIGNED(64);
 static unsigned int old_pad[2] = {0, 0};
 
 // Initializes gamepad input driver
-void gpadInit() {
+void initPad() {
   padInit(0);
   padPortOpen(0, 0, padArea[0]);
   padPortOpen(1, 0, padArea[1]);
@@ -20,7 +19,7 @@ void gpadInit() {
 }
 
 // Closes gamepad gamepad input driver
-void gpadClose() {
+void closePad() {
   padPortClose(0, 0);
   padPortClose(1, 0);
   padEnd();
@@ -28,7 +27,7 @@ void gpadClose() {
 
 int readPadStatus(int port, int slot) {
   struct padButtonStatus buttons;
-  u32 new_pad, paddata;
+  uint32_t new_pad, paddata;
 
   new_pad = 0;
   if (padRead(port, slot, &buttons) != 0) {

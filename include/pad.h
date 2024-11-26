@@ -2,10 +2,10 @@
 #define _PAD_H_
 
 // Initializes gamepad input driver
-void gpadInit();
+void initPad();
 
 // Closes gamepad gamepad input driver
-void gpadClose();
+void closePad();
 
 // Blocks until a button is pressed on any of the two gamepads.
 // To capture press of any button, pass -1.
