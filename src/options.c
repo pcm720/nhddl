@@ -379,7 +379,7 @@ int parseOptionsFile(ArgumentList *result, FILE *file, char deviceNumber) {
     // Copy the value and add argument to the list
     strncpy(arg->value, &lineBuffer[startIdx], valueLength);
     // Replace X in path with the actual device number if argument starts with MASS_PLACEHOLDER
-    if (!strncmp(arg->value, MASS_PLACEHOLDER, MASS_PLACEHOLDER_LEN)) {
+    if (!strncmp(arg->value, MASS_PLACEHOLDER, MASS_PLACEHOLDER_LEN-1)) {
       arg->value[4] = deviceNumber;
     }
     appendArgument(result, arg);
