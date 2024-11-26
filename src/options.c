@@ -23,6 +23,7 @@ const CompatiblityModeMap COMPAT_MODE_MAP[CM_NUM_MODES] = {
     {CM_IOP_SYNC_READS, '2', "IOP: Sync reads"},
     {CM_EE_UNHOOK_SYSCALLS, '3', "EE : Unhook syscalls"},
     {CM_IOP_EMULATE_DVD_DL, '5', "IOP: Emulate DVD-DL"},
+    {CM_IOP_FIX_BUFFER_OVERRUN, '7', "IOP: Fix game buffer overrun"},
 };
 
 const char BASE_CONFIG_PATH[] = "/nhddl";
