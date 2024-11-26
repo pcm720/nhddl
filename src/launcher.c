@@ -5,12 +5,14 @@
 #include "options.h"
 #include <kernel.h>
 #include <sifrpc.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 // Loader ELF variables
-extern u8 loader_elf[];
+extern uint8_t loader_elf[];
 extern int size_loader_elf;
 // Arguments
 static char isoArgument[] = "dvd";
@@ -117,31 +119,31 @@ void launchTitle(Target *target, ArgumentList *arguments) {
 //
 
 typedef struct {
-  u8 ident[16]; // struct definition for ELF object header
-  u16 type;
-  u16 machine;
-  u32 version;
-  u32 entry;
-  u32 phoff;
-  u32 shoff;
-  u32 flags;
-  u16 ehsize;
-  u16 phentsize;
-  u16 phnum;
-  u16 shentsize;
-  u16 shnum;
-  u16 shstrndx;
+  uint8_t ident[16]; // struct definition for ELF object header
+  uint16_t type;
+  uint16_t machine;
+  uint32_t version;
+  uint32_t entry;
+  uint32_t phoff;
+  uint32_t shoff;
+  uint32_t flags;
+  uint16_t ehsize;
+  uint16_t phentsize;
+  uint16_t phnum;
+  uint16_t shentsize;
+  uint16_t shnum;
+  uint16_t shstrndx;
 } elf_header_t;
 
 typedef struct {
-  u32 type; // struct definition for ELF program section header
-  u32 offset;
+  uint32_t type; // struct definition for ELF program section header
+  uint32_t offset;
   void *vaddr;
-  u32 paddr;
-  u32 filesz;
-  u32 memsz;
-  u32 flags;
-  u32 align;
+  uint32_t paddr;
+  uint32_t filesz;
+  uint32_t memsz;
+  uint32_t flags;
+  uint32_t align;
 } elf_pheader_t;
 
 // ELF-loading stuff
@@ -149,7 +151,7 @@ typedef struct {
 #define ELF_PT_LOAD 1
 
 int LoadELFFromFile(int argc, char *argv[]) {
-  u8 *boot_elf;
+  uint8_t *boot_elf;
   elf_header_t *eh;
   elf_pheader_t *eph;
   void *pdata;
@@ -164,9 +166,9 @@ int LoadELFFromFile(int argc, char *argv[]) {
   }
 
   /* NB: LOADER.ELF is embedded  */
-  boot_elf = (u8 *)loader_elf;
+  boot_elf = (uint8_t *)loader_elf;
   eh = (elf_header_t *)boot_elf;
-  if (_lw((u32)&eh->ident) != ELF_MAGIC)
+  if (_lw((uint32_t)&eh->ident) != ELF_MAGIC)
     __builtin_trap();
 
   eph = (elf_pheader_t *)(boot_elf + eh->phoff);
@@ -180,7 +182,7 @@ int LoadELFFromFile(int argc, char *argv[]) {
     memcpy(eph[i].vaddr, pdata, eph[i].filesz);
 
     if (eph[i].memsz > eph[i].filesz)
-      memset((void *)((u8 *)(eph[i].vaddr) + eph[i].filesz), 0, eph[i].memsz - eph[i].filesz);
+      memset((void *)((uint8_t *)(eph[i].vaddr) + eph[i].filesz), 0, eph[i].memsz - eph[i].filesz);
   }
 
   SifExitRpc();
