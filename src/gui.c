@@ -98,7 +98,7 @@ int uiInit() {
   coverArtY1 = coverArtY2 - COVER_ART_RES_H;
 
   // Init gamepad inputs
-  gpadInit();
+  initPad();
   return 0;
 }
 
@@ -126,7 +126,7 @@ int loadCoverArt(char *titlePath, char *titleID) {
 
 // Closes gamepad driver and deinits gsKit
 void uiCleanup() {
-  gpadClose();
+  closePad();
   gsKit_vram_clear(gsGlobal);
   free(coverTexture);
   gsKit_free_fontm(gsGlobal, gsFontM);
