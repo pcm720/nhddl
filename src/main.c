@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
   logString("Loading modules...\n");
   // Init modules
   int res;
-  if ((res = init_modules(ELF_BASE_PATH)) != 0) {
+  if ((res = initModules(ELF_BASE_PATH)) != 0) {
     logString("ERROR: Failed to initialize modules: %d\n", res);
     goto fail;
   }
