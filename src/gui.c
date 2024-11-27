@@ -39,8 +39,9 @@ static char lineBuffer[255];
 static const char artPath[] = "/ART";
 
 // Predefined colors
-static const uint64_t WhiteFont = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80);
-static const uint64_t BlackBG = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x80);
+static const uint64_t ColorWhite = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80);
+static const uint64_t ColorBlack = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x80);
+static const uint64_t ColorSelected = GS_SETREG_RGBA(0x00, 0x72, 0xA0, 0x80);
 
 // Cover art sprite coordinates
 // Initialized during uiInit from screen width and height
@@ -89,7 +90,7 @@ int uiInit() {
   gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
   gsKit_set_test(gsGlobal, GS_ATEST_ON);
   gsKit_mode_switch(gsGlobal, GS_ONESHOT);
-  gsKit_clear(gsGlobal, BlackBG);
+  gsKit_clear(gsGlobal, ColorBlack);
 
   // Initialize font
   if (initFont()) {
@@ -99,7 +100,7 @@ int uiInit() {
 
   // Init cover texture
   coverTexture = calloc(sizeof(GSTEXTURE), 1);
-  coverArtX2 = (gsGlobal->Width - 25);
+  coverArtX2 = (gsGlobal->Width - 10);
   coverArtY2 = (gsGlobal->Height / 2) + (COVER_ART_RES_H / 2);
   coverArtX1 = coverArtX2 - COVER_ART_RES_W;
   coverArtY1 = coverArtY2 - COVER_ART_RES_H;
@@ -187,7 +188,7 @@ int uiLoop(TargetList *titles) {
 
   // Main UI loop
   while (1) {
-    gsKit_clear(gsGlobal, BlackBG);
+    gsKit_clear(gsGlobal, ColorBlack);
     gsKit_TexManager_nextFrame(gsGlobal);
 
     // Reload target if index has changed
@@ -249,6 +250,66 @@ exit:
   return res;
 }
 
+// Draws title list
+void drawTitleList(TargetList *titles, int selectedTitleIdx, GSTEXTURE *selectedTitleCover) {
+  int curPage = selectedTitleIdx / maxTitlesPerPage;
+
+  // Draw header and footer
+  int titleY = drawTextWindow(10, 20, coverArtX2, 0, 0, ColorWhite, ALIGN_HCENTER, "Title List");
+
+  // Print page info
+  snprintf(lineBuffer, 255, "Page %d/%d\nTitle %d/%d", curPage + 1, DIV_ROUND(titles->total, maxTitlesPerPage), selectedTitleIdx + 1, titles->total);
+  drawTextWindow(10, 20, coverArtX2, 0, 0, ColorWhite, ALIGN_RIGHT, lineBuffer);
+
+  drawText(10, gsGlobal->Height - 50, 0, 0, 0, ColorWhite, "Press X/O to launch the title, Triangle to open launch options\nPress START to exit");
+
+  // Draw title list
+  Target *curTitle = titles->first;
+  titleY = titleY + 10;
+  while (curTitle != NULL) {
+    // Do not display titles before the current page
+    if (curTitle->idx < maxTitlesPerPage * curPage) {
+      goto next;
+    }
+    // Do not display titles beyond the current page
+    if (curTitle->idx >= maxTitlesPerPage * (curPage + 1)) {
+      break;
+    }
+
+    // Draw title ID for selected title
+    if (selectedTitleIdx == curTitle->idx) {
+      // Draw title ID and device type under the cover art
+      drawTextWindow(coverArtX1,
+                     drawTextWindow(coverArtX1, coverArtY2 + 5, coverArtX2, 0, 0, ColorWhite, ALIGN_HCENTER,
+                                    curTitle->id), // Use y coordinate return by title ID drawing function as an argument
+                     coverArtX2, 0, 0, ColorWhite, ALIGN_HCENTER, modeToString(curTitle->deviceType));
+    }
+
+    // Draw title name
+    titleY = drawText(10, titleY, 0, coverArtX1, 0, ((selectedTitleIdx == curTitle->idx) ? ColorSelected : ColorWhite), curTitle->name);
+
+  next:
+    curTitle = curTitle->next;
+  }
+
+  // Draw cover art placeholder/frame
+  gsKit_prim_sprite(gsGlobal, coverArtX1 - 2, coverArtY1 - 2, coverArtX2 + 2, coverArtY2 + 2, 0, GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80));
+
+  // Draw cover art if it exists
+  if (selectedTitleCover != NULL) {
+    // Temproraily disable alpha blending
+    // Some PNGs require inverted alpha channel value to display properly
+    // Since cover art has nothing to blend, we can bypass the issue altogether
+    gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
+    gsKit_prim_sprite_texture(gsGlobal, selectedTitleCover, coverArtX1, coverArtY1, 0.0f, 0.0f, coverArtX2, coverArtY2, selectedTitleCover->Width,
+                              selectedTitleCover->Height, 1, GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80));
+    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+  } else {
+    gsKit_prim_sprite(gsGlobal, coverArtX1, coverArtY1, coverArtX2, coverArtY2, 0, ColorBlack);
+    drawTextWindow(coverArtX1, coverArtY1, coverArtX2, coverArtY2, 0, ColorWhite, ALIGN_CENTER, "No cover art");
+  }
+}
+
 // Title options screen handler
 int uiTitleOptionsLoop(Target *target) {
   int res = 0;
@@ -276,16 +337,16 @@ int uiTitleOptionsLoop(Target *target) {
   Argument *curArgument = titleArguments->first->next;
 
   while (1) {
-    gsKit_clear(gsGlobal, BlackBG);
+    gsKit_clear(gsGlobal, ColorBlack);
 
     // Draw header and footer
 
     // Print title info
     snprintf(lineBuffer, 255, "%s\n%s", target->name, target->id);
-    drawTextWindow(0, 20, gsGlobal->Width, 0, 0, WhiteFont, ALIGN_HCENTER, lineBuffer);
-    drawTextWindow(0, 60, gsGlobal->Width, 0, 0, WhiteFont, ALIGN_HCENTER, "Compatibility modes");
+    drawTextWindow(10, 20, coverArtX2, 0, 0, ColorWhite, ALIGN_HCENTER, lineBuffer);
+    drawTextWindow(10, 60, coverArtX2, 0, 0, ColorWhite, ALIGN_HCENTER, "Compatibility modes");
 
-    drawText(10, gsGlobal->Height - 65, 0, 0, 0, WhiteFont,
+    drawText(10, gsGlobal->Height - 65, 0, 0, 0, ColorWhite,
              "Press X/O to toggle options \n"
              "Press Square to launch the title without saving options\n"
              "Press Triangle to exit without saving, START to save options");
@@ -339,67 +400,6 @@ exit:
   return res;
 }
 
-// Draws title list
-void drawTitleList(TargetList *titles, int selectedTitleIdx, GSTEXTURE *selectedTitleCover) {
-  int curPage = selectedTitleIdx / maxTitlesPerPage;
-
-  // Draw header and footer
-  int titleY = drawTextWindow(0, 20, gsGlobal->Width, 0, 0, WhiteFont, ALIGN_HCENTER, "Title List");
-
-  // Print page info
-  snprintf(lineBuffer, 255, "Page %d/%d\nTitle %d/%d", curPage + 1, DIV_ROUND(titles->total, maxTitlesPerPage), selectedTitleIdx + 1, titles->total);
-  drawTextWindow(0, 20, gsGlobal->Width, 0, 0, WhiteFont, ALIGN_RIGHT, lineBuffer);
-
-  drawText(10, gsGlobal->Height - 50, 0, 0, 0, WhiteFont, "Press X/O to launch the title, Triangle to open launch options\nPress START to exit");
-
-  // Draw title list
-  Target *curTitle = titles->first;
-  titleY = titleY + 10;
-  while (curTitle != NULL) {
-    // Do not display titles before the current page
-    if (curTitle->idx < maxTitlesPerPage * curPage) {
-      goto next;
-    }
-    // Do not display titles beyond the current page
-    if (curTitle->idx >= maxTitlesPerPage * (curPage + 1)) {
-      break;
-    }
-
-    // Draw title ID for selected title
-    if (selectedTitleIdx == curTitle->idx) {
-      // Draw title ID and device type under the cover art
-      drawTextWindow(coverArtX1,
-                     drawTextWindow(coverArtX1, coverArtY2 + 5, coverArtX2, 0, 0, WhiteFont, ALIGN_HCENTER,
-                                    curTitle->id), // Use y coordinate return by title ID drawing function as an argument
-                     coverArtX2, 0, 0, WhiteFont, ALIGN_HCENTER, modeToString(curTitle->deviceType));
-    }
-
-    // Draw title name
-    snprintf(lineBuffer, 255, "%s %s", ((selectedTitleIdx == curTitle->idx) ? ">" : " "), curTitle->name);
-    titleY = drawText(0, titleY, 0, coverArtX1, 0, WhiteFont, lineBuffer);
-
-  next:
-    curTitle = curTitle->next;
-  }
-
-  // Draw cover art placeholder/frame
-  gsKit_prim_sprite(gsGlobal, coverArtX1 - 2, coverArtY1 - 2, coverArtX2 + 2, coverArtY2 + 2, 0, GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80));
-
-  // Draw cover art if it exists
-  if (selectedTitleCover != NULL) {
-    // Temproraily disable alpha blending
-    // Some PNGs require inverted alpha channel value to display properly
-    // Since cover art has nothing to blend, we can bypass the issue altogether
-    gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
-    gsKit_prim_sprite_texture(gsGlobal, selectedTitleCover, coverArtX1, coverArtY1, 0.0f, 0.0f, coverArtX2, coverArtY2, selectedTitleCover->Width,
-                              selectedTitleCover->Height, 1, GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80));
-    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
-  } else {
-    gsKit_prim_sprite(gsGlobal, coverArtX1, coverArtY1, coverArtX2, coverArtY2, 0, BlackBG);
-    drawTextWindow(coverArtX1, coverArtY1, coverArtX2, coverArtY2, 0, WhiteFont, ALIGN_CENTER, "No cover art");
-  }
-}
-
 // Draws title arguments
 void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx) {
   int startY = 80;
@@ -409,9 +409,8 @@ void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selected
 
   // Indexes 0 through CM_NUM_MODES are reserved for compatibility modes
   for (idx = 0; idx < CM_NUM_MODES; idx++) {
-    snprintf(lineBuffer, 255, "%s [%s] %s", ((selectedArgIdx == idx) ? ">" : " "), ((compatModes & COMPAT_MODE_MAP[idx].mode) ? "x" : "o"),
-             COMPAT_MODE_MAP[idx].name);
-    startY = drawText(0, startY, 0, 0, 0, WhiteFont, lineBuffer);
+    snprintf(lineBuffer, 255, "[%s] %s", ((compatModes & COMPAT_MODE_MAP[idx].mode) ? "x" : "o"), COMPAT_MODE_MAP[idx].name);
+    startY = drawText(10, startY, 0, 0, 0, ((selectedArgIdx == idx) ? ColorSelected : ColorWhite), lineBuffer);
   }
 
   // Draw other arguments
@@ -426,11 +425,11 @@ void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selected
   int curPage = (selectedArgIdx - (int)CM_NUM_MODES) / MAX_ARGUMENTS;
   // Advance start Y offset and add some space after compatibility modes
   startY += 10;
-  idx = 0;      // Reset index
+  idx = 0; // Reset index
 
-  startY = drawTextWindow(0, startY, gsGlobal->Width, 0, 0, WhiteFont, ALIGN_CENTER, "Launch arguments");
+  startY = drawTextWindow(10, startY, coverArtX2, 0, 0, ColorWhite, ALIGN_CENTER, "Launch arguments");
   snprintf(lineBuffer, 255, "Page %d/%d", curPage + 1, DIV_ROUND(arguments->total - 1, MAX_ARGUMENTS));
-  startY = drawTextWindow(0, startY, gsGlobal->Width, 0, 0, WhiteFont, ALIGN_RIGHT, lineBuffer);
+  startY = drawTextWindow(10, startY, coverArtX2, 0, 0, ColorWhite, ALIGN_RIGHT, lineBuffer);
 
   while (argument != NULL) {
     // Do not display arguments before the current page
@@ -444,10 +443,10 @@ void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selected
     }
 
     // Draw argument
-    snprintf(lineBuffer, 255, "%s %s[%s] %s%s %s", (((selectedArgIdx - CM_NUM_MODES) == idx) ? ">" : " "), ((argument->isGlobal) ? "(g)" : ""),
-             ((argument->isDisabled) ? " " : "x"), argument->arg, (!strlen(argument->value)) ? "" : ":", argument->value);
+    snprintf(lineBuffer, 255, "%s[%s] %s%s %s", ((argument->isGlobal) ? "(g)" : ""), ((argument->isDisabled) ? " " : "x"), argument->arg,
+             (!strlen(argument->value)) ? "" : ":", argument->value);
     // Increment index for Y coordinate because 'Launch arguments' string occupies space for index 5
-    startY = drawText(0, startY, 0, 0, 0, WhiteFont, lineBuffer);
+    startY = drawText(10, startY, 0, 0, 0, (((selectedArgIdx - CM_NUM_MODES) == idx) ? ColorSelected : ColorWhite), lineBuffer);
 
     idx++;
   next:
@@ -462,11 +461,11 @@ void uiLaunchTitle(Target *target, ArgumentList *arguments) {
     arguments = loadLaunchArgumentLists(target);
   }
 
-  gsKit_clear(gsGlobal, BlackBG);
+  gsKit_clear(gsGlobal, ColorBlack);
 
   // Draw screen with GameID and title parameters
   snprintf(lineBuffer, 255, "Launching\n%s\n%s\n%s", target->name, target->id, target->fullPath);
-  drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height,0, WhiteFont, ALIGN_CENTER, lineBuffer);
+  drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, ColorWhite, ALIGN_CENTER, lineBuffer);
   drawGameID(target->id);
 
   gsKit_queue_exec(gsGlobal);
