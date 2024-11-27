@@ -266,10 +266,10 @@ Target *freeTarget(Target *target) {
   free(target->id);
   if (target->prev != NULL) {
     prev = target->prev;
-  }
-  if (target->next != NULL) {
-    prev->next = target->next;
-    target->next->prev = prev;
+    if (target->next != NULL) {
+      prev->next = target->next;
+      target->next->prev = prev;
+    }
   }
   free(target);
   return prev;
