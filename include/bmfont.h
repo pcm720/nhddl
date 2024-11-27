@@ -16,7 +16,7 @@ int initFont();
 
 // Draws the text with specified max dimensions relative to x and y
 // Returns the bottom Y coordinate of the last line that can be used to draw the next text
-int drawText(int x, int y, int z, int maxWidth, int maxHeight,  uint64_t color, const char *text);
+int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, const char *text);
 
 // Draws the text in [x1,y1],[x2,y2] window.
 // Doesn't draw the glyphs that do not fit in the set window.

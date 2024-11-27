@@ -41,12 +41,12 @@ int initFont() {
 // Frees memory used by font pages
 void closeFont() {
   for (int i = 0; i < font.pageCount; i++) {
+    free(fontPages[0]->Mem);
     free(fontPages[i]);
   }
   free(fontPages);
   return;
 }
-
 
 // Returns pointer to the glyph or NULL if the font doesn't have a glyph for this character
 const BMFontChar *getGlyph(uint32_t character) {
@@ -65,10 +65,10 @@ static void drawGlyph(const BMFontChar *glyph, float x, float y, int z, uint64_t
                             y + glyph->yoffset,                 // y1
                             glyph->x,                           // u1 (source texture)
                             glyph->y,                           // v1
-                            x + glyph->xoffset + glyph->width,  // x1 (destination)
+                            x + glyph->xoffset + glyph->width,  // x2 (destination)
                             y + glyph->yoffset + glyph->height, // y2
-                            glyph->x + glyph->width,            // u2 (source texture)
-                            glyph->y + glyph->height,           // v2
+                            glyph->x + glyph->width + 1,        // u2 (source texture, without +1 all characters are cut off on real hardware)
+                            glyph->y + glyph->height + 1,       // v2
                             z, color);
 }
 
@@ -314,9 +314,8 @@ int gsKit_texture_png_mem(GSGLOBAL *gsGlobal, GSTEXTURE *texture, void *buf, siz
   texture->Clut = NULL;
   texture->PSM = GS_PSM_CT32;
   texture->Filter = GS_FILTER_NEAREST;
-  texture->Delayed = 1;
-  texture->Mem = memalign(128, gsKit_texture_size_ee(texture->Width, texture->Height, texture->PSM));
-
+  texture->Mem = memalign(128, gsKit_texture_size(texture->Width, texture->Height, texture->PSM));
+  
   int row_bytes = png_get_rowbytes(png_ptr, info_ptr);
   row_pointers = calloc(height, sizeof(png_bytep));
   for (row = 0; row < height; row++)
@@ -345,20 +344,9 @@ int gsKit_texture_png_mem(GSGLOBAL *gsGlobal, GSTEXTURE *texture, void *buf, siz
   png_read_end(png_ptr, NULL);
   png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
   fclose(file);
-  
-
-  // Allocate memory
-  texture->Vram = gsKit_vram_alloc(gsGlobal, gsKit_texture_size(texture->Width, texture->Height, texture->PSM), GSKIT_ALLOC_USERBUFFER);
-  if (texture->Vram == GSKIT_ALLOC_ERROR) {
-    printf("ERROR: Failed to allocate VRAM\n");
-    return -1;
-  }
 
   // Upload texture to GS
-  gsKit_texture_upload(gsGlobal, texture);
-  // Free texture
-  free(texture->Mem);
-  texture->Mem = NULL;
+  gsKit_TexManager_bind(gsGlobal, texture);
 
   return 0;
 }
