@@ -32,9 +32,7 @@ EE_LDFLAGS := -L$(PS2DEV)/gsKit/lib -L$(PS2SDK)/ports/lib -s
 
 BIN2C = $(PS2SDK)/bin/bin2c
 
-.PHONY: all clean .FORCE
-
-.FORCE:
+.PHONY: all clean
 
 all: $(EE_BIN_PKD)
 
@@ -66,14 +64,8 @@ $(EE_ASM_DIR):
 $(EE_OBJS_DIR):
 	@mkdir -p $@
 
-ifeq ($(NEEDS_REBUILD),1)
-# If rebuild flag is set, add .FORCE to force full rebuild
-$(EE_OBJS_DIR)%.o: $(EE_SRC_DIR)%.c .FORCE | $(EE_OBJS_DIR)
-	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-else
 $(EE_OBJS_DIR)%.o: $(EE_SRC_DIR)%.c | $(EE_OBJS_DIR)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-endif
 
 $(EE_OBJS_DIR)%.o: $(EE_ASM_DIR)%.c | $(EE_OBJS_DIR)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
