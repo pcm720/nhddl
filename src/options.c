@@ -18,8 +18,7 @@ uint32_t getTimestamp();
 
 // Defines all known compatibility modes
 const CompatiblityModeMap COMPAT_MODE_MAP[CM_NUM_MODES] = {
-    {CM_DISABLE_BUILTIN_MODES, '0', "Disable built-in compat flags"},
-    {CM_IOP_ACCURATE_READS, '1', "IOP: Accurate reads"},
+    {CM_IOP_FAST_READS, '0', "IOP: Fast reads"},
     {CM_IOP_SYNC_READS, '2', "IOP: Sync reads"},
     {CM_EE_UNHOOK_SYSCALLS, '3', "EE : Unhook syscalls"},
     {CM_IOP_EMULATE_DVD_DL, '5', "IOP: Emulate DVD-DL"},
