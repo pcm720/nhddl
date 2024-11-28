@@ -10,20 +10,26 @@ extern const char BASE_CONFIG_PATH[];
 extern const size_t BASE_CONFIG_PATH_LEN;
 
 // Compatibility modes definitions
-
 #define COMPAT_MODES_ARG "gc"
-#define CM_NUM_MODES 5
-#define CM_IOP_FAST_READS 1 << 0
-#define CM_IOP_SYNC_READS 1 << 2
-#define CM_EE_UNHOOK_SYSCALLS 1 << 3
-#define CM_IOP_EMULATE_DVD_DL 1 << 5
-#define CM_IOP_FIX_BUFFER_OVERRUN 1 << 7
 typedef struct CompatiblityModeMap {
   int mode;
   char value;
   char *name;
 } CompatiblityModeMap;
-extern const CompatiblityModeMap COMPAT_MODE_MAP[CM_NUM_MODES];
+
+#define CM_NUM_MODES (sizeof(COMPAT_MODE_MAP) / sizeof(CompatiblityModeMap))
+#define CM_IOP_FAST_READS 1 << 0
+#define CM_IOP_SYNC_READS 1 << 2
+#define CM_EE_UNHOOK_SYSCALLS 1 << 3
+#define CM_IOP_EMULATE_DVD_DL 1 << 5
+#define CM_IOP_FIX_BUFFER_OVERRUN 1 << 7
+static const CompatiblityModeMap COMPAT_MODE_MAP[] = {
+    {CM_IOP_FAST_READS, '0', "IOP: Fast reads"},
+    {CM_IOP_SYNC_READS, '2', "IOP: Sync reads"},
+    {CM_EE_UNHOOK_SYSCALLS, '3', "EE : Unhook syscalls"},
+    {CM_IOP_EMULATE_DVD_DL, '5', "IOP: Emulate DVD-DL"},
+    {CM_IOP_FIX_BUFFER_OVERRUN, '7', "IOP: Fix game buffer overrun"},
+};
 
 // An entry in ArgumentList
 typedef struct Argument {
@@ -78,7 +84,7 @@ void appendArgument(ArgumentList *target, Argument *arg);
 
 // Does a deep copy of arg and inserts it into target.
 // Always places COMPAT_MODES_ARG on the top of the list.
-void insertArgumentCopy(ArgumentList *target, Argument *arg);
+void appendArgumentCopy(ArgumentList *target, Argument *arg);
 
 // Merges two lists into one, ignoring arguments in the second list that already exist in the first list.
 // Expects result to be initialized with zeroes. All arguments in resulting list are a deep copy of arguments in source lists.

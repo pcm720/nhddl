@@ -413,7 +413,7 @@ void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selected
   // Always start with the second element since the first
   // is guaranteed to be a compatibility mode flag
   Argument *argument = arguments->first->next;
-  int curPage = (selectedArgIdx - CM_NUM_MODES) / MAX_ARGUMENTS;
+  int curPage = (selectedArgIdx - (int)CM_NUM_MODES) / MAX_ARGUMENTS;
   // Advance start Y offset and add some space after compatibility modes
   startY += (CM_NUM_MODES * 15) + 10;
   idx = 0; // Reset index
