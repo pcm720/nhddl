@@ -2,6 +2,7 @@
 #include "common.h"
 #include <fcntl.h>
 #include <iopcontrol.h>
+#include <libmc.h>
 #include <loadfile.h>
 #include <sbv_patches.h>
 #include <sifrpc.h>
@@ -30,6 +31,10 @@ IRX_DEFINE(sio2man);
 IRX_DEFINE(mcman);
 IRX_DEFINE(mcserv);
 IRX_DEFINE(freepad);
+
+// Returns 0 if memory card in slot 1 is not a formatted memory card
+// Used to avoid loading MX4SIO module and disabling mc1
+int getMC1Type();
 
 // External module entry
 typedef struct ExternalModule {
@@ -124,6 +129,12 @@ int initModules(char *basePath) {
 
   // Load external modules from EE RAM
   while (modules != NULL) {
+    if ((modules->mode == MODE_MX4SIO) && getMC1Type()) {
+      // If mc1 is a valid memory card, skip MX4SIO modules
+      logString("\tskipping %s (memory card inserted)\n", modules->name);
+      modules = freeExternalModule(modules);
+      continue;
+    }
     if (modules->argStr != NULL)
       logString("\tloading %s with %s\n", modules->name, modules->argStr);
     else
@@ -257,4 +268,19 @@ fail:
     firstModule = freeExternalModule(firstModule);
   }
   return NULL;
+}
+
+// Returns 0 if memory card in mc1 is not a formatted memory card
+// Can be used to avoid loading MX4SIO module
+int getMC1Type() {
+  if (mcInit(MC_TYPE_XMC)) {
+    printf("ERROR: Failed to initialize libmc\n");
+    return -ENODEV;
+  }
+
+  int mc1Type = 0;
+  // Get memory card type for mc1
+  mcGetInfo(1, 0, &mc1Type, NULL, NULL);
+  mcSync(0, NULL, NULL);
+  return mc1Type;
 }
