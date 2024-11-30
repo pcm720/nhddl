@@ -1,5 +1,6 @@
 #include "module_init.h"
 #include "common.h"
+#include <ctype.h>
 #include <fcntl.h>
 #include <iopcontrol.h>
 #include <libmc.h>
@@ -14,17 +15,12 @@
 // Macros for loading embedded IOP modules
 #define IRX_DEFINE(mod)                                                                                                                              \
   extern unsigned char mod##_irx[] __attribute__((aligned(16)));                                                                                     \
-  extern unsigned int size_##mod##_irx
+  extern uint32_t size_##mod##_irx
 
-#define IRX_LOAD(mod)                                                                                                                                \
-  logString("\tloading " #mod "\n");                                                                                                                 \
-  if ((ret = SifExecModuleBuffer(mod##_irx, size_##mod##_irx, 0, NULL, &iopret)) < 0)                                                                \
-    return ret;                                                                                                                                      \
-  if (iopret == 1) {                                                                                                                                 \
-    return iopret;                                                                                                                                   \
-  }
+// Defines moduleList entry for embedded module
+#define INT_MODULE(mod, mode) {#mod, mod##_irx, &size_##mod##_irx, 0, NULL, NULL, NULL, mode}
 
-// Embedded IOP modules required for reading from memory card
+// Embedded IOP modules
 IRX_DEFINE(iomanX);
 IRX_DEFINE(fileXio);
 IRX_DEFINE(sio2man);
@@ -32,78 +28,81 @@ IRX_DEFINE(mcman);
 IRX_DEFINE(mcserv);
 IRX_DEFINE(freepad);
 
+// Function used to initialize module arguments.
+// Must set argLength and return non-null pointer to a argument string if successful.
+typedef char *(*moduleArgFunc)(uint32_t *argLength);
+
+typedef struct ModuleListEntry {
+  char *name;                     // Module name
+  unsigned char *irx;             // Pointer to IRX module
+  uint32_t *size;                 // IRX size. Uses pointer to avoid compilation issues with internal modules
+  uint32_t argLength;             // Argument string length
+  char *argStr;                   // Argument string
+  char *path;                     // Relative path to module (in case module is external)
+  moduleArgFunc argumentFunction; // Function used to initialize module arguments
+  ModeType mode;                  // Used to ignore modules not required for target mode
+} ModuleListEntry;
+
+// Initializes SMAP arguments
+char *initSMAPArguments(uint32_t *argLength);
+
+// List of modules to load
+static ModuleListEntry moduleList[] = {
+    // Embedded modules
+    INT_MODULE(iomanX, MODE_ALL),
+    INT_MODULE(fileXio, MODE_ALL),
+    INT_MODULE(sio2man, MODE_ALL),
+    INT_MODULE(mcman, MODE_ALL),
+    INT_MODULE(mcserv, MODE_ALL),
+    INT_MODULE(freepad, MODE_ALL),
+    // DEV9
+    {"dev9", NULL, NULL, 0, NULL, "modules/dev9_ns.irx", NULL, MODE_ALL},
+    // BDM
+    {"bdm", NULL, NULL, 0, NULL, "modules/bdm.irx", NULL, MODE_ALL},
+    // FAT/exFAT
+    {"bdmfs_fatfs", NULL, NULL, 0, NULL, "modules/bdmfs_fatfs.irx", NULL, MODE_ALL},
+    // SMAP driver. Actually includes small IP stack and UDPTTY
+    {"smap_udpbd", NULL, NULL, 0, NULL, "modules/smap_udpbd.irx", &initSMAPArguments, MODE_UDPBD},
+    // ATA
+    {"ata_bd", NULL, NULL, 0, NULL, "modules/ata_bd.irx", NULL, MODE_ATA},
+    // USBD
+    {"usbd_mini", NULL, NULL, 0, NULL, "modules/usbd_mini.irx", NULL, MODE_USB},
+    // USB Mass Storage
+    {"usbmass_bd_mini", NULL, NULL, 0, NULL, "modules/usbmass_bd_mini.irx", NULL, MODE_USB},
+    // MX4SIO
+    {"mx4sio_bd_mini", NULL, NULL, 0, NULL, "modules/mx4sio_bd_mini.irx", NULL, MODE_MX4SIO},
+    // iLink
+    {"iLinkman", NULL, NULL, 0, NULL, "modules/iLinkman.irx", NULL, MODE_ILINK},
+    // iLink Mass Storage
+    {"IEEE1394_bd_mini", NULL, NULL, 0, NULL, "modules/IEEE1394_bd_mini.irx", NULL, MODE_ILINK},
+};
+#define MODULE_COUNT sizeof(moduleList) / sizeof(ModuleListEntry)
+
 // Returns 0 if memory card in slot 1 is not a formatted memory card
 // Used to avoid loading MX4SIO module and disabling mc1
 int getMC1Type();
 
-// External module entry
-typedef struct ExternalModule {
-  char *name;         // Module name (without the path and IRX extension)
-  unsigned char *irx; // Pointer to IRX module
-  uint32_t size;      // IRX size
-  uint32_t argLength; // Argument string length
-  char *argStr;       // Argument string
-  ModeType mode;      // Used to ignore modules not required for target mode
-
-  struct ExternalModule *next; // Next module in the list
-} ExternalModule;
-
 // Loads external modules into memory
-ExternalModule *buildExternalModuleList(char *basePath);
+int loadExternalModules(char *basePath);
 
-// Frees mod and returns pointer to the next module in chain
-ExternalModule *freeExternalModule(ExternalModule *mod);
+// Loads module, executing argument function if it's present
+int loadModule(ModuleListEntry *mod);
 
-// Function used to initialize module arguments.
-// Must set argLength and argStr and return 0 if successful.
-// argStr pointer must be unique to ExternalModule
-typedef int (*moduleArgFunc)(ExternalModule *);
-
-typedef struct ExternalModuleEntry {
-  char *name;                     // Module name
-  char *path;                     // Relative path to module
-  moduleArgFunc argumentFunction; // Function used to initialize module arguments
-  ModeType mode;                  // Used to ignore modules not required for target mode
-} ExternalModuleEntry;
-
-// Initializes SMAP arguments
-int initSMAPArguments(ExternalModule *mod);
-
-#define MODULE_COUNT(a) sizeof(a) / sizeof(ExternalModuleEntry)
-const ExternalModuleEntry external_modules[] = {
-    // DEV9
-    {"dev9", "modules/dev9_ns.irx", NULL, MODE_ALL},
-    // BDM
-    {"bdm", "modules/bdm.irx", NULL, MODE_ALL},
-    // FAT/exFAT
-    {"bdmfs_fatfs", "modules/bdmfs_fatfs.irx", NULL, MODE_ALL},
-    // ATA
-    {"ata_bd", "modules/ata_bd.irx", NULL, MODE_ATA},
-    // USBD
-    {"usbd_mini", "modules/usbd_mini.irx", NULL, MODE_USB},
-    // USB Mass Storage
-    {"usbmass_bd_mini", "modules/usbmass_bd_mini.irx", NULL, MODE_USB},
-    // MX4SIO
-    {"mx4sio_bd_mini", "modules/mx4sio_bd_mini.irx", NULL, MODE_MX4SIO},
-    // SMAP driver. Actually includes small IP stack and UDPTTY
-    {"smap_udpbd", "modules/smap_udpbd.irx", &initSMAPArguments, MODE_UDPBD},
-    // iLink
-    {"iLinkman", "modules/iLinkman.irx", NULL, MODE_ILINK},
-    // iLink Mass Storage
-    {"IEEE1394_bd_mini", "modules/IEEE1394_bd_mini.irx", NULL, MODE_ILINK},
-};
+// Frees dynamically allocated memory for ModuleListEntry
+void freeModule();
 
 // Initializes IOP modules
 int initModules(char *basePath) {
-  // Load optional modules into EE memory before resetting IOP
-  ExternalModule *modules = buildExternalModuleList(basePath);
-  if (modules == NULL) {
+  int ret = 0;
+  logString("Preparing external modules\n");
+  // Load optional modules from storage devices into EE memory before resetting IOP
+  ret = loadExternalModules(basePath);
+  if (ret) {
     logString("ERROR: Failed to prepare external modules\n");
     return -EIO;
   }
 
-  // Initialize the RPC manager and reset IOP
-  SifInitRpc(0);
+  logString("Rebooting IOP\n");
   while (!SifIopReset("", 0)) {
   };
   while (!SifIopSync()) {
@@ -112,84 +111,92 @@ int initModules(char *basePath) {
   // Initialize the RPC manager
   SifInitRpc(0);
 
-  int ret, iopret = 0;
   // Apply patches required to load modules from EE RAM
   if ((ret = sbv_patch_enable_lmb()))
     return ret;
   if ((ret = sbv_patch_disable_prefix_check()))
     return ret;
 
-  // Load embedded modules
-  IRX_LOAD(iomanX);
-  IRX_LOAD(fileXio);
-  IRX_LOAD(sio2man);
-  IRX_LOAD(mcman);
-  IRX_LOAD(mcserv);
-  IRX_LOAD(freepad);
-
-  // Load external modules from EE RAM
-  while (modules != NULL) {
-    if ((modules->mode == MODE_MX4SIO) && getMC1Type()) {
-      // If mc1 is a valid memory card, skip MX4SIO modules
-      logString("\tskipping %s (memory card inserted)\n", modules->name);
-      modules = freeExternalModule(modules);
-      continue;
-    }
-    if (modules->argStr != NULL)
-      logString("\tloading %s with %s\n", modules->name, modules->argStr);
-    else
-      logString("\tloading %s\n", modules->name);
-
-    ret = SifExecModuleBuffer(modules->irx, modules->size, modules->argLength, modules->argStr, &iopret);
-    // Ignore error if module can fail
-    if ((modules->mode == MODE_ALL) || (modules->mode == LAUNCHER_OPTIONS.mode)) {
-      if (ret < 0)
+  // Load modules
+  logString("Loading modules:\n");
+  for (int i = 0; i < MODULE_COUNT; i++) {
+    if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL)) {
+      if ((ret = loadModule(&moduleList[i])))
         return ret;
-      if (iopret == 1)
-        return iopret;
     }
-    modules = freeExternalModule(modules);
+    // Free external module
+    if (moduleList[i].path != NULL)
+      freeModule(&moduleList[i]);
   }
   return 0;
 }
 
-// Frees mod and returns pointer to the next module in chain
-ExternalModule *freeExternalModule(ExternalModule *mod) {
-  ExternalModule *m = mod->next;
+// Loads module, executing argument function if it's present
+int loadModule(ModuleListEntry *mod) {
+  int ret, iopret = 0;
+  if ((mod->mode == MODE_MX4SIO) && getMC1Type()) {
+    // If mc1 is a valid memory card, skip MX4SIO modules
+    logString("\tskipping %s (memory card inserted)\n", mod->name);
+    return 0;
+  }
+
+  // If module has an arugment function, execute it
+  if (mod->argumentFunction != NULL) {
+    mod->argStr = mod->argumentFunction(&mod->argLength);
+    if (mod->argStr == NULL) {
+      // Ignore errors if module can fail
+      if ((mod->mode != MODE_ALL) && (mod->mode != LAUNCHER_OPTIONS.mode)) {
+        logString("\t%s: Failed to initialize arguments, skipping module\n", mod->name);
+        return 0;
+      } else {
+        logString("\t%s: Failed to initialize arguments\n", mod->name);
+        return -1;
+      }
+    }
+  }
+
+  if (mod->argStr != NULL)
+    logString("\tloading %s with %s\n", mod->name, mod->argStr);
+  else
+    logString("\tloading %s\n", mod->name);
+
+  ret = SifExecModuleBuffer(mod->irx, *mod->size, mod->argLength, mod->argStr, &iopret);
+  // Ignore error if module can fail
+  if ((mod->mode == MODE_ALL) || (mod->mode == LAUNCHER_OPTIONS.mode)) {
+    if (ret < 0)
+      return ret;
+    if (iopret == 1)
+      return iopret;
+  }
+  return 0;
+}
+
+// Frees dynamically allocated memory for ModuleListEntry
+// Must not be called on embedded modules
+void freeModule(ModuleListEntry *mod) {
   free(mod->irx);
-  free(mod->argStr);
-  return m;
-}
-
-// Builds IP address argument for SMAP modules
-int initSMAPArguments(ExternalModule *mod) {
-  if (LAUNCHER_OPTIONS.udpbdIp[0] == '\0') {
-    return -ENOENT;
-  }
-
-  char ipArg[19]; // 15 bytes for IP string + 3 bytes for 'ip='
-  mod->argLength = 19;
-  mod->argStr = calloc(sizeof(char), 19);
-  snprintf(mod->argStr, sizeof(ipArg), "ip=%s", LAUNCHER_OPTIONS.udpbdIp);
-  return 0;
+  free(mod->size);
+  if (mod->argStr != NULL)
+    free(mod->argStr);
 }
 
 // Loads external modules into memory
-ExternalModule *buildExternalModuleList(char *basePath) {
+int loadExternalModules(char *basePath) {
   // Allocate memory for module paths
   int basePathLen = strlen(basePath);
   char pathBuf[PATH_MAX + 1];
   pathBuf[0] = '\0';
   strcpy(pathBuf, basePath);
 
-  ExternalModule *curModule = NULL;
-  ExternalModule *firstModule = NULL;
-  int fd, fsize, res;
-  for (int i = 0; i < MODULE_COUNT(external_modules); i++) {
+  int fd, res;
+  for (int i = 0; i < MODULE_COUNT; i++) {
     // Ignore module if:
-    if (external_modules[i].mode != LAUNCHER_OPTIONS.mode && // Target mode doesn't match required mode
-        external_modules[i].mode != MODE_ALL &&              // Module is not required
-        LAUNCHER_OPTIONS.mode != MODE_ALL) {                 // Target mode is not set to ALL
+    if (((moduleList[i].irx != NULL) || (moduleList[i].path == NULL)) // Module IRX is already in memory or doesn't have a path
+        ||                                                            // or
+        (moduleList[i].mode != LAUNCHER_OPTIONS.mode &&               // Target mode doesn't match required mode
+         moduleList[i].mode != MODE_ALL &&                            // Module is not required
+         LAUNCHER_OPTIONS.mode != MODE_ALL)                           // Target mode is not set to ALL
+    ) {
       continue;
     }
 
@@ -197,77 +204,45 @@ ExternalModule *buildExternalModuleList(char *basePath) {
     pathBuf[basePathLen] = '\0';
 
     // Append module path to base path
-    strcat(pathBuf, external_modules[i].path);
+    strcat(pathBuf, moduleList[i].path);
 
     // Open module
     if ((fd = open(pathBuf, O_RDONLY)) < 0) {
-      logString("%s: Failed to open %s\n", external_modules[i].name, pathBuf);
-      if ((external_modules[i].mode == MODE_ALL) || (external_modules[i].mode == LAUNCHER_OPTIONS.mode))
+      logString("%s: Failed to open %s\n", moduleList[i].name, pathBuf);
+      if ((moduleList[i].mode == MODE_ALL) || (moduleList[i].mode == LAUNCHER_OPTIONS.mode))
         goto fail;
       continue;
     }
     // Determine file size
-    fsize = lseek(fd, 0, SEEK_END);
+    uint32_t fsize = lseek(fd, 0, SEEK_END);
     lseek(fd, 0, SEEK_SET);
 
     // Allocate memory for the module
     unsigned char *irxBuf = calloc(sizeof(char), fsize);
     if (irxBuf == NULL) {
-      logString("\t%s: Failed to allocate memory\n", external_modules[i].name);
+      logString("\t%s: Failed to allocate memory\n", moduleList[i].name);
       close(fd);
       goto fail;
     }
     // Load module into buffer
     res = read(fd, irxBuf, fsize);
     if (res != fsize) {
-      logString("\t%s: Failed to read module\n", external_modules[i].name);
+      logString("\t%s: Failed to read module\n", moduleList[i].name);
       free(irxBuf);
       close(fd);
       goto fail;
     }
     close(fd);
 
-    // Initialize ExternalModule
-    ExternalModule *mod = calloc(sizeof(ExternalModule), 1);
-    mod->name = external_modules[i].name;
-    mod->irx = irxBuf;
-    mod->size = fsize;
-    mod->mode = external_modules[i].mode;
-
-    // If module has an arugment function, execute it
-    if (external_modules[i].argumentFunction != NULL) {
-      res = external_modules[i].argumentFunction(mod);
-      if (res) {
-        free(irxBuf);
-        free(mod);
-        // Ignore errors if module can fail
-        if ((external_modules[i].mode != MODE_ALL) && (external_modules[i].mode != LAUNCHER_OPTIONS.mode)) {
-          logString("\t%s: Failed to initialize arguments, skipping module\n", external_modules[i].name);
-          continue;
-        } else {
-          logString("\t%s: Failed to initialize arguments\n", external_modules[i].name);
-          goto fail;
-        }
-      }
-    }
-
-    // Add module to chain
-    if (firstModule == NULL)
-      firstModule = mod;
-    else
-      curModule->next = mod;
-
-    curModule = mod;
+    moduleList[i].irx = irxBuf;
+    moduleList[i].size = malloc(sizeof(uint32_t));
+    memcpy(moduleList[i].size, &fsize, sizeof(uint32_t));
   }
 
-  return firstModule;
+  return 0;
 
 fail:
-  // Release memory and return NULL
-  while (firstModule != NULL) {
-    firstModule = freeExternalModule(firstModule);
-  }
-  return NULL;
+  return -1;
 }
 
 // Returns 0 if memory card in mc1 is not a formatted memory card
@@ -283,4 +258,53 @@ int getMC1Type() {
   mcGetInfo(1, 0, &mc1Type, NULL, NULL);
   mcSync(0, NULL, NULL);
   return mc1Type;
+}
+
+// Tries to read SYS-CONF/IPCONFIG.DAT from memory card
+int parseIPConfig() {
+  // The 'X' in "mcX" will be replaced with memory card number
+  static char ipconfigPath[] = "mcX:/SYS-CONF/IPCONFIG.DAT";
+
+  int ipconfigFd, count;
+  char ipAddr[16]; // IP address will not be longer than 15 characters
+  for (char i = '0'; i < '2'; i++) {
+    ipconfigPath[2] = i;
+    // Attempt to open IPCONFIG.DAT
+    ipconfigFd = open(ipconfigPath, O_RDONLY);
+    if (ipconfigFd >= 0) {
+      count = read(ipconfigFd, ipAddr, sizeof(ipAddr) - 1);
+      close(ipconfigFd);
+      break;
+    }
+  }
+
+  if ((ipconfigFd < 0) || (count < sizeof(ipAddr) - 1)) {
+    if (LAUNCHER_OPTIONS.mode == MODE_UDPBD)
+      logString("WARN: Failed to get IP address from IPCONFIG.DAT\n");
+    return -ENOENT;
+  }
+
+  count = 0; // Reuse count as line index
+  // In case IP address is shorter than 15 chars
+  while (!isspace((unsigned char)ipAddr[count])) {
+    // Advance index until we read a whitespace character
+    count++;
+  }
+
+  strlcpy(LAUNCHER_OPTIONS.udpbdIp, ipAddr, count + 1);
+  return strlen(LAUNCHER_OPTIONS.udpbdIp);
+}
+
+// Builds IP address argument for SMAP modules
+char *initSMAPArguments(uint32_t *argLength) {
+  // If udpbd_ip was not set, try to get IP from IPCONFIG.DAT
+  if ((LAUNCHER_OPTIONS.udpbdIp[0] == '\0') && (parseIPConfig() <= 0)) {
+    return NULL;
+  }
+
+  char ipArg[19]; // 15 bytes for IP string + 3 bytes for 'ip='
+  *argLength = 19;
+  char *argStr = calloc(sizeof(char), 19);
+  snprintf(argStr, sizeof(ipArg), "ip=%s", LAUNCHER_OPTIONS.udpbdIp);
+  return argStr;
 }

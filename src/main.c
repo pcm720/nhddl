@@ -19,8 +19,6 @@ char NEUTRINO_ELF_PATH[PATH_MAX + 1];
 LauncherOptions LAUNCHER_OPTIONS;
 // Options file name relative to ELF_BASE_PATH
 static const char optionsFile[] = "nhddl.yaml";
-// The 'X' in "mcX" will be replaced with memory card number in parseIPConfig
-static char ipconfigPath[] = "mcX:/SYS-CONF/IPCONFIG.DAT";
 // Neutrino ELF name
 static const char neutrinoELF[] = "neutrino.elf";
 // Fallback neutrino.elf paths
@@ -71,14 +69,8 @@ int main(int argc, char *argv[]) {
     goto fail;
   }
 
-  // If udpbd_ip was not set, try to get IP from IPCONFIG.DAT
-  // Since MC might not be loaded before init_modules(),
-  // parseIPConfig must be placed after all modules are loaded.
-  if (!strlen(LAUNCHER_OPTIONS.udpbdIp)) {
-    parseIPConfig(&LAUNCHER_OPTIONS);
-  }
-
-  logString("Initializing BDM devices...\n");
+  init_scr();
+  logString("\n\nInitializing BDM devices...\n");
   res = initDeviceMap();
   if ((res < 0)) {
     logString("ERROR: failed to initialize device\n");
@@ -93,7 +85,7 @@ int main(int argc, char *argv[]) {
   if (findNeutrinoELF()) {
     goto fail;
   }
-  logString("Found neutrino.elf at %s", NEUTRINO_ELF_PATH);
+  logString("\nFound neutrino.elf at %s", NEUTRINO_ELF_PATH);
 
   logString("\n\nBuilding target list...\n");
   TargetList *titles = findISO();
@@ -117,7 +109,7 @@ int main(int argc, char *argv[]) {
   return 0;
 
 fail:
-  sleep(3);
+  sleep(10);
   return 1;
 }
 
@@ -134,38 +126,6 @@ ModeType parseMode(const char *modeStr) {
   if (!strcmp(modeStr, "ilink"))
     return MODE_ILINK;
   return MODE_ALL;
-}
-
-// Tries to read SYS-CONF/IPCONFIG.DAT from memory card
-void parseIPConfig() {
-  int ipconfigFd, count;
-  char ipAddr[16]; // IP address will not be longer than 15 characters
-  for (char i = '0'; i < '2'; i++) {
-    ipconfigPath[2] = i;
-    // Attempt to open history file
-    ipconfigFd = open(ipconfigPath, O_RDONLY);
-    if (ipconfigFd >= 0) {
-      count = read(ipconfigFd, ipAddr, sizeof(ipAddr) - 1);
-      close(ipconfigFd);
-      break;
-    }
-  }
-
-  if ((ipconfigFd < 0) || (count < sizeof(ipAddr) - 1)) {
-    if (LAUNCHER_OPTIONS.mode == MODE_UDPBD)
-      logString("WARN: Failed to get IP address from IPCONFIG.DAT\n");
-    return;
-  }
-
-  count = 0; // Reuse count as line index
-  // In case IP address is shorter than 15 chars
-  while (!isspace((unsigned char)ipAddr[count])) {
-    // Advance index until we read a whitespace character
-    count++;
-  }
-
-  strlcpy(LAUNCHER_OPTIONS.udpbdIp, ipAddr, count + 1);
-  return;
 }
 
 // Loads NHDDL options from optionsFile on memory card
