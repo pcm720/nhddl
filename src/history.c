@@ -150,16 +150,16 @@ int updateHistoryFile(const char *titleID) {
 
 // Reads ROM version from rom0:ROMVER and initializes historyFilePath with region-specific letter
 static inline int initSystemDataDir(void) {
-  int romver_fd = open("rom0:ROMVER", O_RDONLY);
-  if (romver_fd < 0) {
+  int romverFd = open("rom0:ROMVER", O_RDONLY);
+  if (romverFd < 0) {
     return -ENOENT;
   }
 
-  char romver_str[5];
-  read(romver_fd, romver_str, 5);
-  close(romver_fd);
+  char romverStr[5];
+  read(romverFd, romverStr, 5);
+  close(romverFd);
 
-  switch (romver_str[4]) {
+  switch (romverStr[4]) {
   case 'C': // China
     historyFilePath[6] = 'C';
     break;

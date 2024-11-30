@@ -54,7 +54,7 @@ int getLastLaunchedTitle(char *titlePath) {
   targetPath[0] = '\0';
   buildConfigFilePath(targetPath, MASS_PLACEHOLDER, lastTitlePath);
 
-  uint32_t max_timestamp = 0;
+  uint32_t maxTimestamp = 0;
   uint32_t timestamp = 0;
   size_t fsize = 0;
   for (int i = 0; i < MAX_MASS_DEVICES; i++) {
@@ -77,11 +77,11 @@ int getLastLaunchedTitle(char *titlePath) {
       continue;
     }
     // Read the rest of the file only if it's newer
-    if (timestamp < max_timestamp) {
+    if (timestamp < maxTimestamp) {
       close(fd);
       continue;
     }
-    max_timestamp = timestamp;
+    maxTimestamp = timestamp;
 
     // Get title path size
     fsize = lseek(fd, 0, SEEK_END) - sizeof(timestamp);
