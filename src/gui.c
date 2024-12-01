@@ -159,7 +159,6 @@ int uiLoop(TargetList *titles) {
 
   int isCoverUninitialized = 1;
   int selectedTitleIdx = 0;
-  int input = 0;
   int maxTitlesPerPage = (gsGlobal->Height - (headerHeight + footerHeight)) / getFontLineHeight();
   Target *curTarget = titles->first;
 
@@ -191,6 +190,9 @@ int uiLoop(TargetList *titles) {
   isCoverUninitialized = loadCoverArt(curTarget->fullPath, curTarget->id);
 
   // Main UI loop
+  int frameCount = 0;
+  int prevInput = 0;
+  int input = 0;
   while (1) {
     gsKit_clear(gsGlobal, BGColor);
     gsKit_TexManager_nextFrame(gsGlobal);
@@ -210,8 +212,15 @@ int uiLoop(TargetList *titles) {
     gsKit_queue_exec(gsGlobal);
     gsKit_sync_flip(gsGlobal);
 
-    // Process user inputs
-    input = getInput(-1);
+    // Process user inputs every 10th frame unless input changes
+    input = pollInput();
+    frameCount = (frameCount + 1) % 10;
+    if (frameCount && (input == prevInput)) {
+      continue;
+    }
+    frameCount = 0;
+    prevInput = input;
+    
     if (input & (PAD_CROSS | PAD_CIRCLE)) {
       // Copy target, free title list and launch
       Target *target = copyTarget(curTarget);
@@ -398,7 +407,7 @@ int uiTitleOptionsLoop(Target *target) {
     gsKit_sync_flip(gsGlobal);
 
     // Process user inputs
-    input = getInput(-1);
+    input = waitForInput(-1);
     if (input & (PAD_CROSS | PAD_CIRCLE)) {
       if (selectedArgIdx < CM_NUM_MODES) {
         // Change compat flag in bit mask and update argument value
