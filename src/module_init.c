@@ -257,6 +257,7 @@ int getMC1Type() {
   // Get memory card type for mc1
   mcGetInfo(1, 0, &mc1Type, NULL, NULL);
   mcSync(0, NULL, NULL);
+  mcReset();
   return mc1Type;
 }
 
