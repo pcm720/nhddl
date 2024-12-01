@@ -5,17 +5,17 @@
 #include <stdio.h>
 #include <string.h>
 
-static unsigned char padArea[2][256] ALIGNED(64);
-static unsigned int old_pad[2] = {0, 0};
+static unsigned char padBuffer[2][256] ALIGNED(64);
+static unsigned int prevInputs[2] = {0, 0};
 
 // Initializes gamepad input driver
 void initPad() {
   padInit(0);
-  padPortOpen(0, 0, padArea[0]);
-  padPortOpen(1, 0, padArea[1]);
+  padPortOpen(0, 0, padBuffer[0]);
+  padPortOpen(1, 0, padBuffer[1]);
 
-  old_pad[0] = 0;
-  old_pad[1] = 0;
+  prevInputs[0] = 0;
+  prevInputs[1] = 0;
 }
 
 // Closes gamepad gamepad input driver
@@ -25,31 +25,44 @@ void closePad() {
   padEnd();
 }
 
-int readPadStatus(int port, int slot) {
+// Polls the gamepad and returns only changed inputs
+int readPad(int port, int slot) {
   struct padButtonStatus buttons;
-  uint32_t new_pad, paddata;
+  uint32_t curInput, padData;
 
-  new_pad = 0;
+  curInput = 0;
   if (padRead(port, slot, &buttons) != 0) {
-    paddata = 0xffff ^ buttons.btns;
+    padData = 0xffff ^ buttons.btns;
 
-    new_pad = paddata & ~old_pad[port];
-    old_pad[port] = paddata;
+    curInput = padData & ~prevInputs[port];
+    prevInputs[port] = padData;
   }
 
-  return new_pad;
+  return curInput;
 }
 
-// Combines inputs from both gamepads
-int readCombinedPadStatus() { return (readPadStatus(0, 0) | readPadStatus(1, 0)); }
+// Polls the gamepad and returns currently pressed buttons
+int pollPad(int port, int slot) {
+  struct padButtonStatus buttons;
+  if (padRead(port, slot, &buttons) != 0) {
+    prevInputs[port] = 0xffff ^ buttons.btns;
+    return prevInputs[port];
+  }
 
-// Blocks until a button is pressed on any of the two gamepads.
+  return 0;
+}
+
+// Blocks until input changes on any of the two gamepads.
 // To capture press of any button, pass -1.
-int getInput(int button) {
-  int new_pad;
+int waitForInput(int button) {
+  int curInputs;
   while (1) {
-    new_pad = readCombinedPadStatus();
-    if (new_pad & button)
-      return new_pad;
+    curInputs = (readPad(0, 0) | readPad(1, 0));
+    if (curInputs & button)
+      return curInputs;
   }
 }
+
+
+// Returns inputs on both gamepads
+int pollInput() { return (pollPad(0, 0) | pollPad(1, 0)); }

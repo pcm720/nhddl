@@ -7,8 +7,11 @@ void initPad();
 // Closes gamepad gamepad input driver
 void closePad();
 
-// Blocks until a button is pressed on any of the two gamepads.
+// Blocks until input changes on any of the two gamepads.
 // To capture press of any button, pass -1.
-int getInput(int button);
+int waitForInput(int button);
+
+// Returns inputs on both gamepads
+int pollInput();
 
 #endif
