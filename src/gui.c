@@ -212,15 +212,17 @@ int uiLoop(TargetList *titles) {
     gsKit_queue_exec(gsGlobal);
     gsKit_sync_flip(gsGlobal);
 
-    // Process user inputs every 10th frame unless input changes
+    // Process user inputs:
     input = pollInput();
     frameCount = (frameCount + 1) % 10;
-    if (frameCount && (input == prevInput)) {
+    if ((frameCount && (input == prevInput)) ||                 // Every 10th frame unless input changes
+        ((prevInput & PAD_TRIANGLE) && (input == prevInput))) { // While ignoring held options screen input
       continue;
     }
+
     frameCount = 0;
     prevInput = input;
-    
+
     if (input & (PAD_CROSS | PAD_CIRCLE)) {
       // Copy target, free title list and launch
       Target *target = copyTarget(curTarget);
