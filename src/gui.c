@@ -22,7 +22,7 @@
 int uiLoop(TargetList *titles);
 int uiTitleOptionsLoop(Target *title);
 void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover);
-void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx);
+void drawArgumentList(ArgumentList *arguments, int baseX, uint8_t compatModes, int selectedArgIdx);
 void uiLaunchTitle(Target *target, ArgumentList *arguments);
 void drawGameID(const char *game_id);
 
@@ -51,8 +51,9 @@ static int coverArtY2;
 static int coverArtX1;
 static int coverArtY1;
 
-static const int headerHeight = 30;
-static const int footerHeight = 40;
+static const int keepoutArea = 20;
+static const int headerHeight = 20 + keepoutArea;
+static const int footerHeight = 40 + keepoutArea;
 
 void init480p(GSGLOBAL *gsGlobal) {
   gsGlobal->Mode = GS_MODE_DTV_480P;
@@ -102,7 +103,7 @@ int uiInit() {
 
   // Init cover texture
   coverTexture = calloc(sizeof(GSTEXTURE), 1);
-  coverArtX2 = (gsGlobal->Width - 10);
+  coverArtX2 = (gsGlobal->Width - keepoutArea - 10);
   coverArtY2 = (gsGlobal->Height / 2) + (COVER_ART_RES_H / 2);
   coverArtX1 = coverArtX2 - COVER_ART_RES_W;
   coverArtY1 = coverArtY2 - COVER_ART_RES_H;
@@ -159,7 +160,7 @@ int uiLoop(TargetList *titles) {
   int isCoverUninitialized = 1;
   int selectedTitleIdx = 0;
   int input = 0;
-  int maxTitlesPerPage = (gsGlobal->Height - (headerHeight + footerHeight + 10)) / getFontLineHeight();
+  int maxTitlesPerPage = (gsGlobal->Height - (headerHeight + footerHeight)) / getFontLineHeight();
   Target *curTarget = titles->first;
 
   // Get last launched title and find it in the target list
@@ -253,21 +254,20 @@ exit:
   return res;
 }
 
-void drawTitleListFooter() {
-  drawIconWindow(10, gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
-  drawIconWindow(10 + getIconWidth(ICON_CIRCLE), gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
-  drawTextWindow(15 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, HeaderTextColor,
-                 ALIGN_VCENTER, "Launch title");
+void drawTitleListFooter(int baseX) {
+  // int baseX = keepoutArea + 10;
+  int baseY = gsGlobal->Height - footerHeight;
+  drawIconWindow(baseX, baseY, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
+  drawIconWindow(baseX + getIconWidth(ICON_CIRCLE), baseY, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
+  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), baseY, 0, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER,
+                 "Launch title");
 
-  drawIconWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width - getLineWidth("Exit") - 5, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER,
-                 ICON_START);
-  drawTextWindow(5 + getIconWidth(ICON_START), gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height, 0, HeaderTextColor, ALIGN_CENTER,
-                 "Exit");
+  drawIconWindow(0, baseY, gsGlobal->Width - getLineWidth("Exit") - 5, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_START);
+  drawTextWindow(5 + getIconWidth(ICON_START), baseY, gsGlobal->Width, gsGlobal->Height, 0, HeaderTextColor, ALIGN_CENTER, "Exit");
 
-  drawIconWindow(gsGlobal->Width - 15 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Title options"), gsGlobal->Height - footerHeight,
-                 gsGlobal->Width - 10, gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
-  drawTextWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width - 10, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT,
-                 "Title options");
+  drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Title options"), baseY, gsGlobal->Width - baseX,
+                 gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
+  drawTextWindow(0, baseY, gsGlobal->Width - baseX, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT, "Title options");
 }
 
 // Draws title list
@@ -276,11 +276,12 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
 
   // Draw header and footer
   int titleY = headerHeight;
-  drawTextWindow(10, headerHeight - getFontLineHeight(), coverArtX2, 0, 0, HeaderTextColor, ALIGN_HCENTER, "Title List");
+  int baseX = keepoutArea + 10;
+  drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, "Title List");
   snprintf(lineBuffer, 255, "Page %d/%d\nTitle %d/%d", curPage + 1, DIV_ROUND(titles->total, maxTitlesPerPage), selectedTitleIdx + 1, titles->total);
-  drawTextWindow(10, headerHeight - getFontLineHeight(), coverArtX2, 0, 0, HeaderTextColor, ALIGN_RIGHT, lineBuffer);
+  drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_RIGHT, lineBuffer);
 
-  drawTitleListFooter();
+  drawTitleListFooter(baseX);
 
   // Draw title list
   Target *curTitle = titles->first;
@@ -306,7 +307,7 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
     }
 
     // Draw title name
-    titleY = drawText(10, titleY, 0, coverArtX1, 0, ((selectedTitleIdx == curTitle->idx) ? ColorSelected : FontMainColor), curTitle->name);
+    titleY = drawText(baseX, titleY, 0, coverArtX1, 0, ((selectedTitleIdx == curTitle->idx) ? ColorSelected : FontMainColor), curTitle->name);
 
   next:
     curTitle = curTitle->next;
@@ -330,11 +331,11 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
   }
 }
 
-void drawTitleOptionsFooter() {
-  drawIconWindow(10, gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
-  drawIconWindow(10 + getIconWidth(ICON_CIRCLE), gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
-  drawTextWindow(15 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, HeaderTextColor,
-                 ALIGN_VCENTER, "Toggle");
+void drawTitleOptionsFooter(int baseX) {
+  drawIconWindow(baseX, gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
+  drawIconWindow(baseX + getIconWidth(ICON_CIRCLE), gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
+  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0,
+                 HeaderTextColor, ALIGN_VCENTER, "Toggle");
 
   drawIconWindow((gsGlobal->Width * 3 / 8) - getIconWidth(ICON_SQUARE), gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height, 0,
                  FontMainColor, ALIGN_VCENTER, ICON_SQUARE);
@@ -346,9 +347,9 @@ void drawTitleOptionsFooter() {
   drawTextWindow((gsGlobal->Width * 5 / 8) + 5 + getIconWidth(ICON_START), gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height, 0,
                  HeaderTextColor, ALIGN_VCENTER, "Save");
 
-  drawIconWindow(gsGlobal->Width - 15 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Cancel"), gsGlobal->Height - footerHeight, gsGlobal->Width - 10,
-                 gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
-  drawTextWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width - 10, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT,
+  drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Cancel"), gsGlobal->Height - footerHeight,
+                 gsGlobal->Width - baseX, gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
+  drawTextWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width - baseX, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT,
                  "Cancel");
 }
 
@@ -382,14 +383,16 @@ int uiTitleOptionsLoop(Target *target) {
     gsKit_clear(gsGlobal, BGColor);
 
     // Draw header
+    int baseX = keepoutArea + 10;
     snprintf(lineBuffer, 255, "%s\n%s", target->name, target->id);
-    drawTextWindow(10, headerHeight-getFontLineHeight(), coverArtX2, 0, 0, HeaderTextColor, ALIGN_HCENTER, lineBuffer);
-    drawTextWindow(10, headerHeight+1.5*getFontLineHeight(), coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER, "Compatibility modes");
+    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, lineBuffer);
+    drawTextWindow(baseX, headerHeight + 1.5 * getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, FontMainColor, ALIGN_HCENTER,
+                   "Compatibility modes");
 
     // Draw footer
-    drawTitleOptionsFooter();
+    drawTitleOptionsFooter(baseX);
 
-    drawArgumentList(titleArguments, modes, selectedArgIdx);
+    drawArgumentList(titleArguments, baseX, modes, selectedArgIdx);
 
     gsKit_queue_exec(gsGlobal);
     gsKit_sync_flip(gsGlobal);
@@ -439,8 +442,8 @@ exit:
 }
 
 // Draws title arguments
-void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx) {
-  int startY = headerHeight+2.5*getFontLineHeight();
+void drawArgumentList(ArgumentList *arguments, int baseX, uint8_t compatModes, int selectedArgIdx) {
+  int startY = headerHeight + 2.5 * getFontLineHeight();
   int idx = 0;
 
   // Draw compatibility modes
@@ -448,9 +451,10 @@ void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selected
   // Indexes 0 through CM_NUM_MODES are reserved for compatibility modes
   for (idx = 0; idx < CM_NUM_MODES; idx++) {
     if (compatModes & COMPAT_MODE_MAP[idx].mode) {
-      drawIconWindow(10, startY, 20, startY + getFontLineHeight(), 0, FontMainColor, ALIGN_CENTER, ICON_ENABLED);
+      drawIconWindow(baseX, startY, 20, startY + getFontLineHeight(), 0, FontMainColor, ALIGN_CENTER, ICON_ENABLED);
     }
-    startY = drawText(15+getIconWidth(ICON_ENABLED), startY, 0, 0, 0, ((selectedArgIdx == idx) ? ColorSelected : FontMainColor), COMPAT_MODE_MAP[idx].name);
+    startY = drawText(baseX + getIconWidth(ICON_ENABLED), startY, 0, 0, 0, ((selectedArgIdx == idx) ? ColorSelected : FontMainColor),
+                      COMPAT_MODE_MAP[idx].name);
   }
 
   // Draw other arguments
@@ -463,14 +467,14 @@ void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selected
   startY += 10;
   idx = 0; // Reset index
 
-  startY = drawTextWindow(10, startY, coverArtX2, 0, 0, FontMainColor, ALIGN_CENTER, "Launch arguments");
+  startY = drawTextWindow(baseX, startY, gsGlobal->Width - baseX, 0, 0, FontMainColor, ALIGN_CENTER, "Launch arguments");
 
   // Set number of elements per page according to line height and available screen height
   int maxArguments = (gsGlobal->Height - startY - footerHeight) / getFontLineHeight();
   int curPage = (selectedArgIdx - (int)CM_NUM_MODES) / maxArguments;
 
   snprintf(lineBuffer, 255, "Page %d/%d", curPage + 1, DIV_ROUND(arguments->total - 1, maxArguments));
-  startY = drawTextWindow(10, startY - getFontLineHeight(), coverArtX2, 0, 0, HeaderTextColor, ALIGN_RIGHT, lineBuffer);
+  startY = drawTextWindow(baseX, startY - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_RIGHT, lineBuffer);
 
   // Always start with the second element since the first
   // is guaranteed to be a compatibility mode flag
@@ -488,12 +492,12 @@ void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selected
 
     // Draw argument
     if (!argument->isDisabled)
-      drawIconWindow(10, startY, 20, startY + getFontLineHeight(), 0, FontMainColor, ALIGN_CENTER, ICON_ENABLED);
+      drawIconWindow(baseX, startY, 20, startY + getFontLineHeight(), 0, FontMainColor, ALIGN_CENTER, ICON_ENABLED);
 
     snprintf(lineBuffer, 255, "%s%s%s %s", ((argument->isGlobal) ? "[G] " : ""), argument->arg, (!strlen(argument->value)) ? "" : ":",
              argument->value);
-    // Increment index for Y coordinate because 'Launch arguments' string occupies space for index 5
-    startY = drawText(15+getIconWidth(ICON_ENABLED), startY, 0, 0, 0, (((selectedArgIdx - (int)CM_NUM_MODES) == idx) ? ColorSelected : FontMainColor), lineBuffer);
+    startY = drawText(baseX + getIconWidth(ICON_ENABLED), startY, 0, 0, 0,
+                      (((selectedArgIdx - (int)CM_NUM_MODES) == idx) ? ColorSelected : FontMainColor), lineBuffer);
 
     idx++;
   next:
