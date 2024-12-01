@@ -383,8 +383,8 @@ int uiTitleOptionsLoop(Target *target) {
 
     // Draw header
     snprintf(lineBuffer, 255, "%s\n%s", target->name, target->id);
-    drawTextWindow(10, 20, coverArtX2, 0, 0, HeaderTextColor, ALIGN_HCENTER, lineBuffer);
-    drawTextWindow(10, 60, coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER, "Compatibility modes");
+    drawTextWindow(10, headerHeight-getFontLineHeight(), coverArtX2, 0, 0, HeaderTextColor, ALIGN_HCENTER, lineBuffer);
+    drawTextWindow(10, headerHeight+1.5*getFontLineHeight(), coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER, "Compatibility modes");
 
     // Draw footer
     drawTitleOptionsFooter();
@@ -440,7 +440,7 @@ exit:
 
 // Draws title arguments
 void drawArgumentList(ArgumentList *arguments, uint8_t compatModes, int selectedArgIdx) {
-  int startY = 80;
+  int startY = headerHeight+2.5*getFontLineHeight();
   int idx = 0;
 
   // Draw compatibility modes
