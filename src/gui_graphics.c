@@ -1,5 +1,6 @@
-#include "bmfont.h"
-#include "dejavu_sans.h"
+#include "gui_graphics.h"
+#include "gui_dejavu_sans.h"
+#include "gui_icons.h"
 #include <dmaKit.h>
 #include <gsKit.h>
 #include <gsToolkit.h>
@@ -15,6 +16,8 @@ extern GSGLOBAL *gsGlobal;
 
 // Array of initialized GS textures containing font pages
 GSTEXTURE **fontPages;
+// Graphics texture
+GSTEXTURE *icons;
 
 // Used font
 const struct BMFont font = BMFONT_DEJAVU_SANS;
@@ -35,18 +38,83 @@ int initFont() {
       return -1;
     }
   }
+
+  // Upload icons texture to GS
+  icons = calloc(sizeof(GSTEXTURE), 1);
+  if (gsKit_texture_png_mem(gsGlobal, icons, ICONS_PNG, SIZE_ICONS_PNG)) {
+    printf("ERROR: Failed to load icons texture\n");
+    return -1;
+  }
+
   return 0;
 }
 
-// Frees memory used by font pages
+// Frees memory used by font pages and icon texture
 void closeFont() {
   for (int i = 0; i < font.pageCount; i++) {
     free(fontPages[0]->Mem);
     free(fontPages[i]);
   }
   free(fontPages);
+
+  free(icons->Mem);
+  free(icons);
   return;
 }
+
+// Returns icon height
+int getIconHeight(IconType iconType) { return ICONS[iconType].height; }
+
+// Returns icon width
+int getIconWidth(IconType iconType) { return ICONS[iconType].width; }
+
+// Draws the icon at specified coordinates
+void drawIcon(float x, float y, int z, uint64_t color, IconType iconType) {
+  Icon icon = ICONS[iconType];
+
+  gsKit_set_primalpha(gsGlobal, GS_BLEND_BACK2FRONT, 0);
+  gsKit_set_test(gsGlobal, GS_ATEST_OFF);
+  gsKit_prim_sprite_texture(gsGlobal, icons,          // font page
+                            x,                        // x1 (destination)
+                            y,                        // y1
+                            icon.x,                   // u1 (source texture)
+                            icon.y,                   // v1
+                            x + icon.width,           // x2 (destination)
+                            y + icon.height,          // y2
+                            icon.x + icon.width + 1,  // u2 (source texture)
+                            icon.y + icon.height + 1, // v2
+                            z, color);
+  gsKit_set_test(gsGlobal, GS_ATEST_ON);
+  gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
+}
+
+// Draws the icon in [x1,y1],[x2,y2] window.
+void drawIconWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_t alignment, IconType iconType) {
+  Icon icon = ICONS[iconType];
+
+  // Apply vertical alignment
+  if (y2) {
+    if (alignment & ALIGN_VCENTER) {
+      y1 += ((y2 - y1) - icon.height) / 2;
+    } else if (alignment & ALIGN_BOTTOM) {
+      y1 = y2 - icon.height;
+    }
+  }
+
+  // Apply horizontal alignment
+  if (x2) {
+    if (alignment & ALIGN_HCENTER) {
+      x1 = x1 + (((x2 - x1) - icon.width) / 2);
+    } else if (alignment & ALIGN_RIGHT) {
+      x1 = x2 - icon.width;
+    }
+  }
+
+  drawIcon(x1, y1, z, color, iconType);
+}
+
+// Returns line height for used font
+uint8_t getFontLineHeight() { return font.lineHeight; }
 
 // Returns pointer to the glyph or NULL if the font doesn't have a glyph for this character
 const BMFontChar *getGlyph(uint32_t character) {
@@ -315,7 +383,7 @@ int gsKit_texture_png_mem(GSGLOBAL *gsGlobal, GSTEXTURE *texture, void *buf, siz
   texture->PSM = GS_PSM_CT32;
   texture->Filter = GS_FILTER_NEAREST;
   texture->Mem = memalign(128, gsKit_texture_size(texture->Width, texture->Height, texture->PSM));
-  
+
   int row_bytes = png_get_rowbytes(png_ptr, info_ptr);
   row_pointers = calloc(height, sizeof(png_bytep));
   for (row = 0; row < height; row++)
