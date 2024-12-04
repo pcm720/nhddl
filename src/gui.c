@@ -213,12 +213,14 @@ int uiLoop(TargetList *titles) {
     gsKit_sync_flip(gsGlobal);
 
     // Process user inputs:
-    input = pollInput();
+    if (input == -1)            // If input is -1, block until input changes
+      input = waitForInput(-1); // Used to ignore held inputs after returning from title options
+    else
+      input = pollInput();
+
     frameCount = (frameCount + 1) % 10;
-    if ((frameCount && (input == prevInput)) ||                 // Every 10th frame unless input changes
-        ((prevInput & PAD_TRIANGLE) && (input == prevInput))) { // While ignoring held options screen input
+    if (frameCount && (input == prevInput)) // Handle input only every 10th frame unless it changes
       continue;
-    }
 
     frameCount = 0;
     prevInput = input;
@@ -249,6 +251,8 @@ int uiLoop(TargetList *titles) {
       if (selectedTitleIdx < 0)
         selectedTitleIdx = 0;
     } else if (input & PAD_TRIANGLE) {
+      input = -1;    // Force UI loop to wait once uiTitleOptionsLoop returns
+      prevInput = 0; // Reset previous input
       // Enter title options screen
       if ((res = uiTitleOptionsLoop(curTarget))) {
         // Something went wrong, main loop must exit immediately
