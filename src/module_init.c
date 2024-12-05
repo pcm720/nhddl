@@ -1,6 +1,7 @@
 #include "module_init.h"
 #include "common.h"
 #include <ctype.h>
+#include <debug.h>
 #include <fcntl.h>
 #include <iopcontrol.h>
 #include <libmc.h>
@@ -56,7 +57,7 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(mcserv, MODE_ALL),
     INT_MODULE(freepad, MODE_ALL),
     // DEV9
-    {"dev9", NULL, NULL, 0, NULL, "modules/dev9_ns.irx", NULL, MODE_ALL},
+    {"dev9", NULL, NULL, 0, NULL, "modules/dev9_ns.irx", NULL, MODE_UDPBD | MODE_ATA | MODE_ILINK},
     // BDM
     {"bdm", NULL, NULL, 0, NULL, "modules/bdm.irx", NULL, MODE_ALL},
     // FAT/exFAT
@@ -118,16 +119,19 @@ int initModules(char *basePath) {
     return ret;
 
   // Load modules
-  logString("Loading modules:\n");
+  init_scr();
+  logString("\n\nLoading modules:\n");
   for (int i = 0; i < MODULE_COUNT; i++) {
-    if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL)) {
-      if ((ret = loadModule(&moduleList[i])))
+    if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL) && (moduleList[i].mode & LAUNCHER_OPTIONS.mode)) {
+      if ((ret = loadModule(&moduleList[i]))) {
         return ret;
+      }
     }
     // Free external module
     if (moduleList[i].path != NULL)
       freeModule(&moduleList[i]);
   }
+  sleep(5);
   return 0;
 }
 
@@ -140,35 +144,39 @@ int loadModule(ModuleListEntry *mod) {
     return 0;
   }
 
+  logString("\tloading %s\n", mod->name);
+
   // If module has an arugment function, execute it
   if (mod->argumentFunction != NULL) {
     mod->argStr = mod->argumentFunction(&mod->argLength);
     if (mod->argStr == NULL) {
       // Ignore errors if module can fail
-      if ((mod->mode != MODE_ALL) && (mod->mode != LAUNCHER_OPTIONS.mode)) {
-        logString("\t%s: Failed to initialize arguments, skipping module\n", mod->name);
-        return 0;
-      } else {
-        logString("\t%s: Failed to initialize arguments\n", mod->name);
-        return -1;
-      }
+      ret = -EINVAL;
+      goto failCheck;
     }
   }
 
   if (mod->argStr != NULL)
-    logString("\tloading %s with %s\n", mod->name, mod->argStr);
-  else
-    logString("\tloading %s\n", mod->name);
+    logString("\t\twith %s\n", mod->argStr);
 
   ret = SifExecModuleBuffer(mod->irx, *mod->size, mod->argLength, mod->argStr, &iopret);
-  // Ignore error if module can fail
-  if ((mod->mode == MODE_ALL) || (mod->mode == LAUNCHER_OPTIONS.mode)) {
-    if (ret < 0)
-      return ret;
-    if (iopret == 1)
-      return iopret;
+  if (ret >= 0)
+    ret = 0;
+  if (iopret == 1)
+    ret = iopret;
+
+failCheck:
+  if ((ret != 0) &&                                                 // If module failed to initialize
+      (mod->mode != MODE_ALL) &&                                    // Module is not required
+      ((mod->mode & LAUNCHER_OPTIONS.mode) ^ LAUNCHER_OPTIONS.mode) // Module mode is not the only one enabled
+  ) {
+    // Exclude mode from target modes
+    logString("\t\tFailed to load module (%d), some modes might not be available\n", ret);
+    LAUNCHER_OPTIONS.mode ^= mod->mode;
+    return 0;
   }
-  return 0;
+
+  return ret;
 }
 
 // Frees dynamically allocated memory for ModuleListEntry
@@ -193,7 +201,7 @@ int loadExternalModules(char *basePath) {
     // Ignore module if:
     if (((moduleList[i].irx != NULL) || (moduleList[i].path == NULL)) // Module IRX is already in memory or doesn't have a path
         ||                                                            // or
-        (moduleList[i].mode != LAUNCHER_OPTIONS.mode &&               // Target mode doesn't match required mode
+        (!(moduleList[i].mode & LAUNCHER_OPTIONS.mode) &&             // Target mode doesn't match required mode
          moduleList[i].mode != MODE_ALL &&                            // Module is not required
          LAUNCHER_OPTIONS.mode != MODE_ALL)                           // Target mode is not set to ALL
     ) {
@@ -209,8 +217,11 @@ int loadExternalModules(char *basePath) {
     // Open module
     if ((fd = open(pathBuf, O_RDONLY)) < 0) {
       logString("%s: Failed to open %s\n", moduleList[i].name, pathBuf);
-      if ((moduleList[i].mode == MODE_ALL) || (moduleList[i].mode == LAUNCHER_OPTIONS.mode))
+      if ((moduleList[i].mode == MODE_ALL) || !((moduleList[i].mode & LAUNCHER_OPTIONS.mode) ^ LAUNCHER_OPTIONS.mode))
         goto fail;
+
+      // Exclude mode from target modes
+      LAUNCHER_OPTIONS.mode ^= moduleList[i].mode;
       continue;
     }
     // Determine file size
@@ -280,8 +291,8 @@ int parseIPConfig() {
   }
 
   if ((ipconfigFd < 0) || (count < sizeof(ipAddr) - 1)) {
-    if (LAUNCHER_OPTIONS.mode == MODE_UDPBD)
-      logString("WARN: Failed to get IP address from IPCONFIG.DAT\n");
+    if (LAUNCHER_OPTIONS.mode & MODE_UDPBD)
+      logString("\t\tFailed to get IP address from IPCONFIG.DAT\n");
     return -ENOENT;
   }
 

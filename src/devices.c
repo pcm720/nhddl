@@ -74,11 +74,12 @@ int initDeviceMap() {
 
   int deviceCount = 0;
   int delayAttempts = 2;
-  if ((LAUNCHER_OPTIONS.mode == MODE_ALL) || (LAUNCHER_OPTIONS.mode == MODE_UDPBD)) {
+  if ((LAUNCHER_OPTIONS.mode & MODE_UDPBD)) {
     // UDPBD needs considerably more time to init
     delayAttempts = 10;
   }
   for (int i = 0; i < MAX_MASS_DEVICES; i++) {
+    deviceModeMap[i].mode = MODE_ALL;
     mountpoint[4] = i + '0';
 
     // Wait for IOP to initialize device driver
