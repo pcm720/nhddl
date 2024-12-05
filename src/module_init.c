@@ -57,7 +57,7 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(mcserv, MODE_ALL),
     INT_MODULE(freepad, MODE_ALL),
     // DEV9
-    {"dev9", NULL, NULL, 0, NULL, "modules/dev9_ns.irx", NULL, MODE_UDPBD | MODE_ATA | MODE_ILINK},
+    {"dev9", NULL, NULL, 0, NULL, "modules/dev9_ns.irx", NULL, MODE_UDPBD | MODE_ATA},
     // BDM
     {"bdm", NULL, NULL, 0, NULL, "modules/bdm.irx", NULL, MODE_ALL},
     // FAT/exFAT
@@ -131,7 +131,6 @@ int initModules(char *basePath) {
     if (moduleList[i].path != NULL)
       freeModule(&moduleList[i]);
   }
-  sleep(5);
   return 0;
 }
 
