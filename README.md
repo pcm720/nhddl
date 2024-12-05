@@ -1,5 +1,9 @@
 # NHDDL — a PS2 exFAT BDM launcher for Neutrino
 
+<p align="center">
+  <img src="img/logo/logo.png">
+</p>
+
 NHDDL is a Neutrino launcher that scans _FAT/exFAT-formatted_ BDM devices for ISO files,
 lists them and boots selected ISO via Neutrino.  
 
