@@ -5,6 +5,7 @@
 
 // Enum for supported modes
 typedef enum {
+  MODE_NONE = 0,
   MODE_ATA = (1 << 0),
   MODE_MX4SIO = (1 << 1),
   MODE_UDPBD = (1 << 2),
@@ -20,8 +21,6 @@ typedef struct {
   char udpbdIp[16];
 } LauncherOptions;
 
-// ELF base path. Initialized in main() during init.
-extern char ELF_BASE_PATH[PATH_MAX + 1];
 // Path to Neutrino ELF. Initialized in main() during init.
 extern char NEUTRINO_ELF_PATH[PATH_MAX + 1];
 // Options
