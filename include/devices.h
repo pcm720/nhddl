@@ -15,7 +15,7 @@ typedef struct {
 } DeviceMapEntry;
 
 // Maps BDM device index (massX:) to supported mode.
-// Device must be ignored if mode is MODE_ALL
+// Device must be ignored if mode is MODE_ALL or MODE_NONE
 extern DeviceMapEntry deviceModeMap[];
 
 // Initializes device mode map and returns device count

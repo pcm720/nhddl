@@ -12,7 +12,7 @@
 #include <io_common.h>
 
 // Maps mass device index to supported mode.
-// Device must be ignored if mode is MODE_ALL
+// Device must be ignored if mode is MODE_ALL or MODE_NONE
 DeviceMapEntry deviceModeMap[MAX_MASS_DEVICES] = {};
 
 // Maps driver name to ModeType
@@ -27,7 +27,7 @@ ModeType mapDriverName(char *driverName) {
     return MODE_ILINK;
   else if (!strncmp(driverName, "udp", 3))
     return MODE_UDPBD;
-  return MODE_ALL;
+  return MODE_NONE;
 }
 
 //
@@ -79,7 +79,7 @@ int initDeviceMap() {
     delayAttempts = 10;
   }
   for (int i = 0; i < MAX_MASS_DEVICES; i++) {
-    deviceModeMap[i].mode = MODE_ALL;
+    deviceModeMap[i].mode = MODE_NONE;
     mountpoint[4] = i + '0';
 
     // Wait for IOP to initialize device driver
