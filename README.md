@@ -15,30 +15,55 @@ GSM, PADEMU, IGR, IGS and other stuff is out-of-scope of this launcher.
 
 ## Usage
 
+NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) installation to be present at one of the following paths:
+- NHDDL launch directory
+- `mcX:/NEUTRINO/` (memory cards, __case-sensitive__)
+- `massX:/neutrino/` (BDM devices)
+
+By default, NHDDL tries to initialize all supported devices. You can override this behavior and reduce initialization times by setting specific mode in launcher configuration file.  
+See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
+
+**Do not plug in any USB mass storage devices while running NHDDL!**  
+Doing so might crash NHDDL and/or possibly corrupt the files on your target device due to how BDM drivers work.
+
+NHDDL comes in two versions: _standalone_ and _non-standalone_.
+
+### Standalone version
+
+The standalone version of NHDDL doesn't require any Neutrino modules and will boot from any device.  
+It makes the `nhddl.elf` larger, but allows NHDDL to support ELF loaders that unload everything before launchining NHDDL from USB.
+
+Note that Neutrino is still required for NHDDL to launch your ISOs.
+
+- Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
+- Copy `nhddl.elf` to your memory card or storage device wherever you want.
+- _Additional step if you need only ATA, USB, MX4SIO, UDPBD or iLink_:  
+  Modify `nhddl.yaml` [accordingly](#common-use-cases) and copy it next to `nhddl.elf`
+- Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases)
+- Copy Neutrino folder to the root of your PS2 memory card or your storage device. 
+ 
+Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest version.
+
+### Non-standalone version
+
+Use this version to save space on your memory card.
+
 - Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases)
 - Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
 - Unpack Neutrino release
 - Copy `nhddl.elf` to Neutrino folder next to `neutrino.elf`
 - _Additional step if you need only ATA, USB, MX4SIO, UDPBD or iLink_:  
   Modify `nhddl.yaml` [accordingly](#common-use-cases) and copy it next to `nhddl.elf`
-- Copy Neutrino folder to your PS2 memory card or your USB device.  
-  Any folder (e.g. `APPS`) will do, it doesn't have to be in the root of your device.
+- Copy Neutrino folder to your PS2 memory card or your USB device.
 
 Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest version.
 
-If you're getting `Failed to prepare external modules` error while trying to run NHDDL from the USB drive, make sure your ELF launcher initializes
-USB modules and doesn't reset the IOP before loading NHDDL.
+If you're getting `Failed to prepare external modules` error while trying to run NHDDL from the USB drive, MX4SIO, iLink or UDPBD, make sure your ELF launcher initializes
+USB modules and doesn't reset the IOP before loading NHDDL.  
+If this is the case, you __must__ place Neutrino on the memory card or use standalone version instead.
 
-### Supported BDM devices
-
-NHDDL reuses Neutrino modules for BDM support and requires them to be present in Neutrino `modules` directory.
+The non-standalone version of NHDDL reuses Neutrino modules for BDM support and requires them to be present in Neutrino `modules` directory, which makes `nhddl.elf` significantly smaller.  
 These files should already be present in Neutrino release ZIP.
-
-By default, NHDDL initializes all modules and looks for ISOs on FAT/exFAT-formatted BDM devices.  
-See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
-
-**Do not plug in any USB mass storage devices while running NHDDL!**  
-Doing so might crash NHDDL and/or possibly corrupt the files on your target device due to how BDM drivers work.
 
 #### ATA
 Make sure that Neutrino `modules` directory contains the following IRX files:
@@ -118,15 +143,22 @@ NHDDL uses YAML-like files to load and store its configuration options.
 
 ### Launcher configuration file
 
-Launcher configuration is read from the `nhddl.yaml` file, which must be located in the same directory as `nhddl.elf`.  
-This file is _completely optional_ and must be used only to enable 480p in NHDDL UI or switch NHDDL to single device.  
-By default, 480p is disabled and the all devices are used to look for ISO files.
+Launcher configuration is read from the `nhddl.yaml` file.
+
+Configuration file is loaded from one of the following paths:
+- `nhddl.yaml` in NHDDL launch directory (overrides all other paths)
+- `mcX:/NHDDL/nhddl.yaml` (memory cards, __case-sensitive__)
+- `mcX:/NHDDL-CONF/nhddl.yaml` (memory cards, __case-sensitive__)
+- `massX:/nhddl/nhddl.yaml` (BDM devices)
+
+This file is _completely optional_ and must be used only to enable 480p in NHDDL UI or switch NHDDL to a single device mode.  
+By default, 480p is disabled and all BDM devices are used to look for ISO files.
 
 To disable a flag, you can just comment it out with `#`.
 
 See [this file](examples/nhddl.yaml) for an example of a valid `nhddl.yaml` file.
 
-### Configuration files on storage device
+### Additional configuration files on storage device
 
 NHDDL stores and looks for ISO-related config files in `nhddl` directory in the root of your BDM drive.  
 
