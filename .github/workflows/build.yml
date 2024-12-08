@@ -20,6 +20,8 @@ jobs:
       id: make
       run: |
         make
+        make cleanobj
+        make STANDALONE=1
 
     - name: Upload ELF
       uses: actions/upload-artifact@v4
@@ -61,7 +63,8 @@ jobs:
     - name: Prepare release archive
       run: |
         mv nhddl/nhddl-${{ env.GIT_VERSION }}.elf nhddl.elf
-        zip -r nhddl-${{ env.GIT_VERSION }}.zip nhddl.elf examples
+        mv nhddl/nhddl-${{ env.GIT_VERSION }}-standalone.elf nhddl-standalone.elf
+        zip -r nhddl-${{ env.GIT_VERSION }}.zip nhddl.elf nhddl-standalone.elf examples
 
     - uses: "marvinpinto/action-automatic-releases@latest"
       if: github.ref == 'refs/heads/main'
