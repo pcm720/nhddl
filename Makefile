@@ -1,13 +1,14 @@
 #.SILENT:
+STANDALONE ?= 0
 
 GIT_VERSION := $(shell git describe --always --dirty --tags --exclude nightly)
 
 ELF_BASE_NAME := nhddl-$(GIT_VERSION)
 
 EE_BIN = $(ELF_BASE_NAME)_unc.elf
+EE_BIN_STANDALONE = $(ELF_BASE_NAME)-standalone_unc.elf
 EE_BIN_PKD = $(ELF_BASE_NAME).elf
-EE_BIN_DEBUG := $(ELF_BASE_NAME)-debug_unc.elf
-EE_BIN_DEBUG_PKD := $(ELF_BASE_NAME)-debug.elf
+EE_BIN_PKD_STANDALONE = $(ELF_BASE_NAME)-standalone.elf
 
 EE_OBJS = main.o module_init.o common.o iso.o history.o options.o gui.o gui_graphics.o pad.o launcher.o iso_cache.o iso_title_id.o devices.o
 IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx
@@ -16,6 +17,14 @@ ELF_FILES += loader.elf
 
 EE_LIBS = -ldebug -lfileXio -lpatches -lgskit -ldmakit -lgskit_toolkit -lpng -lz -ltiff -lpad -lmc
 EE_CFLAGS := -mno-gpopt -G0 -DGIT_VERSION="\"${GIT_VERSION}\""
+
+ifeq ($(STANDALONE), 1)
+ IRX_FILES += ps2dev9.irx bdm.irx bdmfs_fatfs.irx ata_bd.irx usbd_mini.irx smap_udpbd.irx
+ IRX_FILES += usbmass_bd_mini.irx mx4sio_bd_mini.irx iLinkman.irx IEEE1394_bd_mini.irx udptty.irx
+ EE_CFLAGS += -DSTANDALONE
+ EE_BIN = $(EE_BIN_STANDALONE)
+ EE_BIN_PKD = $(EE_BIN_PKD_STANDALONE)
+endif
 
 EE_OBJS_DIR = obj/
 EE_ASM_DIR = asm/
@@ -39,9 +48,15 @@ all: $(EE_BIN_PKD)
 $(EE_BIN_PKD): $(EE_BIN)
 	ps2-packer $< $@
 
+cleanobj:
+	$(MAKE) -C loader clean
+	$(MAKE) -C iop/smap_udpbd clean
+	rm -rf $(EE_ASM_DIR) $(EE_OBJS_DIR)
+
 clean:
 	$(MAKE) -C loader clean
-	rm -rf $(EE_BIN) $(EE_BIN_PKD) $(EE_BIN_DEBUG) $(EE_BIN_DEBUG_PKD) $(EE_ASM_DIR) $(EE_OBJS_DIR)
+	$(MAKE) -C iop/smap_udpbd clean
+	rm -rf $(EE_BIN) $(EE_BIN_PKD) $(EE_BIN_STANDALONE) $(EE_BIN_PKD_STANDALONE) $(EE_ASM_DIR) $(EE_OBJS_DIR)
 
 # ELF loader
 loader/loader.elf: loader
@@ -49,6 +64,13 @@ loader/loader.elf: loader
 
 %loader_elf.c: loader/loader.elf
 	$(BIN2C) $(*:$(EE_SRC_DIR)%=loader/%)loader.elf $@ $(*:$(EE_SRC_DIR)%=%)loader_elf
+
+# smap_udpbd.irx
+iop/smap_udpbd/smap_udpbd.irx: iop/smap_udpbd
+	$(MAKE) -C $<
+
+%smap_udpbd_irx.c: iop/smap_udpbd/smap_udpbd.irx
+	$(BIN2C) iop/smap_udpbd/$(*:$(EE_SRC_DIR)%=%)smap_udpbd.irx $@ $(*:$(EE_SRC_DIR)%=%)smap_udpbd_irx
 
 # IRX files
 %_irx.c:
