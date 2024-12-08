@@ -19,7 +19,7 @@
   extern uint32_t size_##mod##_irx
 
 // Defines moduleList entry for embedded module
-#define INT_MODULE(mod, mode) {#mod, mod##_irx, &size_##mod##_irx, 0, NULL, NULL, NULL, mode}
+#define INT_MODULE(mod, mode, argFunc) {#mod, mod##_irx, &size_##mod##_irx, 0, NULL, argFunc, mode, {NULL}, 0}
 
 // Embedded IOP modules
 IRX_DEFINE(iomanX);
@@ -28,6 +28,19 @@ IRX_DEFINE(sio2man);
 IRX_DEFINE(mcman);
 IRX_DEFINE(mcserv);
 IRX_DEFINE(freepad);
+
+#ifdef STANDALONE
+IRX_DEFINE(ps2dev9);
+IRX_DEFINE(bdm);
+IRX_DEFINE(bdmfs_fatfs);
+IRX_DEFINE(ata_bd);
+IRX_DEFINE(usbd_mini);
+IRX_DEFINE(usbmass_bd_mini);
+IRX_DEFINE(mx4sio_bd_mini);
+IRX_DEFINE(iLinkman);
+IRX_DEFINE(IEEE1394_bd_mini);
+IRX_DEFINE(smap_udpbd);
+#endif
 
 // Function used to initialize module arguments.
 // Must set argLength and return non-null pointer to a argument string if successful.
@@ -39,9 +52,10 @@ typedef struct ModuleListEntry {
   uint32_t *size;                 // IRX size. Uses pointer to avoid compilation issues with internal modules
   uint32_t argLength;             // Argument string length
   char *argStr;                   // Argument string
-  char *path;                     // Relative path to module (in case module is external)
   moduleArgFunc argumentFunction; // Function used to initialize module arguments
   ModeType mode;                  // Used to ignore modules not required for target mode
+  char *path[2];                  // Relative path to module (in case module is external)
+  uint8_t loaded;
 } ModuleListEntry;
 
 // Initializes SMAP arguments
@@ -50,41 +64,61 @@ char *initSMAPArguments(uint32_t *argLength);
 // List of modules to load
 static ModuleListEntry moduleList[] = {
     // Embedded modules
-    INT_MODULE(iomanX, MODE_ALL),
-    INT_MODULE(fileXio, MODE_ALL),
-    INT_MODULE(sio2man, MODE_ALL),
-    INT_MODULE(mcman, MODE_ALL),
-    INT_MODULE(mcserv, MODE_ALL),
-    INT_MODULE(freepad, MODE_ALL),
+    INT_MODULE(iomanX, MODE_ALL, NULL),
+    INT_MODULE(fileXio, MODE_ALL, NULL),
+    INT_MODULE(sio2man, MODE_ALL, NULL),
+    INT_MODULE(mcman, MODE_ALL, NULL),
+    INT_MODULE(mcserv, MODE_ALL, NULL),
+    INT_MODULE(freepad, MODE_ALL, NULL),
+#ifndef STANDALONE
     // DEV9
-    {"dev9", NULL, NULL, 0, NULL, "modules/dev9_ns.irx", NULL, MODE_UDPBD | MODE_ATA},
+    {"dev9", NULL, NULL, 0, NULL, NULL, MODE_UDPBD | MODE_ATA, {"modules/dev9_ns.irx", "dev9_ns.irx"}, 0},
     // BDM
-    {"bdm", NULL, NULL, 0, NULL, "modules/bdm.irx", NULL, MODE_ALL},
+    {"bdm", NULL, NULL, 0, NULL, NULL, MODE_ALL, {"modules/bdm.irx", "bdm.irx"}, 0},
     // FAT/exFAT
-    {"bdmfs_fatfs", NULL, NULL, 0, NULL, "modules/bdmfs_fatfs.irx", NULL, MODE_ALL},
+    {"bdmfs_fatfs", NULL, NULL, 0, NULL, NULL, MODE_ALL, {"modules/bdmfs_fatfs.irx", "bdmfs_fatfs.irx"}, 0},
     // SMAP driver. Actually includes small IP stack and UDPTTY
-    {"smap_udpbd", NULL, NULL, 0, NULL, "modules/smap_udpbd.irx", &initSMAPArguments, MODE_UDPBD},
+    {"smap_udpbd", NULL, NULL, 0, NULL, &initSMAPArguments, MODE_UDPBD, {"modules/smap_udpbd.irx", "smap_udpbd.irx"}, 0},
     // ATA
-    {"ata_bd", NULL, NULL, 0, NULL, "modules/ata_bd.irx", NULL, MODE_ATA},
+    {"ata_bd", NULL, NULL, 0, NULL, NULL, MODE_ATA, {"modules/ata_bd.irx", "ata_bd.irx"}, 0},
     // USBD
-    {"usbd_mini", NULL, NULL, 0, NULL, "modules/usbd_mini.irx", NULL, MODE_USB},
+    {"usbd_mini", NULL, NULL, 0, NULL, NULL, MODE_USB, {"modules/usbd_mini.irx", "usbd_mini.irx"}, 0},
     // USB Mass Storage
-    {"usbmass_bd_mini", NULL, NULL, 0, NULL, "modules/usbmass_bd_mini.irx", NULL, MODE_USB},
+    {"usbmass_bd_mini", NULL, NULL, 0, NULL, NULL, MODE_USB, {"modules/usbmass_bd_mini.irx", "usbmass_bd_mini.irx"}, 0},
     // MX4SIO
-    {"mx4sio_bd_mini", NULL, NULL, 0, NULL, "modules/mx4sio_bd_mini.irx", NULL, MODE_MX4SIO},
+    {"mx4sio_bd_mini", NULL, NULL, 0, NULL, NULL, MODE_MX4SIO, {"modules/mx4sio_bd_mini.irx", "mx4sio_bd_mini.irx"}, 0},
     // iLink
-    {"iLinkman", NULL, NULL, 0, NULL, "modules/iLinkman.irx", NULL, MODE_ILINK},
+    {"iLinkman", NULL, NULL, 0, NULL, NULL, MODE_ILINK, {"modules/iLinkman.irx", "iLinkman.irx"}, 0},
     // iLink Mass Storage
-    {"IEEE1394_bd_mini", NULL, NULL, 0, NULL, "modules/IEEE1394_bd_mini.irx", NULL, MODE_ILINK},
+    {"IEEE1394_bd_mini", NULL, NULL, 0, NULL, NULL, MODE_ILINK, {"modules/IEEE1394_bd_mini.irx", "IEEE1394_bd_mini.irx"}, 0},
+#else
+    // DEV9
+    INT_MODULE(ps2dev9, MODE_UDPBD | MODE_ATA, NULL),
+    // BDM
+    INT_MODULE(bdm, MODE_ALL, NULL),
+    // FAT/exFAT
+    INT_MODULE(bdmfs_fatfs, MODE_ALL, NULL),
+    // SMAP driver. Actually includes small IP stack and UDPTTY
+    INT_MODULE(smap_udpbd, MODE_UDPBD, &initSMAPArguments),
+    // ATA
+    INT_MODULE(ata_bd, MODE_ATA, NULL),
+    // USBD
+    INT_MODULE(usbd_mini, MODE_USB, NULL),
+    // USB Mass Storage
+    INT_MODULE(usbmass_bd_mini, MODE_USB, NULL),
+    // MX4SIO
+    INT_MODULE(mx4sio_bd_mini, MODE_MX4SIO, NULL),
+    // iLink
+    INT_MODULE(iLinkman, MODE_ILINK, NULL),
+    // iLink Mass Storage
+    INT_MODULE(IEEE1394_bd_mini, MODE_ILINK, NULL),
+#endif
 };
 #define MODULE_COUNT sizeof(moduleList) / sizeof(ModuleListEntry)
 
 // Returns 0 if memory card in slot 1 is not a formatted memory card
 // Used to avoid loading MX4SIO module and disabling mc1
 int getMC1Type();
-
-// Loads external modules into memory
-int loadExternalModules(char *basePath);
 
 // Loads module, executing argument function if it's present
 int loadModule(ModuleListEntry *mod);
@@ -93,42 +127,42 @@ int loadModule(ModuleListEntry *mod);
 void freeModule();
 
 // Initializes IOP modules
-int initModules(char *basePath) {
+int initModules() {
   int ret = 0;
-  logString("Preparing external modules\n");
-  // Load optional modules from storage devices into EE memory before resetting IOP
-  ret = loadExternalModules(basePath);
-  if (ret) {
-    logString("ERROR: Failed to prepare external modules\n");
-    return -EIO;
+
+  // Skip rebooting IOP if modules were loaded previously
+  if (!moduleList[0].loaded) {
+    logString("Rebooting IOP\n");
+    while (!SifIopReset("", 0)) {
+    };
+    while (!SifIopSync()) {
+    };
+
+    // Initialize the RPC manager
+    SifInitRpc(0);
+
+    // Apply patches required to load modules from EE RAM
+    if ((ret = sbv_patch_enable_lmb()))
+      return ret;
+    if ((ret = sbv_patch_disable_prefix_check()))
+      return ret;
   }
-
-  logString("Rebooting IOP\n");
-  while (!SifIopReset("", 0)) {
-  };
-  while (!SifIopSync()) {
-  };
-
-  // Initialize the RPC manager
-  SifInitRpc(0);
-
-  // Apply patches required to load modules from EE RAM
-  if ((ret = sbv_patch_enable_lmb()))
-    return ret;
-  if ((ret = sbv_patch_disable_prefix_check()))
-    return ret;
 
   // Load modules
   init_scr();
   logString("\n\nLoading modules:\n");
   for (int i = 0; i < MODULE_COUNT; i++) {
+    if (moduleList[i].loaded) // Ignore already loaded modules
+      continue;
+
     if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL) && (moduleList[i].mode & LAUNCHER_OPTIONS.mode)) {
       if ((ret = loadModule(&moduleList[i]))) {
         return ret;
       }
+      moduleList[i].loaded = 1;
     }
-    // Free external module
-    if (moduleList[i].path != NULL)
+    // Free loaded external module
+    if ((moduleList[i].irx != NULL) && (moduleList[i].path[0] != NULL))
       freeModule(&moduleList[i]);
   }
   return 0;
@@ -195,34 +229,41 @@ int loadExternalModules(char *basePath) {
   pathBuf[0] = '\0';
   strcpy(pathBuf, basePath);
 
-  int fd, res;
-  for (int i = 0; i < MODULE_COUNT; i++) {
+  int i, res;
+  int fd = 0;
+  for (i = 0; i < MODULE_COUNT; i++) {
     // Ignore module if:
-    if (((moduleList[i].irx != NULL) || (moduleList[i].path == NULL)) // Module IRX is already in memory or doesn't have a path
-        ||                                                            // or
-        (!(moduleList[i].mode & LAUNCHER_OPTIONS.mode) &&             // Target mode doesn't match required mode
-         moduleList[i].mode != MODE_ALL &&                            // Module is not required
-         LAUNCHER_OPTIONS.mode != MODE_ALL)                           // Target mode is not set to ALL
+    if (((moduleList[i].irx != NULL) || (moduleList[i].path[0] == NULL)) // Module IRX is already in memory or doesn't have a path
+        ||                                                               // or
+        (!(moduleList[i].mode & LAUNCHER_OPTIONS.mode) &&                // Target mode doesn't match required mode
+         moduleList[i].mode != MODE_ALL &&                               // Module is not required
+         LAUNCHER_OPTIONS.mode != MODE_ALL)                              // Target mode is not set to ALL
     ) {
       continue;
     }
 
-    // End bufferred string at basePath for the next strcat in the loop
-    pathBuf[basePathLen] = '\0';
-
     // Append module path to base path
-    strcat(pathBuf, moduleList[i].path);
+    for (int p = 0; p < (sizeof(moduleList[i].path) / sizeof(char *)); p++) {
+      // End bufferred string at basePath for the next strcat in the loop
+      pathBuf[basePathLen] = '\0';
+      strcat(pathBuf, moduleList[i].path[p]);
 
-    // Open module
-    if ((fd = open(pathBuf, O_RDONLY)) < 0) {
-      logString("%s: Failed to open %s\n", moduleList[i].name, pathBuf);
-      if ((moduleList[i].mode == MODE_ALL) || !((moduleList[i].mode & LAUNCHER_OPTIONS.mode) ^ LAUNCHER_OPTIONS.mode))
-        goto fail;
-
+      // Try to open module
+      if ((fd = open(pathBuf, O_RDONLY)) < 0) {
+        continue;
+      }
+      break;
+    }
+    if (fd < 0) {
       // Exclude mode from target modes
       LAUNCHER_OPTIONS.mode ^= moduleList[i].mode;
+      logString("%s: Failed to open %s\n", moduleList[i].name, pathBuf);
+      if ((moduleList[i].mode == MODE_ALL) || !((moduleList[i].mode & LAUNCHER_OPTIONS.mode) ^ LAUNCHER_OPTIONS.mode))
+        goto fail; // Fail if module is required
+
       continue;
     }
+
     // Determine file size
     uint32_t fsize = lseek(fd, 0, SEEK_END);
     lseek(fd, 0, SEEK_SET);
