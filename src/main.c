@@ -153,7 +153,7 @@ int init() {
     strcat(cwdPath, "/");
     logString("Current working directory is %s\n", cwdPath);
   } else {
-    cwdPath[0] = '\0'; // CWD is not valid
+    cwdPath[0] = '\0';                // CWD is not valid
     LAUNCHER_OPTIONS.mode = MODE_ALL; // Force mode to ALL
     // Load embedded modules first to make sure memory card is available
     logString("Loading embedded modules...\n");
@@ -163,7 +163,6 @@ int init() {
       return res;
     }
   }
-
   // Try to load options file from currently initalized filesystems
   initOptions(cwdPath);
 
@@ -196,6 +195,9 @@ int init() {
     logString("ERROR: failed to initialize devices\n");
     return -EIO;
   }
+
+  // Reload options
+  initOptions(cwdPath);
 
   return 0;
 }
