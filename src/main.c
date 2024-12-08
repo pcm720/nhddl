@@ -11,18 +11,20 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Path to ELF directory
-char ELF_BASE_PATH[PATH_MAX + 1];
-// Path to Neutrino ELF
-char NEUTRINO_ELF_PATH[PATH_MAX + 1];
 // Launcher options
 LauncherOptions LAUNCHER_OPTIONS;
-// Options file name relative to ELF_BASE_PATH
+// Path to Neutrino ELF
+char NEUTRINO_ELF_PATH[PATH_MAX + 1];
+// Options file name relative to CWD
 static const char optionsFile[] = "nhddl.yaml";
-// Neutrino ELF name
+// Options file paths for SAS
+static char nhddlSASPath[] = "mcX:/NHDDL/nhddl.yaml";
+static char nhddlSASConfigPath[] = "mcX:/NHDDL-CONF/nhddl.yaml";
+static char nhddlMassFallbackPath[] = "massX:/nhddl/nhddl.yaml";
+// Neutrino ELF name relative to CWD
 static const char neutrinoELF[] = "neutrino.elf";
 // Fallback neutrino.elf paths
-static char neutrinoMCFallbackPath[] = "mcX:/APPS/neutrino/neutrino.elf";
+static char neutrinoMCFallbackPath[] = "mcX:/NEUTRINO/neutrino.elf";
 static char neutrinoMassFallbackPath[] = "massX:/neutrino/neutrino.elf";
 
 // Supported options
@@ -34,6 +36,9 @@ static char neutrinoMassFallbackPath[] = "massX:/neutrino/neutrino.elf";
 #define GIT_VERSION "v-0.0.0-unknown"
 #endif
 
+// Initializes modules, NHDDL configuraton, Neutrino path and device map
+int init();
+// Loads NHDDL options from option file
 void initOptions(char *basePath);
 // Attempts to find neutrino.elf at current path or one of fallback paths
 int findNeutrinoELF();
@@ -46,46 +51,11 @@ int main(int argc, char *argv[]) {
 
   printf("*************\n");
   logString("\n\nNHDDL %s\nA Neutrino launcher by pcm720\n\n", GIT_VERSION);
-  printf("*************\n");
+  printf("\n*************\n");
 
-  if (!getcwd(ELF_BASE_PATH, PATH_MAX + 1)) {
-    logString("ERROR: Failed to get cwd\n");
-    goto fail;
-  }
-
-  // Append '/' to current working directory
-  if (ELF_BASE_PATH[strlen(ELF_BASE_PATH) - 1] != '/')
-    strcat(ELF_BASE_PATH, "/");
-
-  // Load options file from currently initalized filesystem before rebooting IOP
-  initOptions(ELF_BASE_PATH);
-
-  logString("Current working directory is %s\n", ELF_BASE_PATH);
-  logString("Loading modules...\n");
-  // Init modules
   int res;
-  if ((res = initModules(ELF_BASE_PATH)) != 0) {
-    logString("ERROR: Failed to initialize modules: %d\n", res);
+  if ((res = init()))
     goto fail;
-  }
-
-  init_scr();
-  logString("\n\nInitializing BDM devices...\n");
-  res = initDeviceMap();
-  if ((res < 0)) {
-    logString("ERROR: failed to initialize device\n");
-    goto fail;
-  }
-  if (!res) {
-    logString("ERROR: No BDM devices found\n");
-    goto fail;
-  }
-
-  // Make sure neutrino ELF exists
-  if (findNeutrinoELF()) {
-    goto fail;
-  }
-  logString("\nFound neutrino.elf at %s", NEUTRINO_ELF_PATH);
 
   logString("\n\nBuilding target list...\n");
   TargetList *titles = findISO();
@@ -113,6 +83,77 @@ fail:
   return 1;
 }
 
+// Initializes modules, NHDDL configuraton, Neutrino path and device map
+int init() {
+  int fd, res;
+  char cwdPath[PATH_MAX + 1];
+  // Get CWD and try to open it
+  if (!getcwd(cwdPath, PATH_MAX + 1)) {
+    logString("ERROR: Failed to get cwd\n");
+  } else {
+    if ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0) {
+      // Skip loading embedded modules if CWD is available
+      close(fd);
+      strcat(cwdPath, "/");
+      goto skipInit;
+    }
+  }
+
+  // Current working dir is not valid
+  cwdPath[0] = '\0';
+  logString("Loading embedded modules...\n");
+  // Init modules
+  if ((res = initModules()) != 0) {
+    logString("ERROR: Failed to initialize modules: %d\n", res);
+    return res;
+  }
+
+skipInit:
+  logString("Current working directory is %s\n", cwdPath);
+  // Try to load options file from currently initalized filesystems before rebooting IOP
+  initOptions(cwdPath);
+
+  // Make sure neutrino ELF exists
+  if (findNeutrinoELF(cwdPath)) {
+    logString("ERROR: couldn't find neutrino.elf\n");
+    return -ENOENT;
+  }
+  logString("\nFound neutrino.elf at %s\n", NEUTRINO_ELF_PATH);
+
+#ifndef STANDALONE // Only for non-standalone version
+  // Get Neutrino directory by trimming ELF file name from the path
+  char *neutrinoELFDir = calloc(sizeof(char), strlen(NEUTRINO_ELF_PATH) - sizeof(neutrinoELF) + 3);
+  strlcpy(neutrinoELFDir, NEUTRINO_ELF_PATH, strlen(NEUTRINO_ELF_PATH) - sizeof(neutrinoELF) + 2);
+  logString("Loading external modules...\n");
+  // Load external modules from Neutrino path into EE memory
+  res = loadExternalModules(neutrinoELFDir);
+  free(neutrinoELFDir);
+  if (res) {
+    logString("ERROR: Failed to prepare external modules\n");
+    return -EIO;
+  }
+#endif
+
+  // Init modules
+  if ((res = initModules()) != 0) {
+    logString("ERROR: Failed to initialize modules: %d\n", res);
+    return res;
+  }
+
+  init_scr();
+  logString("\n\nInitializing BDM devices...\n");
+  res = initDeviceMap();
+  if ((res < 0)) {
+    logString("ERROR: failed to initialize device\n");
+    return -EIO;
+  }
+  if (!res) {
+    logString("ERROR: No BDM devices found\n");
+    return -ENODEV;
+  }
+  return 0;
+}
+
 // Parses mode string into enum
 ModeType parseMode(const char *modeStr) {
   if (!strcmp(modeStr, "ata"))
@@ -128,21 +169,69 @@ ModeType parseMode(const char *modeStr) {
   return MODE_ALL;
 }
 
+// Tests if file exists by opening it
+int tryFile(char *filepath) {
+  int fd = open(filepath, O_RDONLY);
+  if (fd < 0) {
+    return fd;
+  }
+  close(fd);
+  return 0;
+}
+
 // Loads NHDDL options from optionsFile on memory card
-void initOptions(char *basePath) {
+void initOptions(char *cwdPath) {
   LAUNCHER_OPTIONS.is480pEnabled = 0;
   LAUNCHER_OPTIONS.mode = MODE_ALL;
   LAUNCHER_OPTIONS.udpbdIp[0] = '\0';
 
   char lineBuffer[PATH_MAX + sizeof(optionsFile) + 1];
-  strcpy(lineBuffer, basePath);
-  strcat(lineBuffer, optionsFile);
+  if (cwdPath[0] != '\0') {
+    // If path is valid, try it
+    strcpy(lineBuffer, cwdPath);
+    strcat(lineBuffer, optionsFile);
+    if (!tryFile(lineBuffer))
+      // Skip fallbacks
+      goto fileExists;
+  }
 
+  // If config file doesn't exist in CWD, try fallback paths
+  lineBuffer[0] = '\0';
+  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
+    if ((i > 1) && (deviceModeMap[i].mode == MODE_NONE)) {
+      break;
+    }
+
+    nhddlMassFallbackPath[4] = i + '0';
+    if (i < '2') {
+      nhddlSASPath[2] = i + '0';
+      if (!tryFile(nhddlSASPath)) {
+        strcpy(lineBuffer, nhddlSASPath);
+        goto fileExists;
+      }
+      nhddlSASConfigPath[2] = i + '0';
+      if (!tryFile(nhddlSASConfigPath)) {
+        strcpy(lineBuffer, nhddlSASConfigPath);
+        goto fileExists;
+      }
+    }
+    if (!tryFile(nhddlMassFallbackPath)) {
+      strcpy(lineBuffer, nhddlMassFallbackPath);
+      goto fileExists;
+    }
+  }
+
+  if (lineBuffer[0] == '\0') {
+    logString("Can't find options file, will use defaults\n");
+    return;
+  }
+
+fileExists:
   // Load NHDDL options file into ArgumentList
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, lineBuffer)) {
+    // Else, fail
     logString("Can't load options file, will use defaults\n");
-    parseIPConfig(&LAUNCHER_OPTIONS); // Get IP from IPCONFIG.DAT
     freeArgumentList(options);
     return;
   }
@@ -164,47 +253,37 @@ void initOptions(char *basePath) {
   freeArgumentList(options);
 }
 
-// Tests if file exists by opening it
-int tryFile(char *filepath) {
-  int fd = open(filepath, O_RDONLY);
-  if (fd < 0) {
-    return fd;
-  }
-  close(fd);
-  return 0;
-}
-
 // Attempts to find neutrino.elf at current path or one of fallback paths
-int findNeutrinoELF() {
-  // Test if neturino.elf exists
-  strcpy(NEUTRINO_ELF_PATH, ELF_BASE_PATH);
-  strcat(NEUTRINO_ELF_PATH, neutrinoELF);
+int findNeutrinoELF(char *cwdPath) {
+  if (cwdPath[0] != '\0') {
+    // If path is valid, try it
+    strcpy(NEUTRINO_ELF_PATH, cwdPath);
+    strcat(NEUTRINO_ELF_PATH, neutrinoELF);
+    if (!tryFile(NEUTRINO_ELF_PATH))
+      return 0;
+  }
 
-  if (tryFile(NEUTRINO_ELF_PATH)) {
-    // If neutrino.elf doesn't exist in CWD, try fallback paths
-    NEUTRINO_ELF_PATH[0] = '\0';
-    for (int i = 0; i < MAX_MASS_DEVICES; i++) {
-      if ((i > 1) && (deviceModeMap[i].mode == MODE_ALL)) {
-        break;
-      }
+  // If neutrino.elf doesn't exist in CWD, try fallback paths
+  NEUTRINO_ELF_PATH[0] = '\0';
+  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
+    if ((i > 1) && (deviceModeMap[i].mode == MODE_NONE)) {
+      break;
+    }
 
-      neutrinoMCFallbackPath[2] = i + '0';
-      neutrinoMassFallbackPath[4] = i + '0';
-      if ((i < '2') && !tryFile(neutrinoMCFallbackPath)) {
-        strcpy(NEUTRINO_ELF_PATH, neutrinoMCFallbackPath);
-        goto out;
-      }
-      if (!tryFile(neutrinoMassFallbackPath)) {
-        strcpy(NEUTRINO_ELF_PATH, neutrinoMassFallbackPath);
-        goto out;
-      }
+    neutrinoMCFallbackPath[2] = i + '0';
+    neutrinoMassFallbackPath[4] = i + '0';
+    if ((i < '2') && !tryFile(neutrinoMCFallbackPath)) {
+      strcpy(NEUTRINO_ELF_PATH, neutrinoMCFallbackPath);
+      return 0;
+    }
+    if (!tryFile(neutrinoMassFallbackPath)) {
+      strcpy(NEUTRINO_ELF_PATH, neutrinoMassFallbackPath);
+      return 0;
     }
   }
 
   if (NEUTRINO_ELF_PATH[0] == '\0') {
-    logString("ERROR: couldn't find neutrino.elf\n");
     return -ENOENT;
   }
-out:
   return 0;
 }
