@@ -58,7 +58,7 @@ int getLastLaunchedTitle(char *titlePath) {
   uint32_t timestamp = 0;
   size_t fsize = 0;
   for (int i = 0; i < MAX_MASS_DEVICES; i++) {
-    if (deviceModeMap[i].mode == MODE_ALL) {
+    if (deviceModeMap[i].mode == MODE_NONE) {
       break;
     }
     targetPath[4] = i + '0';
