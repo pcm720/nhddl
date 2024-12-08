@@ -270,7 +270,6 @@ exit:
 }
 
 void drawTitleListFooter(int baseX) {
-  // int baseX = keepoutArea + 10;
   int baseY = gsGlobal->Height - footerHeight;
   drawIconWindow(baseX, baseY, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
   drawIconWindow(baseX + getIconWidth(ICON_CIRCLE), baseY, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
