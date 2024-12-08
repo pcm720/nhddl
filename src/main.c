@@ -83,33 +83,53 @@ fail:
   return 1;
 }
 
-// Initializes modules, NHDDL configuraton, Neutrino path and device map
+// Initialized BDM device map while logging errors
+int initBDM() {
+  init_scr();
+  logString("\n\nInitializing BDM devices...\n");
+  int res = initDeviceMap();
+  if ((res < 0)) {
+    logString("ERROR: failed to initialize devices\n");
+    return -EIO;
+  }
+  if (!res) {
+    logString("ERROR: No BDM devices found\n");
+    return -ENODEV;
+  }
+  return 0;
+}
+
+// Split init into two versions
+// since they differ enough to make the code too complicated otherwise
+#ifdef STANDALONE
+// Standalone init
 int init() {
   int fd, res;
   char cwdPath[PATH_MAX + 1];
   // Get CWD and try to open it
-  if (!getcwd(cwdPath, PATH_MAX + 1)) {
-    logString("ERROR: Failed to get cwd\n");
+  if (getcwd(cwdPath, PATH_MAX + 1) && ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0)) {
+    close(fd);
+    strcat(cwdPath, "/");
+    // Try to load options from CWD
+    initOptions(cwdPath);
   } else {
-    if ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0) {
-      // Skip loading embedded modules if CWD is available
-      close(fd);
-      strcat(cwdPath, "/");
-    } else
-      cwdPath[0] = '\0'; // Current working dir is not valid
+    cwdPath[0] = '\0';                // CWD is not valid
+    LAUNCHER_OPTIONS.mode = MODE_ALL; // Force mode to ALL to load all modules
   }
 
-  if (cwdPath[0] == '\0') {
-    logString("Loading embedded modules...\n");
-    // Init modules
-    if ((res = initModules()) != 0) {
-      logString("ERROR: Failed to initialize modules: %d\n", res);
-      return res;
-    }
+  logString("Loading embedded modules...\n");
+  // Init modules
+  if ((res = initModules()) != 0) {
+    logString("ERROR: Failed to initialize modules: %d\n", res);
+    return res;
+  }
+  // Init device map
+  if (initBDM() < 0) {
+    logString("ERROR: failed to initialize devices\n");
+    return -EIO;
   }
 
-  logString("Current working directory is %s\n", cwdPath);
-  // Try to load options file from currently initalized filesystems before rebooting IOP
+  // Reload options
   initOptions(cwdPath);
 
   // Make sure neutrino ELF exists
@@ -119,7 +139,42 @@ int init() {
   }
   logString("\nFound neutrino.elf at %s\n", NEUTRINO_ELF_PATH);
 
-#ifndef STANDALONE // Only for non-standalone version
+  return 0;
+}
+#else
+// Non-standalone init
+int init() {
+  int fd, res;
+  char cwdPath[PATH_MAX + 1];
+  // Get CWD and try to open it
+  if (getcwd(cwdPath, PATH_MAX + 1) && ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0)) {
+    // Skip loading embedded modules if CWD is available
+    close(fd);
+    strcat(cwdPath, "/");
+    // Try to load options file from currently initalized filesystems before rebooting IOP
+    initOptions(cwdPath);
+    logString("Current working directory is %s\n", cwdPath);
+  } else {
+    cwdPath[0] = '\0'; // CWD is not valid
+    // Load embedded modules first to make sure memory card is available
+    logString("Loading embedded modules...\n");
+    // Init modules
+    if ((res = initModules()) != 0) {
+      logString("ERROR: Failed to initialize modules: %d\n", res);
+      return res;
+    }
+  }
+
+  // Try to load options file from currently initalized filesystems
+  initOptions(cwdPath);
+
+  // Make sure neutrino ELF exists
+  if (findNeutrinoELF(cwdPath)) {
+    logString("ERROR: couldn't find neutrino.elf\n");
+    return -ENOENT;
+  }
+  logString("\nFound neutrino.elf at %s\n", NEUTRINO_ELF_PATH);
+
   // Get Neutrino directory by trimming ELF file name from the path
   char *neutrinoELFDir = calloc(sizeof(char), strlen(NEUTRINO_ELF_PATH) - sizeof(neutrinoELF) + 3);
   strlcpy(neutrinoELFDir, NEUTRINO_ELF_PATH, strlen(NEUTRINO_ELF_PATH) - sizeof(neutrinoELF) + 2);
@@ -131,27 +186,21 @@ int init() {
     logString("ERROR: Failed to prepare external modules\n");
     return -EIO;
   }
-#endif
 
   // Init modules
   if ((res = initModules()) != 0) {
     logString("ERROR: Failed to initialize modules: %d\n", res);
     return res;
   }
-
-  init_scr();
-  logString("\n\nInitializing BDM devices...\n");
-  res = initDeviceMap();
-  if ((res < 0)) {
-    logString("ERROR: failed to initialize device\n");
+  // Init device map
+  if (initBDM() < 0) {
+    logString("ERROR: failed to initialize devices\n");
     return -EIO;
   }
-  if (!res) {
-    logString("ERROR: No BDM devices found\n");
-    return -ENODEV;
-  }
+
   return 0;
 }
+#endif
 
 // Parses mode string into enum
 ModeType parseMode(const char *modeStr) {
