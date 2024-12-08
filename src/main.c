@@ -95,20 +95,19 @@ int init() {
       // Skip loading embedded modules if CWD is available
       close(fd);
       strcat(cwdPath, "/");
-      goto skipInit;
+    } else
+      cwdPath[0] = '\0'; // Current working dir is not valid
+  }
+
+  if (cwdPath[0] == '\0') {
+    logString("Loading embedded modules...\n");
+    // Init modules
+    if ((res = initModules()) != 0) {
+      logString("ERROR: Failed to initialize modules: %d\n", res);
+      return res;
     }
   }
 
-  // Current working dir is not valid
-  cwdPath[0] = '\0';
-  logString("Loading embedded modules...\n");
-  // Init modules
-  if ((res = initModules()) != 0) {
-    logString("ERROR: Failed to initialize modules: %d\n", res);
-    return res;
-  }
-
-skipInit:
   logString("Current working directory is %s\n", cwdPath);
   // Try to load options file from currently initalized filesystems before rebooting IOP
   initOptions(cwdPath);
