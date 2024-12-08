@@ -15,16 +15,17 @@ IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx
 RES_FILES += icon_A.sys icon_C.sys icon_J.sys
 ELF_FILES += loader.elf
 
-EE_LIBS = -ldebug -lfileXio -lpatches -lgskit -ldmakit -lgskit_toolkit -lpng -lz -ltiff -lpad -lmc
-EE_CFLAGS := -mno-gpopt -G0 -DGIT_VERSION="\"${GIT_VERSION}\""
-
 ifeq ($(STANDALONE), 1)
+ GIT_VERSION := "$(GIT_VERSION)-standalone"
  IRX_FILES += ps2dev9.irx bdm.irx bdmfs_fatfs.irx ata_bd.irx usbd_mini.irx smap_udpbd.irx
  IRX_FILES += usbmass_bd_mini.irx mx4sio_bd_mini.irx iLinkman.irx IEEE1394_bd_mini.irx udptty.irx
  EE_CFLAGS += -DSTANDALONE
  EE_BIN = $(EE_BIN_STANDALONE)
  EE_BIN_PKD = $(EE_BIN_PKD_STANDALONE)
 endif
+
+EE_LIBS = -ldebug -lfileXio -lpatches -lgskit -ldmakit -lgskit_toolkit -lpng -lz -ltiff -lpad -lmc
+EE_CFLAGS += -mno-gpopt -G0 -DGIT_VERSION="\"${GIT_VERSION}\""
 
 EE_OBJS_DIR = obj/
 EE_ASM_DIR = asm/
