@@ -56,7 +56,7 @@ int storeTitleIDCache(TargetList *list) {
   CacheEntryHeader header;
   CacheMetadata meta = {.magic = CACHE_MAGIC, .version = CACHE_VERSION, .total = total};
   for (int i = 0; i < MAX_MASS_DEVICES; i++) {
-    if (deviceModeMap[i].mode  == MODE_ALL) {
+    if (deviceModeMap[i].mode  == MODE_NONE) {
       break;
     }
     cachePath[4] = i + '0';
@@ -141,7 +141,7 @@ int loadTitleIDCache(TitleIDCache *cache) {
   FILE *file;
   // Load the first found cache file
   for (int i = 0; i < MAX_MASS_DEVICES; i++) {
-    if (deviceModeMap[i].mode  == MODE_ALL) {
+    if (deviceModeMap[i].mode  == MODE_NONE) {
       printf("ERROR: failed to open cache file\n");
       return -ENOENT;
     }

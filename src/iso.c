@@ -31,7 +31,7 @@ TargetList *findISO() {
   result->last = NULL;
 
   for (int i = 0; i < MAX_MASS_DEVICES; i++) {
-    if (deviceModeMap[i].mode == MODE_ALL) {
+    if (deviceModeMap[i].mode == MODE_NONE) {
       break;
     }
     mountpoint[4] = i + '0';
