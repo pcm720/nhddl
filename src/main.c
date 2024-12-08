@@ -151,11 +151,10 @@ int init() {
     // Skip loading embedded modules if CWD is available
     close(fd);
     strcat(cwdPath, "/");
-    // Try to load options file from currently initalized filesystems before rebooting IOP
-    initOptions(cwdPath);
     logString("Current working directory is %s\n", cwdPath);
   } else {
     cwdPath[0] = '\0'; // CWD is not valid
+    LAUNCHER_OPTIONS.mode = MODE_ALL; // Force mode to ALL
     // Load embedded modules first to make sure memory card is available
     logString("Loading embedded modules...\n");
     // Init modules
