@@ -7,16 +7,12 @@ int uiInit();
 int uiLoop(TargetList *titles);
 void uiCleanup();
 
-typedef struct {
-  int32_t readySemaphore;
-} SplashThreadArguments;
-
 // Splash screen log level types
 typedef enum {
-  LEVEL_INFO_NODELAY,
-  LEVEL_INFO,
-  LEVEL_WARN,
-  LEVEL_ERROR,
+  LEVEL_INFO_NODELAY, // Prints text without delay
+  LEVEL_INFO,         // Prints in regular color and waits for a second
+  LEVEL_WARN,         // Prints in warning color and waits for two seconds
+  LEVEL_ERROR,        // Prints in error color and waits for two seconds
 } UILogLevelType;
 
 // Initializes and starts UI splash thread
