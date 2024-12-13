@@ -22,10 +22,11 @@ typedef enum {
   ICON_R1,
   ICON_SELECT,
   ICON_START,
-  ICON_ENABLED
+  ICON_ENABLED,
 } IconType;
 
-int initFont();
+// Initializes and uploads graphics resources to GS VRAM
+int initGraphics();
 
 // Draws the text with specified max dimensions relative to x and y
 // Returns the bottom Y coordinate of the last line that can be used to draw the next text
@@ -57,5 +58,14 @@ void drawIcon(float x, float y, int z, uint64_t color, IconType iconType);
 
 // Draws the icon in [x1,y1],[x2,y2] window.
 void drawIconWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_t alignment, IconType iconType);
+
+// Draws the logo at specified coordinates
+void drawLogo(float x, float y, int z);
+
+// Returns logo height
+int getLogoHeight();
+
+// Returns logo width
+int getLogoWidth();
 
 #endif

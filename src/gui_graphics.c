@@ -16,14 +16,15 @@ extern GSGLOBAL *gsGlobal;
 
 // Array of initialized GS textures containing font pages
 GSTEXTURE **fontPages;
-// Graphics texture
+// Graphics textures
 GSTEXTURE *icons;
+GSTEXTURE *logo;
 
 // Used font
 const struct BMFont font = BMFONT_DEJAVU_SANS;
 
-// Initializes and uploads font pages to GS VRAM
-int initFont() {
+// Initializes and uploads graphics resources to GS VRAM
+int initGraphics() {
   if (font.pageCount == 0) {
     printf("ERROR: Invalid number of font pages\n");
     return -1;
@@ -46,6 +47,13 @@ int initFont() {
     return -1;
   }
 
+  // Upload logo texture to GS
+  logo = calloc(sizeof(GSTEXTURE), 1);
+  if (gsKit_texture_png_mem(gsGlobal, logo, LOGO_PNG, SIZE_LOGO_PNG)) {
+    printf("ERROR: Failed to load logo texture\n");
+    return -1;
+  }
+
   return 0;
 }
 
@@ -59,6 +67,8 @@ void closeFont() {
 
   free(icons->Mem);
   free(icons);
+  free(logo->Mem);
+  free(logo);
   return;
 }
 
@@ -84,6 +94,30 @@ void drawIcon(float x, float y, int z, uint64_t color, IconType iconType) {
                             icon.x + icon.width + 1,  // u2 (source texture)
                             icon.y + icon.height + 1, // v2
                             z, color);
+  gsKit_set_test(gsGlobal, GS_ATEST_ON);
+  gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
+}
+
+// Returns logo height
+int getLogoHeight() { return logo->Height; }
+
+// Returns logo width
+int getLogoWidth() { return logo->Width; }
+
+// Draws the logo at specified coordinates
+void drawLogo(float x, float y, int z) {
+  gsKit_set_primalpha(gsGlobal, GS_BLEND_BACK2FRONT, 0);
+  gsKit_set_test(gsGlobal, GS_ATEST_OFF);
+  gsKit_prim_sprite_texture(gsGlobal, logo,   // Logo texture
+                            x,                // x1 (destination)
+                            y,                // y1
+                            0,                // u1 (source texture)
+                            0,                // v1
+                            x + logo->Width,  // x2 (destination)
+                            y + logo->Height, // y2
+                            logo->Width + 1,  // u2 (source texture)
+                            logo->Height + 1, // v2
+                            z, GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80));
   gsKit_set_test(gsGlobal, GS_ATEST_ON);
   gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
 }

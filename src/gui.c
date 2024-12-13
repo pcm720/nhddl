@@ -7,6 +7,7 @@
 #include <dmaKit.h>
 #include <gsKit.h>
 #include <gsToolkit.h>
+#include <kernel.h>
 #include <libpad.h>
 #include <malloc.h>
 #include <ps2sdkapi.h>
@@ -19,12 +20,16 @@
 #define COVER_ART_RES_W 140
 #define COVER_ART_RES_H 200
 
+void closeUI();
 int uiLoop(TargetList *titles);
 int uiTitleOptionsLoop(Target *title);
 void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover);
 void drawArgumentList(ArgumentList *arguments, int baseX, uint8_t compatModes, int selectedArgIdx);
 void uiLaunchTitle(Target *target, ArgumentList *arguments);
 void drawGameID(const char *game_id);
+int createSplashThread();
+void uiSplashThread();
+void closeUISplashThread();
 
 GSGLOBAL *gsGlobal;
 static GSTEXTURE *coverTexture;
@@ -43,6 +48,8 @@ static const uint64_t ColorGrey = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80);
 static const uint64_t FontMainColor = ColorGrey;
 static const uint64_t BGColor = ColorBlack;
 static const uint64_t HeaderTextColor = GS_SETREG_RGBA(0x60, 0x60, 0x60, 0x80);
+static const uint64_t WarnTextColor = GS_SETREG_RGBA(0x60, 0x60, 0x00, 0x80);
+static const uint64_t ErrorTextColor = GS_SETREG_RGBA(0x60, 0x00, 0x00, 0x80);
 
 // Cover art sprite coordinates
 // Initialized during uiInit from screen width and height
@@ -64,6 +71,10 @@ void init480p(GSGLOBAL *gsGlobal) {
 }
 
 int uiInit() {
+  if (gsGlobal != NULL) {
+    printf("Reinitializing UI\n");
+    closeUI();
+  }
   gsGlobal = gsKit_init_global();
   gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
   gsGlobal->DoubleBuffering = GS_SETTING_OFF;
@@ -73,7 +84,7 @@ int uiInit() {
   gsGlobal->Test->AFAIL = 0;   // Don't update buffers when test fails
 
   if (LAUNCHER_OPTIONS.is480pEnabled) {
-    printf("Starting UI in progressive mode\n");
+    printf("Enabling progressive mode\n");
     init480p(gsGlobal);
   }
 
@@ -95,8 +106,8 @@ int uiInit() {
   gsKit_mode_switch(gsGlobal, GS_ONESHOT);
   gsKit_clear(gsGlobal, BGColor);
 
-  // Initialize font
-  if (initFont()) {
+  // Initialize resources
+  if (initGraphics()) {
     printf("ERROR: Failed to initialize font\n");
     return -1;
   };
@@ -109,8 +120,6 @@ int uiInit() {
   coverArtY1 = coverArtY2 - COVER_ART_RES_H;
   coverTexture->Delayed = 1;
 
-  // Init gamepad inputs
-  initPad();
   return 0;
 }
 
@@ -142,7 +151,6 @@ int loadCoverArt(char *titlePath, char *titleID) {
 
 // Closes gamepad driver, frees textures and deinits gsKit
 void closeUI() {
-  closePad();
   gsKit_vram_clear(gsGlobal);
   closeFont();
   free(coverTexture);
@@ -151,11 +159,18 @@ void closeUI() {
 
 // Main UI loop. Displays the target list.
 int uiLoop(TargetList *titles) {
+  closeUISplashThread();
+  if (gsGlobal->Mode != GS_MODE_DTV_480P && LAUNCHER_OPTIONS.is480pEnabled) {
+    uiInit(1);
+  }
+
   int res = 0;
   if ((gsGlobal == NULL) && (res = uiInit(0))) {
     printf("ERROR: Failed to init UI: %d\n", res);
     goto exit;
   }
+  // Init gamepad inputs
+  initPad();
 
   int isCoverUninitialized = 1;
   int selectedTitleIdx = 0;
@@ -265,6 +280,7 @@ int uiLoop(TargetList *titles) {
   }
 
 exit:
+  closePad();
   closeUI();
   return res;
 }
@@ -588,5 +604,124 @@ void drawGameID(const char *gameID) {
       uint32_t color = (data[i] >> ii) & 1 ? GS_SETREG_RGBA(0x00, 0xFF, 0xFF, 0x80) : GS_SETREG_RGBA(0xFF, 0xFF, 0x00, 0x80);
       gsKit_prim_sprite(gsGlobal, x1, ystart, x1 + 1, ystart + height, 0, color);
     }
+  }
+}
+
+struct {
+  int32_t doneSema;      // Used to signal UI splash thread to exit
+  int32_t newStringSema; // Used to signal UI splash thread that a new string is ready
+  int32_t drawnSema;     // Used to signal that UI splash thread has finished drawing or closed
+  UILogLevelType level;  // Log level
+  char buf[255];         // String buffer. String must be null-terminated
+} logBuffer = {};
+#define THREAD_STACK_SIZE 0x1000
+static uint8_t threadStack[THREAD_STACK_SIZE] __attribute__((aligned(16)));
+
+// Initializes and starts UI splash thread
+int startSplashScreen() {
+  printf("Starting UI splash thread\n");
+  // Initialize splash semaphores
+  ee_sema_t drawnSema;
+  drawnSema.init_count = 0;
+  drawnSema.max_count = 1;
+  drawnSema.option = 0;
+  logBuffer.drawnSema = CreateSema(&drawnSema);
+  ee_sema_t newStringSema;
+  newStringSema.init_count = 0;
+  newStringSema.max_count = 1;
+  newStringSema.option = 0;
+  logBuffer.newStringSema = CreateSema(&newStringSema);
+  ee_sema_t readySema;
+  readySema.init_count = 0;
+  readySema.max_count = 1;
+  readySema.option = 0;
+  logBuffer.doneSema = CreateSema(&readySema);
+
+  // Initialize thread
+  ee_thread_t thread;
+  thread.func = uiSplashThread;
+  thread.stack = threadStack;
+  thread.stack_size = THREAD_STACK_SIZE;
+  thread.gp_reg = &_gp;
+  thread.initial_priority = 0x2;
+  thread.attr = thread.option = 0;
+
+  // Start thread
+  int32_t threadID;
+  if ((threadID = CreateThread(&thread)) >= 0) {
+    if (StartThread(threadID, NULL) < 0) {
+      DeleteThread(threadID);
+      threadID = -1;
+    }
+  }
+
+  return threadID;
+}
+
+// Draws loading splash screen in a separate thread
+void uiSplashThread() {
+  gsKit_mode_switch(gsGlobal, GS_PERSISTENT);
+  gsKit_clear(gsGlobal, BGColor);
+  drawLogo((gsGlobal->Width - getLogoWidth()) / 2, gsGlobal->Height / 4, 2);
+  drawTextWindow(0, (gsGlobal->Height / 4 + getLogoHeight() + 10), gsGlobal->Width, 0, 0, GS_SETREG_RGBA(0x40, 0x40, 0x40, 0x80), ALIGN_HCENTER, GIT_VERSION);
+  gsKit_mode_switch(gsGlobal, GS_ONESHOT);
+
+  uint64_t color = HeaderTextColor;
+  int logStartY = gsGlobal->Height - footerHeight - getFontLineHeight()*3;
+  while (PollSema(logBuffer.doneSema) != logBuffer.doneSema) {
+    gsKit_queue_exec(gsGlobal);
+    gsKit_sync_flip(gsGlobal);
+    WaitSema(logBuffer.newStringSema);
+    switch (logBuffer.level) {
+    case LEVEL_INFO_NODELAY:
+    case LEVEL_INFO:
+      color = HeaderTextColor;
+      break;
+    case LEVEL_WARN:
+      color = WarnTextColor;
+      break;
+    case LEVEL_ERROR:
+      color = ErrorTextColor;
+      break;
+    }
+    drawTextWindow(0, logStartY, gsGlobal->Width, gsGlobal->Height - footerHeight, 0, color, ALIGN_CENTER, logBuffer.buf);
+    SignalSema(logBuffer.drawnSema);
+  }
+  DeleteSema(logBuffer.doneSema);
+  DeleteSema(logBuffer.newStringSema);
+  SignalSema(logBuffer.drawnSema);
+  ExitDeleteThread();
+}
+
+// Closes UI splash thread
+void closeUISplashThread() {
+  SignalSema(logBuffer.doneSema);
+  SignalSema(logBuffer.newStringSema);
+  WaitSema(logBuffer.drawnSema);
+  DeleteSema(logBuffer.drawnSema);
+}
+
+// Logs to splash screen and debug console in a thread-safe way
+void uiSplashLogString(UILogLevelType level, const char *str, ...) {
+  va_list args;
+  va_start(args, str);
+
+  logBuffer.level = level;
+  vsnprintf(logBuffer.buf, 255, str, args);
+  printf(logBuffer.buf);
+  SignalSema(logBuffer.newStringSema);
+  WaitSema(logBuffer.drawnSema);
+  va_end(args);
+
+  switch (level) {
+  case LEVEL_INFO_NODELAY:
+    return;
+  case LEVEL_INFO:
+    sleep(1);
+    return;
+  case LEVEL_WARN:
+  case LEVEL_ERROR:
+    sleep(2);
+    return;
   }
 }
