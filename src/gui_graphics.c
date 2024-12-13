@@ -53,11 +53,12 @@ int initGraphics() {
     printf("ERROR: Failed to load logo texture\n");
     return -1;
   }
+  logo->Filter = GS_FILTER_LINEAR; // Enable bilinear filtering
 
   return 0;
 }
 
-// Frees memory used by font pages and icon texture
+// Frees memory used by font pages, logo and icon textures
 void closeFont() {
   for (int i = 0; i < font.pageCount; i++) {
     free(fontPages[0]->Mem);
