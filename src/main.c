@@ -70,6 +70,7 @@ int main(int argc, char *argv[]) {
     goto fail;
   }
 
+  stopUISplashThread();
   if ((res = uiLoop(titles))) {
     init_scr();
     logString("\n\nERROR: UI loop failed: %d\n", res);
@@ -165,7 +166,7 @@ int init() {
 
   // Make sure neutrino ELF exists
   if (findNeutrinoELF(cwdPath)) {
-    uiSplashLogString(LEVEL_ERROR, "couldn't find neutrino.elf\n");
+    uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
     return -ENOENT;
   }
   uiSplashLogString(LEVEL_INFO, "Found neutrino.elf at\n%s\n", NEUTRINO_ELF_PATH);
@@ -265,7 +266,7 @@ void initOptions(char *cwdPath) {
   }
 
   if (lineBuffer[0] == '\0') {
-    uiSplashLogString(LEVEL_WARN, "Can't find options file, will use defaults\n");
+    printf("Can't load options file, will use defaults\n");
     return;
   }
 
@@ -274,7 +275,7 @@ fileExists:
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, lineBuffer)) {
     // Else, fail
-    uiSplashLogString(LEVEL_WARN, "Can't load options file, will use defaults\n");
+    printf("Can't load options file, will use defaults\n");
     freeArgumentList(options);
     return;
   }
