@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <debug.h>
 #include <fcntl.h>
+#include <kernel.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,26 +47,26 @@ int findNeutrinoELF();
 void parseIPConfig();
 
 int main(int argc, char *argv[]) {
-  // Initialize the screen
-  init_scr();
-
-  printf("*************\n");
-  logString("\n\nNHDDL %s\nA Neutrino launcher by pcm720\n\n", GIT_VERSION);
-  printf("\n*************\n");
+  printf("*************\nNHDDL %s\nA Neutrino launcher by pcm720\n*************\n", GIT_VERSION);
 
   int res;
-  if ((res = init()))
-    goto fail;
-
-  logString("\n\nBuilding target list...\n");
-  TargetList *titles = findISO();
-  if (titles == NULL) {
-    logString("No targets found\n");
+  printf("Initializing UI\n");
+  if ((res = uiInit())) {
+    init_scr();
+    logString("\n\nERROR: Failed to init UI: %d\n", res);
     goto fail;
   }
 
-  if ((res = uiInit())) {
-    printf("ERROR: Failed to init UI: %d\n", res);
+  // Start splash screen thread
+  startSplashScreen();
+
+  if ((res = init()))
+    goto fail;
+
+  uiSplashLogString(LEVEL_INFO, "Building target list...\n");
+  TargetList *titles = findISO();
+  if (titles == NULL) {
+    uiSplashLogString(LEVEL_WARN, "No targets found\n");
     goto fail;
   }
 
@@ -85,15 +86,14 @@ fail:
 
 // Initialized BDM device map while logging errors
 int initBDM() {
-  init_scr();
-  logString("\n\nInitializing BDM devices...\n");
+  uiSplashLogString(LEVEL_INFO, "Waiting for BDM devices...\n");
   int res = initDeviceMap();
   if ((res < 0)) {
-    logString("ERROR: failed to initialize devices\n");
+    uiSplashLogString(LEVEL_ERROR, "Failed to initialize devices\n");
     return -EIO;
   }
   if (!res) {
-    logString("ERROR: No BDM devices found\n");
+    uiSplashLogString(LEVEL_ERROR, "No BDM devices found\n");
     return -ENODEV;
   }
   return 0;
@@ -117,15 +117,13 @@ int init() {
     LAUNCHER_OPTIONS.mode = MODE_ALL; // Force mode to ALL to load all modules
   }
 
-  logString("Loading embedded modules...\n");
+  uiSplashLogString(LEVEL_INFO, "Loading embedded modules...\n");
   // Init modules
   if ((res = initModules()) != 0) {
-    logString("ERROR: Failed to initialize modules: %d\n", res);
     return res;
   }
   // Init device map
   if (initBDM() < 0) {
-    logString("ERROR: failed to initialize devices\n");
     return -EIO;
   }
 
@@ -134,10 +132,10 @@ int init() {
 
   // Make sure neutrino ELF exists
   if (findNeutrinoELF(cwdPath)) {
-    logString("ERROR: couldn't find neutrino.elf\n");
+    uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
     return -ENOENT;
   }
-  logString("\nFound neutrino.elf at %s\n", NEUTRINO_ELF_PATH);
+  uiSplashLogString(LEVEL_INFO, "Found neutrino.elf at\n%s\n", NEUTRINO_ELF_PATH);
 
   return 0;
 }
@@ -151,15 +149,14 @@ int init() {
     // Skip loading embedded modules if CWD is available
     close(fd);
     strcat(cwdPath, "/");
-    logString("Current working directory is %s\n", cwdPath);
+    printf("Current working directory is %s\n", cwdPath);
   } else {
     cwdPath[0] = '\0';                // CWD is not valid
     LAUNCHER_OPTIONS.mode = MODE_ALL; // Force mode to ALL
     // Load embedded modules first to make sure memory card is available
-    logString("Loading embedded modules...\n");
+    uiSplashLogString(LEVEL_INFO, "Loading embedded modules...\n");
     // Init modules
     if ((res = initModules()) != 0) {
-      logString("ERROR: Failed to initialize modules: %d\n", res);
       return res;
     }
   }
@@ -168,31 +165,28 @@ int init() {
 
   // Make sure neutrino ELF exists
   if (findNeutrinoELF(cwdPath)) {
-    logString("ERROR: couldn't find neutrino.elf\n");
+    uiSplashLogString(LEVEL_ERROR, "couldn't find neutrino.elf\n");
     return -ENOENT;
   }
-  logString("\nFound neutrino.elf at %s\n", NEUTRINO_ELF_PATH);
+  uiSplashLogString(LEVEL_INFO, "Found neutrino.elf at\n%s\n", NEUTRINO_ELF_PATH);
 
   // Get Neutrino directory by trimming ELF file name from the path
   char *neutrinoELFDir = calloc(sizeof(char), strlen(NEUTRINO_ELF_PATH) - sizeof(neutrinoELF) + 3);
   strlcpy(neutrinoELFDir, NEUTRINO_ELF_PATH, strlen(NEUTRINO_ELF_PATH) - sizeof(neutrinoELF) + 2);
-  logString("Loading external modules...\n");
+  uiSplashLogString(LEVEL_INFO, "Loading external modules...\n");
   // Load external modules from Neutrino path into EE memory
   res = loadExternalModules(neutrinoELFDir);
   free(neutrinoELFDir);
   if (res) {
-    logString("ERROR: Failed to prepare external modules\n");
     return -EIO;
   }
 
   // Init modules
   if ((res = initModules()) != 0) {
-    logString("ERROR: Failed to initialize modules: %d\n", res);
     return res;
   }
   // Init device map
   if (initBDM() < 0) {
-    logString("ERROR: failed to initialize devices\n");
     return -EIO;
   }
 
@@ -271,7 +265,7 @@ void initOptions(char *cwdPath) {
   }
 
   if (lineBuffer[0] == '\0') {
-    logString("Can't find options file, will use defaults\n");
+    uiSplashLogString(LEVEL_WARN, "Can't find options file, will use defaults\n");
     return;
   }
 
@@ -280,7 +274,7 @@ fileExists:
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, lineBuffer)) {
     // Else, fail
-    logString("Can't load options file, will use defaults\n");
+    uiSplashLogString(LEVEL_WARN, "Can't load options file, will use defaults\n");
     freeArgumentList(options);
     return;
   }

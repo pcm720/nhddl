@@ -26,7 +26,7 @@ extern char NEUTRINO_ELF_PATH[PATH_MAX + 1];
 // Options
 extern LauncherOptions LAUNCHER_OPTIONS;
 
-// Logs to screen and debug console
+// Logs to debug screen and debug console
 void logString(const char *str, ...);
 // Maps ModeType to string
 char *modeToString(ModeType mode);
