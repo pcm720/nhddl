@@ -1,4 +1,5 @@
 #include "common.h"
+#include "gui.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -43,7 +44,7 @@ char *getTitleID(char *path) {
   // Open ISO
   int fd = open(path, O_RDONLY);
   if (fd < 0) {
-    logString("%s:\nERROR: Failed to open file: %d\n", path, fd);
+    uiSplashLogString(LEVEL_WARN, "%s\nFailed to open file: %d\n", path, fd);
     return NULL;
   }
 
@@ -51,7 +52,7 @@ char *getTitleID(char *path) {
   uint32_t rootLBA = 0;
   int rootLength = 0;
   if (getPVD(fd, &rootLBA, &rootLength) != 0) {
-    logString("%s:\nERROR: Failed to parse ISO PVD\n", path);
+    uiSplashLogString(LEVEL_WARN, "%s\nFailed to parse ISO PVD\n", path);
     close(fd);
     return NULL;
   }
@@ -59,7 +60,7 @@ char *getTitleID(char *path) {
   // Get SYSTEM.CNF entry
   struct dirTOCEntry *tocEntry = getTOCEntry(fd, rootLBA, rootLength);
   if (tocEntry == NULL) {
-    logString("%s:\nERROR: Failed to find SYSTEM.CNF\n", path);
+    uiSplashLogString(LEVEL_WARN, "%s\nFailed to find SYSTEM.CNF\n", path);
     close(fd);
     return NULL;
   }
@@ -68,7 +69,7 @@ char *getTitleID(char *path) {
   longLseek(fd, tocEntry->fileLBA);
   char *systemCNF = malloc(tocEntry->length);
   if (read(fd, systemCNF, tocEntry->length) != tocEntry->length) {
-    logString("%s:\nERROR: Failed to read SYSTEM.CNF\n", path);
+    uiSplashLogString(LEVEL_WARN, "%s\nFailed to read SYSTEM.CNF\n", path);
     free(systemCNF);
     close(fd);
     return NULL;
@@ -76,7 +77,7 @@ char *getTitleID(char *path) {
 
   char *boot2Arg = strstr(systemCNF, "BOOT2");
   if (boot2Arg == NULL) {
-    logString("%s:\nERROR: BOOT2 not found in SYSTEM.CNF\n", path);
+    uiSplashLogString(LEVEL_WARN, "%s\nBOOT2 not found in SYSTEM.CNF\n", path);
     free(systemCNF);
     close(fd);
     return NULL;
@@ -87,7 +88,7 @@ char *getTitleID(char *path) {
   char *selfFile = strstr(boot2Arg, "cdrom0:");
   char *argEnd = strstr(boot2Arg, ";");
   if (selfFile == NULL || argEnd == NULL) {
-    logString("%s:\nERROR: File name not found in SYSTEM.CNF\n", path);
+    uiSplashLogString(LEVEL_WARN, "%s\nFile name not found in SYSTEM.CNF\n", path);
     free(titleID);
     titleID = NULL;
   } else {

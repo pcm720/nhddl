@@ -1,6 +1,7 @@
 #include "iso.h"
 #include "common.h"
 #include "devices.h"
+#include "gui.h"
 #include "iso_cache.h"
 #include "iso_title_id.h"
 #include <errno.h>
@@ -39,7 +40,7 @@ TargetList *findISO() {
     directory = opendir(mountpoint);
     // Check if the directory can be opened
     if (directory == NULL) {
-      logString("ERROR: Can't open %s\n", mountpoint);
+      uiSplashLogString(LEVEL_ERROR, "ERROR: Can't open %s\n", mountpoint);
       return NULL;
     }
 
@@ -75,7 +76,7 @@ int _findISO(DIR *directory, TargetList *result) {
   char *fileext;
   char titlePath[PATH_MAX + 1];
   if (!getcwd(titlePath, PATH_MAX + 1)) { // Initialize titlePath with current working directory
-    logString("ERROR: Failed to get cwd\n");
+    uiSplashLogString(LEVEL_ERROR, "Failed to get cwd\n");
     return -ENOENT;
   }
 
@@ -213,7 +214,7 @@ void processTitleID(TargetList *result) {
   TitleIDCache *cache = malloc(sizeof(TitleIDCache));
   int isCacheUpdateNeeded = 0;
   if (loadTitleIDCache(cache)) {
-    logString("Failed to load title ID cache, all ISOs will be rescanned\n");
+    uiSplashLogString(LEVEL_WARN, "Failed to load title ID cache, all ISOs will be rescanned\n");
     free(cache);
     cache = NULL;
   } else if (cache->total != result->total) {
@@ -240,7 +241,6 @@ void processTitleID(TargetList *result) {
       printf("Cache miss for %s\n", curTarget->fullPath);
       curTarget->id = getTitleID(curTarget->fullPath);
       if (curTarget->id == NULL) {
-        printf("WARN: Removing '%s' from target list\n", curTarget->name);
         curTarget = freeTarget(curTarget);
         result->total -= 1;
       }
@@ -251,9 +251,9 @@ void processTitleID(TargetList *result) {
   freeTitleCache(cache);
 
   if ((cacheMisses > 0) || (isCacheUpdateNeeded)) {
-    logString("Updating title ID cache\n");
+    uiSplashLogString(LEVEL_INFO, "Updating title ID cache...\n");
     if (storeTitleIDCache(result)) {
-      logString("Failed to save title ID cache\n");
+      uiSplashLogString(LEVEL_WARN, "Failed to save title ID cache\n");
     }
   }
 }
