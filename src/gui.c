@@ -76,8 +76,10 @@ int uiInit() {
     closeUI();
   }
   gsGlobal = gsKit_init_global();
+  gsGlobal->PSM = GS_PSM_CT24; // Set color depth to avoid PAL VRAM issues
+  gsGlobal->PSMZ = GS_PSMZ_16S;
   gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
-  gsGlobal->DoubleBuffering = GS_SETTING_OFF;
+  gsGlobal->DoubleBuffering = GS_SETTING_ON;
   // Setup TEST register to ignore fully transparent pixels
   gsGlobal->Test->ATST = 7;    // Set alpha test method to NOTEQUAL (pixels with A not equal to AREF pass)
   gsGlobal->Test->AREF = 0x00; // Set reference value to 0x00 (transparent)
@@ -100,7 +102,9 @@ int uiInit() {
   // Init screen
   gsKit_vram_clear(gsGlobal);
   gsKit_init_screen(gsGlobal);
+  gsKit_display_buffer(gsGlobal); // Switch display buffer to avoid garbage appearing on screen
   gsKit_TexManager_init(gsGlobal);
+  // Set alpha and mode, clear active buffer
   gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
   gsKit_set_test(gsGlobal, GS_ATEST_ON);
   gsKit_mode_switch(gsGlobal, GS_ONESHOT);
@@ -149,7 +153,7 @@ int loadCoverArt(char *titlePath, char *titleID) {
   return 0;
 }
 
-// Closes gamepad driver, frees textures and deinits gsKit
+// Frees textures and deinits gsKit
 void closeUI() {
   gsKit_vram_clear(gsGlobal);
   closeFont();
@@ -159,9 +163,9 @@ void closeUI() {
 
 // Main UI loop. Displays the target list.
 int uiLoop(TargetList *titles) {
-  closeUISplashThread();
+  // Reinitialize UI if progressive video mode is enabled
   if (gsGlobal->Mode != GS_MODE_DTV_480P && LAUNCHER_OPTIONS.is480pEnabled) {
-    uiInit(1);
+    uiInit();
   }
 
   int res = 0;
@@ -225,6 +229,7 @@ int uiLoop(TargetList *titles) {
       drawTitleList(titles, selectedTitleIdx, maxTitlesPerPage, NULL);
 
     gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
     gsKit_sync_flip(gsGlobal);
 
     // Process user inputs:
@@ -425,6 +430,7 @@ int uiTitleOptionsLoop(Target *target) {
     drawArgumentList(titleArguments, baseX, modes, selectedArgIdx);
 
     gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
     gsKit_sync_flip(gsGlobal);
 
     // Process user inputs
@@ -550,10 +556,12 @@ void uiLaunchTitle(Target *target, ArgumentList *arguments) {
   drawGameID(target->id);
 
   gsKit_queue_exec(gsGlobal);
+  gsKit_finish();
   gsKit_sync_flip(gsGlobal);
 
   // Wait a litle bit, cleanup the UI and launch title
   sleep(2);
+  closePad();
   closeUI();
   launchTitle(target, arguments);
 }
@@ -606,6 +614,10 @@ void drawGameID(const char *gameID) {
     }
   }
 }
+
+//
+// Splash screen functions
+//
 
 struct {
   int32_t doneSema;      // Used to signal UI splash thread to exit
@@ -660,18 +672,25 @@ int startSplashScreen() {
 
 // Draws loading splash screen in a separate thread
 void uiSplashThread() {
+  // Draw logo and version
   gsKit_mode_switch(gsGlobal, GS_PERSISTENT);
+  gsKit_TexManager_nextFrame(gsGlobal);
   gsKit_clear(gsGlobal, BGColor);
   drawLogo((gsGlobal->Width - getLogoWidth()) / 2, gsGlobal->Height / 4, 2);
-  drawTextWindow(0, (gsGlobal->Height / 4 + getLogoHeight() + 10), gsGlobal->Width, 0, 0, GS_SETREG_RGBA(0x40, 0x40, 0x40, 0x80), ALIGN_HCENTER, GIT_VERSION);
+  drawTextWindow(0, (gsGlobal->Height / 4 + getLogoHeight() + 10), gsGlobal->Width, 0, 0, GS_SETREG_RGBA(0x40, 0x40, 0x40, 0x80), ALIGN_HCENTER,
+                 GIT_VERSION);
   gsKit_mode_switch(gsGlobal, GS_ONESHOT);
 
   uint64_t color = HeaderTextColor;
-  int logStartY = gsGlobal->Height - footerHeight - getFontLineHeight()*3;
+  int logStartY = gsGlobal->Height - footerHeight - getFontLineHeight() * 3;
+  // Loop until something sends a signal
   while (PollSema(logBuffer.doneSema) != logBuffer.doneSema) {
     gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
     gsKit_sync_flip(gsGlobal);
+    // Wait until a new string is written to buffer
     WaitSema(logBuffer.newStringSema);
+    gsKit_TexManager_nextFrame(gsGlobal);
     switch (logBuffer.level) {
     case LEVEL_INFO_NODELAY:
     case LEVEL_INFO:
@@ -687,14 +706,15 @@ void uiSplashThread() {
     drawTextWindow(0, logStartY, gsGlobal->Width, gsGlobal->Height - footerHeight, 0, color, ALIGN_CENTER, logBuffer.buf);
     SignalSema(logBuffer.drawnSema);
   }
+  gsKit_queue_reset(gsGlobal->Per_Queue);
   DeleteSema(logBuffer.doneSema);
   DeleteSema(logBuffer.newStringSema);
   SignalSema(logBuffer.drawnSema);
   ExitDeleteThread();
 }
 
-// Closes UI splash thread
-void closeUISplashThread() {
+// Stops UI splash thread
+void stopUISplashThread() {
   SignalSema(logBuffer.doneSema);
   SignalSema(logBuffer.newStringSema);
   WaitSema(logBuffer.drawnSema);

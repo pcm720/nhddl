@@ -25,4 +25,7 @@ int startSplashScreen();
 // Logs to splash screen and debug console in a thread-safe way
 void uiSplashLogString(UILogLevelType level, const char *str, ...);
 
+// Stops UI splash thread
+void stopUISplashThread();
+
 #endif
