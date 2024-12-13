@@ -1,5 +1,6 @@
 #include "module_init.h"
 #include "common.h"
+#include "gui.h"
 #include <ctype.h>
 #include <debug.h>
 #include <fcntl.h>
@@ -132,7 +133,7 @@ int initModules() {
 
   // Skip rebooting IOP if modules were loaded previously
   if (!moduleList[0].loaded) {
-    logString("Rebooting IOP\n");
+    printf("Rebooting IOP\n");
     while (!SifIopReset("", 0)) {
     };
     while (!SifIopSync()) {
@@ -149,14 +150,13 @@ int initModules() {
   }
 
   // Load modules
-  init_scr();
-  logString("\n\nLoading modules:\n");
   for (int i = 0; i < MODULE_COUNT; i++) {
     if (moduleList[i].loaded) // Ignore already loaded modules
       continue;
 
     if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL) && (moduleList[i].mode & LAUNCHER_OPTIONS.mode)) {
       if ((ret = loadModule(&moduleList[i]))) {
+        uiSplashLogString(LEVEL_ERROR, "Failed to initialize module %s: %d\n", moduleList[i].name, ret);
         return ret;
       }
       moduleList[i].loaded = 1;
@@ -173,11 +173,11 @@ int loadModule(ModuleListEntry *mod) {
   int ret, iopret = 0;
   if ((mod->mode == MODE_MX4SIO) && getMC1Type()) {
     // If mc1 is a valid memory card, skip MX4SIO modules
-    logString("\tskipping %s (memory card inserted)\n", mod->name);
+    uiSplashLogString(LEVEL_WARN, "Skipping %s (memory card inserted)\n", mod->name);
     return 0;
   }
 
-  logString("\tloading %s\n", mod->name);
+  uiSplashLogString(LEVEL_INFO_NODELAY, "Loading %s\n", mod->name);
 
   // If module has an arugment function, execute it
   if (mod->argumentFunction != NULL) {
@@ -190,7 +190,7 @@ int loadModule(ModuleListEntry *mod) {
   }
 
   if (mod->argStr != NULL)
-    logString("\t\twith %s\n", mod->argStr);
+    uiSplashLogString(LEVEL_INFO, "Loading %s with %s\n", mod->name, mod->argStr);
 
   ret = SifExecModuleBuffer(mod->irx, *mod->size, mod->argLength, mod->argStr, &iopret);
   if (ret >= 0)
@@ -204,7 +204,7 @@ failCheck:
       ((mod->mode & LAUNCHER_OPTIONS.mode) ^ LAUNCHER_OPTIONS.mode) // Module mode is not the only one enabled
   ) {
     // Exclude mode from target modes
-    logString("\t\tFailed to load module (%d), some modes might not be available\n", ret);
+    uiSplashLogString(LEVEL_WARN, "Failed to load module %s, some modes might not be available\n", mod->name);
     LAUNCHER_OPTIONS.mode ^= mod->mode;
     return 0;
   }
@@ -257,7 +257,7 @@ int loadExternalModules(char *basePath) {
     if (fd < 0) {
       // Exclude mode from target modes
       LAUNCHER_OPTIONS.mode ^= moduleList[i].mode;
-      logString("%s: Failed to open %s\n", moduleList[i].name, pathBuf);
+      uiSplashLogString(LEVEL_WARN, "%s: Failed to open %s\n", moduleList[i].name, pathBuf);
       if ((moduleList[i].mode == MODE_ALL) || !((moduleList[i].mode & LAUNCHER_OPTIONS.mode) ^ LAUNCHER_OPTIONS.mode))
         goto fail; // Fail if module is required
 
@@ -271,14 +271,14 @@ int loadExternalModules(char *basePath) {
     // Allocate memory for the module
     unsigned char *irxBuf = calloc(sizeof(char), fsize);
     if (irxBuf == NULL) {
-      logString("\t%s: Failed to allocate memory\n", moduleList[i].name);
+      uiSplashLogString(LEVEL_ERROR, "%s: Failed to allocate memory\n", moduleList[i].name);
       close(fd);
       goto fail;
     }
     // Load module into buffer
     res = read(fd, irxBuf, fsize);
     if (res != fsize) {
-      logString("\t%s: Failed to read module\n", moduleList[i].name);
+      uiSplashLogString(LEVEL_ERROR, "%s: Failed to read module\n", moduleList[i].name);
       free(irxBuf);
       close(fd);
       goto fail;
@@ -331,8 +331,9 @@ int parseIPConfig() {
   }
 
   if ((ipconfigFd < 0) || (count < sizeof(ipAddr) - 1)) {
-    if (LAUNCHER_OPTIONS.mode & MODE_UDPBD)
-      logString("\t\tFailed to get IP address from IPCONFIG.DAT\n");
+    if (LAUNCHER_OPTIONS.mode & MODE_UDPBD) {
+      uiSplashLogString(LEVEL_WARN, "Failed to get IP address from IPCONFIG.DAT\n");
+    }
     return -ENOENT;
   }
 
