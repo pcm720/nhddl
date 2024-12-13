@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
   if ((res = init()))
     goto fail;
 
-  uiSplashLogString(LEVEL_INFO, "Building target list...\n");
+  uiSplashLogString(LEVEL_INFO_NODELAY, "Building target list...\n");
   TargetList *titles = findISO();
   if (titles == NULL) {
     uiSplashLogString(LEVEL_WARN, "No targets found\n");
@@ -87,7 +87,7 @@ fail:
 
 // Initialized BDM device map while logging errors
 int initBDM() {
-  uiSplashLogString(LEVEL_INFO, "Waiting for BDM devices...\n");
+  uiSplashLogString(LEVEL_INFO_NODELAY, "Waiting for BDM devices...\n");
   int res = initDeviceMap();
   if ((res < 0)) {
     uiSplashLogString(LEVEL_ERROR, "Failed to initialize devices\n");
