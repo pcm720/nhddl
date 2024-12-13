@@ -251,7 +251,7 @@ void processTitleID(TargetList *result) {
   freeTitleCache(cache);
 
   if ((cacheMisses > 0) || (isCacheUpdateNeeded)) {
-    uiSplashLogString(LEVEL_INFO, "Updating title ID cache...\n");
+    uiSplashLogString(LEVEL_INFO_NODELAY, "Updating title ID cache...\n");
     if (storeTitleIDCache(result)) {
       uiSplashLogString(LEVEL_WARN, "Failed to save title ID cache\n");
     }
