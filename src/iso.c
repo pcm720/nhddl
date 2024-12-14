@@ -241,6 +241,7 @@ void processTitleID(TargetList *result) {
       printf("Cache miss for %s\n", curTarget->fullPath);
       curTarget->id = getTitleID(curTarget->fullPath);
       if (curTarget->id == NULL) {
+        uiSplashLogString(LEVEL_WARN, "Failed to scan\n%s\n", curTarget->fullPath);
         curTarget = freeTarget(curTarget);
         result->total -= 1;
       }
