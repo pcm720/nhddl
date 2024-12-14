@@ -18,14 +18,20 @@ LauncherOptions LAUNCHER_OPTIONS;
 char NEUTRINO_ELF_PATH[PATH_MAX + 1];
 // Options file name relative to CWD
 static const char optionsFile[] = "nhddl.yaml";
-// Options file paths for SAS
-static char nhddlSASPath[] = "mcX:/NHDDL/nhddl.yaml";
-static char nhddlSASConfigPath[] = "mcX:/NHDDL-CONF/nhddl.yaml";
+// nhddl.yaml fallback paths
+static char *nhddlFallbackPaths[] = {
+    "mcX:/NHDDL/nhddl.yaml",
+    "mcX:/NHDDL-CONF/nhddl.yaml",
+};
 static char nhddlMassFallbackPath[] = "massX:/nhddl/nhddl.yaml";
 // Neutrino ELF name relative to CWD
 static const char neutrinoELF[] = "neutrino.elf";
-// Fallback neutrino.elf paths
-static char neutrinoMCFallbackPath[] = "mcX:/NEUTRINO/neutrino.elf";
+// neutrino.elf fallback paths
+static char *neutrinoMCFallbackPaths[] = {
+    "mcX:/APPS/neutrino/neutrino.elf",
+    "mcX:/NEUTRINO/NEUTRINO.ELF",
+    "mcX:/NEUTRINO/neutrino.elf",
+};
 static char neutrinoMassFallbackPath[] = "massX:/neutrino/neutrino.elf";
 
 // Supported options
@@ -246,19 +252,16 @@ void initOptions(char *cwdPath) {
       break;
     }
 
-    nhddlMassFallbackPath[4] = i + '0';
     if (i < '2') {
-      nhddlSASPath[2] = i + '0';
-      if (!tryFile(nhddlSASPath)) {
-        strcpy(lineBuffer, nhddlSASPath);
-        goto fileExists;
-      }
-      nhddlSASConfigPath[2] = i + '0';
-      if (!tryFile(nhddlSASConfigPath)) {
-        strcpy(lineBuffer, nhddlSASConfigPath);
-        goto fileExists;
+      for (int j = 0; j < (sizeof(nhddlFallbackPaths) / sizeof(char *)); j++) {
+        nhddlFallbackPaths[j][2] = i + '0';
+        if (!tryFile(nhddlFallbackPaths[j])) {
+          strcpy(lineBuffer, nhddlFallbackPaths[j]);
+          goto fileExists;
+        }
       }
     }
+    nhddlMassFallbackPath[4] = i + '0';
     if (!tryFile(nhddlMassFallbackPath)) {
       strcpy(lineBuffer, nhddlMassFallbackPath);
       goto fileExists;
@@ -314,12 +317,16 @@ int findNeutrinoELF(char *cwdPath) {
       break;
     }
 
-    neutrinoMCFallbackPath[2] = i + '0';
-    neutrinoMassFallbackPath[4] = i + '0';
-    if ((i < '2') && !tryFile(neutrinoMCFallbackPath)) {
-      strcpy(NEUTRINO_ELF_PATH, neutrinoMCFallbackPath);
-      return 0;
+    if (i < '2') {
+      for (int j = 0; j < (sizeof(neutrinoMCFallbackPaths) / sizeof(char *)); j++) {
+        neutrinoMCFallbackPaths[j][2] = i + '0';
+        if (!tryFile(neutrinoMCFallbackPaths[j])) {
+          strcpy(NEUTRINO_ELF_PATH, neutrinoMCFallbackPaths[j]);
+          return 0;
+        }
+      }
     }
+    neutrinoMassFallbackPath[4] = i + '0';
     if (!tryFile(neutrinoMassFallbackPath)) {
       strcpy(NEUTRINO_ELF_PATH, neutrinoMassFallbackPath);
       return 0;
