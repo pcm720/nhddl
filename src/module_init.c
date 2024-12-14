@@ -204,7 +204,7 @@ failCheck:
       ((mod->mode & LAUNCHER_OPTIONS.mode) ^ LAUNCHER_OPTIONS.mode) // Module mode is not the only one enabled
   ) {
     // Exclude mode from target modes
-    uiSplashLogString(LEVEL_WARN, "Failed to load module %s, some modes might not be available\n", mod->name);
+    uiSplashLogString(LEVEL_WARN, "Failed to load module %s\nSome modes might not be available\n", mod->name);
     LAUNCHER_OPTIONS.mode ^= mod->mode;
     return 0;
   }
