@@ -1,5 +1,6 @@
 #include "devices.h"
 #include "common.h"
+#include "gui.h"
 #include <errno.h>
 #include <kernel.h>
 #include <stdio.h>
@@ -62,7 +63,7 @@ int getDeviceDriver(char *mountpoint, DeviceMapEntry *entry) {
   if (fileXioIoctl2(fd, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &deviceNumber, sizeof(deviceNumber)) >= 0)
     entry->index = deviceNumber;
 
-  printf("Found device %s%d\n", driverName, deviceNumber);
+  uiSplashLogString(LEVEL_INFO_NODELAY, "Found device %s%d\n", driverName, deviceNumber);
   fileXioDclose(fd);
   return 0;
 }
