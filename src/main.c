@@ -87,7 +87,7 @@ fail:
 
 // Initialized BDM device map while logging errors
 int initBDM() {
-  uiSplashLogString(LEVEL_INFO_NODELAY, "Waiting for BDM devices...\n");
+  uiSplashLogString(LEVEL_INFO, "Waiting for BDM devices...\n");
   int res = initDeviceMap();
   if ((res < 0)) {
     uiSplashLogString(LEVEL_ERROR, "Failed to initialize devices\n");
