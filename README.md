@@ -16,9 +16,11 @@ GSM, PADEMU, IGR, IGS and other stuff is out-of-scope of this launcher.
 ## Usage
 
 NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) installation to be present at one of the following paths:
-- NHDDL launch directory
-- `mcX:/NEUTRINO/` (memory cards, __case-sensitive__)
-- `massX:/neutrino/` (BDM devices)
+- `<NHDDL launch directory>/neturino.elf` (__might be case-sensitive__ depending on device)
+- `mcX:/APPS/neutrino/neutrino.elf` (memory cards, __case-sensitive__)
+- `mcX:/NEUTRINO/NEUTRINO.ELF` (SAS-compliant path on memory cards, __case-sensitive__)
+- `mcX:/NEUTRINO/neutrino.elf` (SAS-compliant path on memory cards, __case-sensitive__)
+- `massX:/neutrino/neutrino.elf` (BDM devices)
 
 By default, NHDDL tries to initialize all supported devices. You can override this behavior and reduce initialization times by setting specific mode in launcher configuration file.  
 See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
@@ -146,7 +148,7 @@ NHDDL uses YAML-like files to load and store its configuration options.
 Launcher configuration is read from the `nhddl.yaml` file.
 
 Configuration file is loaded from one of the following paths:
-- `nhddl.yaml` in NHDDL launch directory (overrides all other paths)
+- `<NHDDL launch directory>/nhddl.yaml` (__might be case-sensitive__ depending on device)
 - `mcX:/NHDDL/nhddl.yaml` (memory cards, __case-sensitive__)
 - `mcX:/NHDDL-CONF/nhddl.yaml` (memory cards, __case-sensitive__)
 - `massX:/nhddl/nhddl.yaml` (BDM devices)
