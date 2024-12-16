@@ -342,7 +342,7 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
     }
 
     // Draw title name
-    titleY = drawText(baseX, titleY, 0, coverArtX1, 0, ((selectedTitleIdx == curTitle->idx) ? ColorSelected : FontMainColor), curTitle->name);
+    titleY = drawText(baseX, titleY, 0, coverArtX1-5, 0, ((selectedTitleIdx == curTitle->idx) ? ColorSelected : FontMainColor), curTitle->name);
 
   next:
     curTitle = curTitle->next;
