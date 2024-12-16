@@ -25,7 +25,7 @@ NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) install
 By default, NHDDL tries to initialize all supported devices. You can override this behavior and reduce initialization times by setting specific mode in launcher configuration file.  
 See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
 
-**Do not plug in any USB mass storage devices while running NHDDL!**  
+**Do not plug in any BDM storage devices while running NHDDL!**  
 Doing so might crash NHDDL and/or possibly corrupt the files on your target device due to how BDM drivers work.
 
 NHDDL comes in two versions: _standalone_ and _non-standalone_.
@@ -33,16 +33,33 @@ NHDDL comes in two versions: _standalone_ and _non-standalone_.
 ### Standalone version
 
 The standalone version of NHDDL doesn't require any Neutrino modules and will boot from any device.  
-It makes the `nhddl.elf` larger, but allows NHDDL to support ELF loaders that unload everything before launchining NHDDL from USB.
+It makes the `nhddl.elf` larger, but allows NHDDL to support ELF loaders that unload everything before launchining NHDDL from BDM devices.
 
 Note that Neutrino is still required for NHDDL to launch your ISOs.
 
+#### Manual installation
+
+To use NHDDL:
 - Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
 - Copy `nhddl.elf` to your memory card or storage device wherever you want.
 - _Additional step if you need only ATA, USB, MX4SIO, UDPBD or iLink_:  
   Modify `nhddl.yaml` [accordingly](#common-use-cases) and copy it next to `nhddl.elf`
-- Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases)
+- Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases/tag/latest)
 - Copy Neutrino folder to the root of your PS2 memory card or your storage device. 
+
+#### Save Application System PSU
+
+You can also get NHDDL as an easy-to-use PSU package [here](https://pcm720.github.io/nhddl-psu/).  
+To install it:
+- Copy generated `nhddl.psu` to your USB drive
+- Open wLaunchELF on your PS2
+- Choose your USB device and copy `nhddl.psu`
+- Go back and open your memory card (`mc0` or `mc1`)
+- Open file menu and select `psuPaste`
+- Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases/tag/latest)
+- Copy Neutrino folder to the root of your PS2 memory card or your storage device. 
+
+This will install NHDDL to your memory card along with the PS2 Browser icon.
  
 Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest version.
 
@@ -50,18 +67,19 @@ Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest versi
 
 Use this version to save space on your memory card.
 
-- Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases)
+- Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases/tag/latest)
 - Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
 - Unpack Neutrino release
 - Copy `nhddl.elf` to Neutrino folder next to `neutrino.elf`
 - _Additional step if you need only ATA, USB, MX4SIO, UDPBD or iLink_:  
   Modify `nhddl.yaml` [accordingly](#common-use-cases) and copy it next to `nhddl.elf`
-- Copy Neutrino folder to your PS2 memory card or your USB device.
+- Copy Neutrino folder to your PS2 memory card or your storage device.
 
 Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest version.
 
-If you're getting `Failed to prepare external modules` error while trying to run NHDDL from the USB drive, MX4SIO, iLink or UDPBD, make sure your ELF launcher initializes
-USB modules and doesn't reset the IOP before loading NHDDL.  
+You can also install NHDDL from a PSU package (see [this section](#save-application-system-psu)), but you'll need to copy Neutrino installation manually using wLaunchELF or another PS2-based file manager.
+
+If you're getting `Failed to prepare external modules` error while trying to run NHDDL from the USB drive, MX4SIO, iLink or UDPBD, make sure your ELF launcher initializes BDM modules and doesn't reset the IOP before loading NHDDL.  
 If this is the case, you __must__ place Neutrino on the memory card or use standalone version instead.
 
 The non-standalone version of NHDDL reuses Neutrino modules for BDM support and requires them to be present in Neutrino `modules` directory, which makes `nhddl.elf` significantly smaller.  
