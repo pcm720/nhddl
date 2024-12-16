@@ -154,7 +154,7 @@ uint8_t getFontLineHeight() { return font.lineHeight; }
 // Returns pointer to the glyph or NULL if the font doesn't have a glyph for this character
 const BMFontChar *getGlyph(uint32_t character) {
   for (int i = 0; i < font.bucketCount; i++) {
-    if ((font.buckets[i].startChar <= character) || (font.buckets[i].endChar >= character)) {
+    if ((font.buckets[i].startChar <= character) && (font.buckets[i].endChar >= character)) {
       return &font.buckets[i].chars[character - font.buckets[i].startChar];
     }
   }
@@ -199,7 +199,6 @@ int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, c
 
     glyph = getGlyph(text[i]);
     if (glyph == NULL) {
-      printf("WARN: Unknown character %d\n", text[i]);
       continue;
     }
 
@@ -317,7 +316,6 @@ int drawTextWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_
 
     glyph = getGlyph(text[i]);
     if (glyph == NULL) {
-      printf("WARN: Unknown character %d\n", text[i]);
       continue;
     }
 
