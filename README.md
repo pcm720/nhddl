@@ -171,8 +171,8 @@ Configuration file is loaded from one of the following paths:
 - `mcX:/NHDDL-CONF/nhddl.yaml` (memory cards, __case-sensitive__)
 - `massX:/nhddl/nhddl.yaml` (BDM devices)
 
-This file is _completely optional_ and must be used only to enable 480p in NHDDL UI or switch NHDDL to a single device mode.  
-By default, 480p is disabled and all BDM devices are used to look for ISO files.
+This file is _completely optional_ and must be used only to force video mode in NHDDL UI or switch NHDDL to a single device mode.  
+By default, default video mode is used and all BDM devices are used to look for ISO files.
 
 To disable a flag, you can just comment it out with `#`.
 
