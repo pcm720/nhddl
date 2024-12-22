@@ -62,12 +62,34 @@ static const int keepoutArea = 20;
 static const int headerHeight = 20 + keepoutArea;
 static const int footerHeight = 40 + keepoutArea;
 
-void init480p(GSGLOBAL *gsGlobal) {
-  gsGlobal->Mode = GS_MODE_DTV_480P;
-  gsGlobal->Interlace = GS_NONINTERLACED;
-  gsGlobal->Field = GS_FRAME;
-  gsGlobal->Width = 640;
-  gsGlobal->Height = 448;
+void initVMode(GSGLOBAL *gsGlobal) {
+  switch (LAUNCHER_OPTIONS.vmode) {
+  case GS_MODE_NTSC:
+    printf("Forcing NTSC mode\n");
+    gsGlobal->Mode = GS_MODE_NTSC;
+    gsGlobal->Interlace = GS_INTERLACED;
+    gsGlobal->Field = GS_FIELD;
+    gsGlobal->Width = 640;
+    gsGlobal->Height = 448;
+    break;
+  case GS_MODE_PAL:
+    printf("Forcing PAL mode\n");
+    gsGlobal->Mode = GS_MODE_PAL;
+    gsGlobal->Interlace = GS_INTERLACED;
+    gsGlobal->Field = GS_FIELD;
+    gsGlobal->Width = 640;
+    gsGlobal->Height = 512;
+    break;
+  case GS_MODE_DTV_480P:
+    printf("Forcing 480p mode\n");
+    gsGlobal->Mode = GS_MODE_DTV_480P;
+    gsGlobal->Interlace = GS_NONINTERLACED;
+    gsGlobal->Field = GS_FRAME;
+    gsGlobal->Width = 640;
+    gsGlobal->Height = 448;
+    break;
+  default:
+  }
 }
 
 int uiInit() {
@@ -76,6 +98,7 @@ int uiInit() {
     closeUI();
   }
   gsGlobal = gsKit_init_global();
+  initVMode(gsGlobal);
   gsGlobal->PSM = GS_PSM_CT24; // Set color depth to avoid PAL VRAM issues
   gsGlobal->PSMZ = GS_PSMZ_16S;
   gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
@@ -84,11 +107,6 @@ int uiInit() {
   gsGlobal->Test->ATST = 7;    // Set alpha test method to NOTEQUAL (pixels with A not equal to AREF pass)
   gsGlobal->Test->AREF = 0x00; // Set reference value to 0x00 (transparent)
   gsGlobal->Test->AFAIL = 0;   // Don't update buffers when test fails
-
-  if (LAUNCHER_OPTIONS.is480pEnabled) {
-    printf("Enabling progressive mode\n");
-    init480p(gsGlobal);
-  }
 
   dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
 
@@ -163,8 +181,8 @@ void closeUI() {
 
 // Main UI loop. Displays the target list.
 int uiLoop(TargetList *titles) {
-  // Reinitialize UI if progressive video mode is enabled
-  if (gsGlobal->Mode != GS_MODE_DTV_480P && LAUNCHER_OPTIONS.is480pEnabled) {
+  // Reinitialize UI if video mode doesn't match
+  if ((LAUNCHER_OPTIONS.vmode != VMODE_NONE) && (gsGlobal->Mode != LAUNCHER_OPTIONS.vmode)) {
     uiInit();
   }
 
@@ -342,7 +360,7 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
     }
 
     // Draw title name
-    titleY = drawText(baseX, titleY, 0, coverArtX1-5, 0, ((selectedTitleIdx == curTitle->idx) ? ColorSelected : FontMainColor), curTitle->name);
+    titleY = drawText(baseX, titleY, 0, coverArtX1 - 5, 0, ((selectedTitleIdx == curTitle->idx) ? ColorSelected : FontMainColor), curTitle->name);
 
   next:
     curTitle = curTitle->next;

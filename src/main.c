@@ -35,7 +35,7 @@ static char *neutrinoMCFallbackPaths[] = {
 static char neutrinoMassFallbackPath[] = "massX:/neutrino/neutrino.elf";
 
 // Supported options
-#define OPTION_480P "480p"
+#define OPTION_VMODE "video"
 #define OPTION_MODE "mode"
 #define OPTION_UDPBD_IP "udpbd_ip"
 
@@ -219,6 +219,17 @@ ModeType parseMode(const char *modeStr) {
   return MODE_ALL;
 }
 
+// Parses video mode string into enum
+VModeType parseVMode(const char *modeStr) {
+  if (!strcmp(modeStr, "ntsc"))
+    return VMODE_NTSC;
+  if (!strcmp(modeStr, "pal"))
+    return VMODE_PAL;
+  if (!strcmp(modeStr, "480p"))
+    return VMODE_480P;
+  return VMODE_NONE;
+}
+
 // Tests if file exists by opening it
 int tryFile(char *filepath) {
   int fd = open(filepath, O_RDONLY);
@@ -231,7 +242,7 @@ int tryFile(char *filepath) {
 
 // Loads NHDDL options from optionsFile on memory card
 void initOptions(char *cwdPath) {
-  LAUNCHER_OPTIONS.is480pEnabled = 0;
+  LAUNCHER_OPTIONS.vmode = VMODE_NONE;
   LAUNCHER_OPTIONS.mode = MODE_ALL;
   LAUNCHER_OPTIONS.udpbdIp[0] = '\0';
 
@@ -287,8 +298,8 @@ fileExists:
   Argument *arg = options->first;
   while (arg != NULL) {
     if (!arg->isDisabled) {
-      if (strcmp(OPTION_480P, arg->arg) == 0) {
-        LAUNCHER_OPTIONS.is480pEnabled = 1;
+      if (strcmp(OPTION_VMODE, arg->arg) == 0) {
+        LAUNCHER_OPTIONS.vmode = parseVMode(arg->value);
       } else if (strcmp(OPTION_MODE, arg->arg) == 0) {
         LAUNCHER_OPTIONS.mode = parseMode(arg->value);
       } else if (strcmp(OPTION_UDPBD_IP, arg->arg) == 0) {

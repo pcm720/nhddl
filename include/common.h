@@ -2,6 +2,7 @@
 #define _COMMON_H_
 
 #include <ps2sdkapi.h>
+#include <gsKit.h>
 
 // Enum for supported modes
 typedef enum {
@@ -14,9 +15,17 @@ typedef enum {
   MODE_ALL = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK,
 } ModeType;
 
+// Supported video mode types
+typedef enum {
+  VMODE_NONE = 0,
+  VMODE_NTSC = GS_MODE_NTSC,
+  VMODE_PAL = GS_MODE_PAL,
+  VMODE_480P = GS_MODE_DTV_480P,
+} VModeType;
+
 // Launcher options
 typedef struct {
-  int is480pEnabled;
+  VModeType vmode;
   ModeType mode;
   char udpbdIp[16];
 } LauncherOptions;
