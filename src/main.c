@@ -23,7 +23,7 @@ static char *nhddlFallbackPaths[] = {
     "mcX:/NHDDL/nhddl.yaml",
     "mcX:/NHDDL-CONF/nhddl.yaml",
 };
-static char nhddlMassFallbackPath[] = "massX:/nhddl/nhddl.yaml";
+static char nhddlStorageFallbackPath[] = "/nhddl/nhddl.yaml";
 // Neutrino ELF name relative to CWD
 static const char neutrinoELF[] = "neutrino.elf";
 // neutrino.elf fallback paths
@@ -32,7 +32,7 @@ static char *neutrinoMCFallbackPaths[] = {
     "mcX:/NEUTRINO/NEUTRINO.ELF",
     "mcX:/NEUTRINO/neutrino.elf",
 };
-static char neutrinoMassFallbackPath[] = "massX:/neutrino/neutrino.elf";
+static char neutrinoStorageFallbackPath[] = "/neutrino/neutrino.elf";
 
 // Supported options
 #define OPTION_VMODE "video"
@@ -64,7 +64,11 @@ int main(int argc, char *argv[]) {
   }
 
   // Start splash screen thread
-  startSplashScreen();
+  if ((res = startSplashScreen()) < 0) {
+    init_scr();
+    logString("\n\nERROR: Failed to start splash screen thread: %d\n", res);
+    goto fail;
+  }
 
   if ((res = init()))
     goto fail;
@@ -91,16 +95,16 @@ fail:
   return 1;
 }
 
-// Initialized BDM device map while logging errors
-int initBDM() {
-  uiSplashLogString(LEVEL_INFO, "Waiting for BDM devices...\n");
+// Initialized device map while logging errors
+int initDevices() {
+  uiSplashLogString(LEVEL_INFO, "Waiting for storage devices...\n");
   int res = initDeviceMap();
   if ((res < 0)) {
     uiSplashLogString(LEVEL_ERROR, "Failed to initialize devices\n");
     return -EIO;
   }
   if (!res) {
-    uiSplashLogString(LEVEL_ERROR, "No BDM devices found\n");
+    uiSplashLogString(LEVEL_ERROR, "No devices found\n");
     return -ENODEV;
   }
   return 0;
@@ -130,11 +134,12 @@ int init() {
     return res;
   }
   // Init device map
-  if (initBDM() < 0) {
+  if (initDevices() < 0) {
     return -EIO;
   }
 
   // Reload options
+  uiSplashLogString(LEVEL_INFO_NODELAY, "Loading options file...\n");
   initOptions(cwdPath);
 
   // Make sure neutrino ELF exists
@@ -168,6 +173,7 @@ int init() {
     }
   }
   // Try to load options file from currently initalized filesystems
+  uiSplashLogString(LEVEL_INFO_NODELAY, "Loading options file...\n");
   initOptions(cwdPath);
 
   // Make sure neutrino ELF exists
@@ -193,7 +199,7 @@ int init() {
     return res;
   }
   // Init device map
-  if (initBDM() < 0) {
+  if (initDevices() < 0) {
     return -EIO;
   }
 
@@ -216,6 +222,8 @@ ModeType parseMode(const char *modeStr) {
     return MODE_USB;
   if (!strcmp(modeStr, "ilink"))
     return MODE_ILINK;
+  if (!strcmp(modeStr, "mmce"))
+    return MODE_MMCE;
   return MODE_ALL;
 }
 
@@ -257,25 +265,27 @@ void initOptions(char *cwdPath) {
   }
 
   // If config file doesn't exist in CWD, try fallback paths
-  lineBuffer[0] = '\0';
-  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    lineBuffer[0] = '\0';
     if ((i > 1) && (deviceModeMap[i].mode == MODE_NONE)) {
       break;
     }
 
-    if (i < '2') {
+    if (i < 2) {
       for (int j = 0; j < (sizeof(nhddlFallbackPaths) / sizeof(char *)); j++) {
         nhddlFallbackPaths[j][2] = i + '0';
         if (!tryFile(nhddlFallbackPaths[j])) {
           strcpy(lineBuffer, nhddlFallbackPaths[j]);
-          goto fileExists;
+          break;
         }
       }
     }
-    nhddlMassFallbackPath[4] = i + '0';
-    if (!tryFile(nhddlMassFallbackPath)) {
-      strcpy(lineBuffer, nhddlMassFallbackPath);
-      goto fileExists;
+    if (deviceModeMap[i].mountpoint != NULL) {
+      strcpy(lineBuffer, deviceModeMap[i].mountpoint);
+      strcat(lineBuffer, nhddlStorageFallbackPath);
+      if (!tryFile(lineBuffer)) {
+        break;
+      }
     }
   }
 
@@ -287,7 +297,7 @@ void initOptions(char *cwdPath) {
 fileExists:
   // Load NHDDL options file into ArgumentList
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
-  if (loadArgumentList(options, lineBuffer)) {
+  if (loadArgumentList(options, NULL, lineBuffer)) {
     // Else, fail
     printf("Can't load options file, will use defaults\n");
     freeArgumentList(options);
@@ -301,7 +311,10 @@ fileExists:
       if (strcmp(OPTION_VMODE, arg->arg) == 0) {
         LAUNCHER_OPTIONS.vmode = parseVMode(arg->value);
       } else if (strcmp(OPTION_MODE, arg->arg) == 0) {
-        LAUNCHER_OPTIONS.mode = parseMode(arg->value);
+        // Reset MODE_ALL to MODE_NONE if mode flag exists
+        if (LAUNCHER_OPTIONS.mode == MODE_ALL)
+          LAUNCHER_OPTIONS.mode = MODE_NONE;
+        LAUNCHER_OPTIONS.mode |= parseMode(arg->value);
       } else if (strcmp(OPTION_UDPBD_IP, arg->arg) == 0) {
         strlcpy(LAUNCHER_OPTIONS.udpbdIp, arg->value, sizeof(LAUNCHER_OPTIONS.udpbdIp));
       }
@@ -322,13 +335,13 @@ int findNeutrinoELF(char *cwdPath) {
   }
 
   // If neutrino.elf doesn't exist in CWD, try fallback paths
-  NEUTRINO_ELF_PATH[0] = '\0';
-  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    NEUTRINO_ELF_PATH[0] = '\0';
     if ((i > 1) && (deviceModeMap[i].mode == MODE_NONE)) {
       break;
     }
 
-    if (i < '2') {
+    if (i < 2) {
       for (int j = 0; j < (sizeof(neutrinoMCFallbackPaths) / sizeof(char *)); j++) {
         neutrinoMCFallbackPaths[j][2] = i + '0';
         if (!tryFile(neutrinoMCFallbackPaths[j])) {
@@ -337,10 +350,12 @@ int findNeutrinoELF(char *cwdPath) {
         }
       }
     }
-    neutrinoMassFallbackPath[4] = i + '0';
-    if (!tryFile(neutrinoMassFallbackPath)) {
-      strcpy(NEUTRINO_ELF_PATH, neutrinoMassFallbackPath);
-      return 0;
+    if (deviceModeMap[i].mountpoint != NULL) {
+      strcpy(NEUTRINO_ELF_PATH, deviceModeMap[i].mountpoint);
+      strcat(NEUTRINO_ELF_PATH, neutrinoStorageFallbackPath);
+      if (!tryFile(NEUTRINO_ELF_PATH)) {
+        return 0;
+      }
     }
   }
 
