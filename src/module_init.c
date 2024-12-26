@@ -177,7 +177,7 @@ int initModules() {
 int loadModule(ModuleListEntry *mod) {
   int ret, iopret = 0;
   if ((mod->mode == MODE_MX4SIO) && getMC1Type()) {
-    // If mc1 is a valid memory card or MMCE backend is requested, skip MX4SIO modules
+    // If mc1 is a valid memory card, skip MX4SIO modules
     uiSplashLogString(LEVEL_WARN, "Skipping %s\n(memory card is inserted in slot 2)\n", mod->name);
     return 0;
   }
