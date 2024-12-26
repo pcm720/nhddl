@@ -1,8 +1,8 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
-#include <ps2sdkapi.h>
 #include <gsKit.h>
+#include <ps2sdkapi.h>
 
 // Enum for supported modes
 typedef enum {
@@ -12,7 +12,8 @@ typedef enum {
   MODE_UDPBD = (1 << 2),
   MODE_USB = (1 << 3),
   MODE_ILINK = (1 << 4),
-  MODE_ALL = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK,
+  MODE_MMCE = (1 << 5),
+  MODE_ALL = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK | MODE_MMCE,
 } ModeType;
 
 // Supported video mode types
@@ -39,5 +40,9 @@ extern LauncherOptions LAUNCHER_OPTIONS;
 void logString(const char *str, ...);
 // Maps ModeType to string
 char *modeToString(ModeType mode);
+// Returns the start index of relative file path without device mountpoint or -1 if path is not supported/invalid
+int getRelativePathIdx(char *path);
+// Returns device number index in path or -1 if path doesn't contain a device number
+int getDeviceNumberIdx(char *path);
 
 #endif

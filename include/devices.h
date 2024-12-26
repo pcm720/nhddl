@@ -3,13 +3,11 @@
 
 #include "common.h"
 
-#define MAX_MASS_DEVICES 10
-
-#define MASS_PLACEHOLDER "massX:"
-#define MASS_PLACEHOLDER_LEN sizeof(MASS_PLACEHOLDER)/sizeof(char)
+#define MAX_DEVICES 12
 
 // Device map entry
 typedef struct {
+  char *mountpoint;
   ModeType mode;
   int index;
 } DeviceMapEntry;
