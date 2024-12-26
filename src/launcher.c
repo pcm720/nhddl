@@ -17,6 +17,7 @@ extern int size_loader_elf;
 // Arguments
 static char isoArgument[] = "dvd";
 static char bsdArgument[] = "bsd";
+static char bsdfsArgument[] = "bsdfs";
 
 // Neutrino bsd values
 #define BSD_ATA "ata"
@@ -24,6 +25,7 @@ static char bsdArgument[] = "bsd";
 #define BSD_UDPBD "udpbd"
 #define BSD_USB "usb"
 #define BSD_ILINK "ilink"
+#define BSD_MMCE "mmce"
 
 int LoadELFFromFile(int argc, char *argv[]);
 
@@ -70,7 +72,7 @@ void launchTitle(Target *target, ArgumentList *arguments) {
   // Append arguments
   char *bsdValue;
   // Map target device index to Neutrino bsd argument
-  switch (target->deviceType) {
+  switch (target->device->mode) {
   case MODE_ATA:
     bsdValue = BSD_ATA;
     break;
@@ -86,19 +88,28 @@ void launchTitle(Target *target, ArgumentList *arguments) {
   case MODE_ILINK:
     bsdValue = BSD_ILINK;
     break;
+  case MODE_MMCE:
+    // BSD argument will load mmcedrv
+    bsdValue = BSD_MMCE;
+    // MMCE needs bsdfs argument to load mmceman in Load Environment
+    appendArgument(arguments, newArgument(bsdfsArgument, "mmce"));
+    break;
   default:
     printf("ERROR: Unsupported mode\n");
     return;
   }
 
   printf("Updating history file and last launched title\n");
-  if (updateLastLaunchedTitle(target->fullPath)) {
+  if (updateLastLaunchedTitle(target->device->mountpoint, target->fullPath)) {
     printf("ERROR: Failed to update last launched title\n");
   }
   updateHistoryFile(target->id);
 
-  // Change device path to mass<device index>: since mass%d: path will not be preserved after Neutrino resets the IOP
-  target->fullPath[4] = deviceModeMap[target->fullPath[4] - '0'].index + '0';
+  // Change device path to <mountpoint><device index>: since <mountpoint>%d: path will not be preserved after Neutrino resets the IOP
+  int devIdx = getDeviceNumberIdx(target->fullPath);
+  if (devIdx != -1)
+    target->fullPath[devIdx] = target->device->index + '0';
+
   appendArgument(arguments, newArgument(bsdArgument, bsdValue));
   appendArgument(arguments, newArgument(isoArgument, target->fullPath));
 
