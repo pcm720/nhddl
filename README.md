@@ -1,17 +1,16 @@
-# NHDDL — a PS2 exFAT BDM launcher for Neutrino
+# NHDDL — a PS2 launcher for Neutrino
 
 <p align="center">
   <img src="img/logo/logo.png">
 </p>
 
-NHDDL is a Neutrino launcher that scans _FAT/exFAT-formatted_ BDM devices for ISO files,
+NHDDL is a Neutrino launcher that scans MMCE or _FAT/exFAT-formatted_ BDM devices for ISO files,
 lists them and boots selected ISO via Neutrino.  
 
-It displays visual Game ID to trigger per-game settings on the Pixel FX line of products and writes to memory card history file before launching the title, triggering per-title memory cards on SD2PSX and MemCard PRO 2.
+It displays visual Game ID to trigger per-game settings on the Pixel FX line of products and writes to memory card history file before launching the title, triggering per-title memory cards on SD2PSX and MemCard PRO2.
 
 Note that this not an attempt at making a Neutrino-based Open PS2 Loader replacement.  
-It __will not__ boot ISOs from anything other than BDM devices.  
-GSM, PADEMU, IGR, IGS and other stuff is out-of-scope of this launcher.
+Since it only launches Neutrino, GSM, PADEMU, IGR, IGS and other stuff is _out-of-scope_ of this launcher unless it's impelemented in Neutrino.
 
 ## Usage
 
@@ -27,7 +26,8 @@ NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) install
 - `mcX:/APPS/neutrino/neutrino.elf` (memory cards, __case-sensitive__)
 - `mcX:/NEUTRINO/NEUTRINO.ELF` (SAS-compliant path on memory cards, __case-sensitive__)
 - `mcX:/NEUTRINO/neutrino.elf` (SAS-compliant path on memory cards, __case-sensitive__)
-- `massX:/neutrino/neutrino.elf` (BDM devices)
+- `massX:/neutrino/neutrino.elf` (BDM devices, if any of BDM modes are enabled)
+- `mmceX:/neutrino/neutrino.elf` (MMCE devices, if MMCE mode is enabled)
 
 By default, NHDDL tries to initialize all supported devices. You can override this behavior and reduce initialization times by setting specific mode in launcher configuration file.  
 See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
@@ -49,8 +49,8 @@ Note that Neutrino is still required for NHDDL to launch your ISOs.
 To use NHDDL:
 - Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
 - Copy `nhddl.elf` to your memory card or storage device wherever you want.
-- _Additional step if you need only ATA, USB, MX4SIO, UDPBD or iLink_:  
-  Modify `nhddl.yaml` [accordingly](#common-use-cases) and copy it next to `nhddl.elf`
+- _Additional step if you need only some of the available modes_:  
+  Modify `nhddl.yaml` [accordingly](#launcher-configuration-file) and copy it next to `nhddl.elf`
 - Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases/tag/latest)
 - Copy Neutrino folder to the root of your PS2 memory card or your storage device. 
 
@@ -78,8 +78,8 @@ Use this version to save space on your memory card.
 - Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
 - Unpack Neutrino release
 - Copy `nhddl.elf` to Neutrino folder next to `neutrino.elf`
-- _Additional step if you need only ATA, USB, MX4SIO, UDPBD or iLink_:  
-  Modify `nhddl.yaml` [accordingly](#common-use-cases) and copy it next to `nhddl.elf`
+- _Additional step if you need only some of the available modes_:   
+  Modify `nhddl.yaml` [accordingly](#launcher-configuration-file) and copy it next to `nhddl.elf`
 - Copy Neutrino folder to your PS2 memory card or your storage device.
 
 Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest version.
@@ -92,6 +92,8 @@ If this is the case, you __must__ place Neutrino on the memory card or use stand
 The non-standalone version of NHDDL reuses Neutrino modules for BDM support and requires them to be present in Neutrino `modules` directory, which makes `nhddl.elf` significantly smaller.  
 These files should already be present in Neutrino release ZIP.
 
+### Supported modes
+
 #### ATA
 Make sure that Neutrino `modules` directory contains the following IRX files:
 - `bdm.irx` 
@@ -99,7 +101,7 @@ Make sure that Neutrino `modules` directory contains the following IRX files:
 - `dev9_ns.irx`
 - `ata_bd.irx`
 
-To skip all other BDM devices, `mode: ata` must be present in `nhddl.yaml`.
+To skip all other devices, `mode: ata` must be present in `nhddl.yaml`.
 
 #### MX4SIO
 The following files are required for MX4SIO:
@@ -107,7 +109,7 @@ The following files are required for MX4SIO:
 - `bdmfs_fatfs.irx`
 - `mx4sio_bd_mini.irx`
 
-To skip all other BDM devices, `mode: mx4sio` must be present in `nhddl.yaml` to initialize only MX4SIO.
+To skip all other devices, `mode: mx4sio` must be present in `nhddl.yaml`.
 
 #### USB
 The following files are required for USB:
@@ -117,7 +119,7 @@ The following files are required for USB:
 - `usbmass_bd_mini.irx`
 
 Using more than one USB mass storage device at the same time is not recommended.
-To skip all other BDM devices, `mode: usb` must be present in `nhddl.yaml`.
+To skip all other devices, `mode: usb` must be present in `nhddl.yaml`.
 
 #### UDPBD
 The following files are required for UDPBD:
@@ -126,7 +128,7 @@ The following files are required for UDPBD:
 - `dev9_ns.irx`
 - `smap_udpbd.irx`
 
-To skip all other BDM devices, `mode: udpbd` must be present in `nhddl.yaml`.
+To skip all other devices, `mode: udpbd` must be present in `nhddl.yaml`.
 
 UDPBD module requires PS2 IP address to work.  
 NHDDL attempts to retrieve PS2 IP address from the following sources:
@@ -142,7 +144,13 @@ The following files are required for iLink:
 - `iLinkman.irx`
 - `IEEE1394_bd_mini.irx`
 
-To skip all other BDM devices, `mode: ilink` must be present in `nhddl.yaml`.
+To skip all other devices, `mode: ilink` must be present in `nhddl.yaml`.
+
+#### MMCE (SD2PSX, MemCard PRO2)
+The following files are required for MMCE devices:
+- `mmceman.irx` 
+
+To skip all other devices, `mode: mmce` must be present in `nhddl.yaml`.
 
 ### Storing ISO
 
@@ -166,7 +174,7 @@ If unsure where to get your cover art from, check out the latest version of [OPL
 
 ## Configuration files
 
-NHDDL uses YAML-like files to load and store its configuration options.
+NHDDL uses YAML-_like_ files to load and store its configuration options.
 
 ### Launcher configuration file
 
@@ -176,9 +184,10 @@ Configuration file is loaded from one of the following paths:
 - `<NHDDL launch directory>/nhddl.yaml` (__might be case-sensitive__ depending on device)
 - `mcX:/NHDDL/nhddl.yaml` (memory cards, __case-sensitive__)
 - `mcX:/NHDDL-CONF/nhddl.yaml` (memory cards, __case-sensitive__)
-- `massX:/nhddl/nhddl.yaml` (BDM devices)
+- `massX:/nhddl/nhddl.yaml` (BDM devices, if any of BDM modes are enabled)
+- `mmceX:/nhddl/nhddl.yaml` (MMCE devices, if MMCE mode is enabled)
 
-This file is _completely optional_ and must be used only to force video mode in NHDDL UI or switch NHDDL to a single device mode.  
+This file is _completely optional_ and must be used only to force video mode in NHDDL UI or set NHDDL device mode.  
 By default, default video mode is used and all BDM devices are used to look for ISO files.
 
 To disable a flag, you can just comment it out with `#`.
@@ -210,8 +219,8 @@ Example of a valid argument file:
 ```yaml
 # All flags are passed to neutrino as-is for future-proofing, comments are ignored
 gc: 2
-mc0: massX:/memcard0.bin # all file paths must always start with massX:. X will be replaced with the actual device number.
-$mc1: massX:/memcard1.bin # this argument is disabled
+mc0: /memcard0.bin # all file paths must be relative to device root
+$mc1: /VMC/memcard1.bin # this argument is disabled
 # Arguments that don't have a value
 # Empty values are treated as a simple flag
 dbc:
@@ -245,6 +254,7 @@ nhddl/
    - lastTitle.txt # created automatically
    - cache.bin # created automatically
    - global.yaml # optional argument file, applies to all ISOs
+   - nhddl.yaml # NHDDL options, applied after initialization is complete
    - Silent Hill 2.yaml # optional argument file, applies only to ISOs that start with "Silent Hill 2"
 CD/
   |
@@ -254,53 +264,6 @@ DVD/
    - Silent Hill 2.iso
    - TimeSplitters.iso
 ```
-
-## Common use cases
-
-### Switching NHDDL to ATA-only mode
-
-To switch NHDDL to ATA-only mode, you'll need to create `nhddl.yaml` with the following contents:
-```yaml
-mode: ata
-```
-Copy this file to Neutrino directory next to `nhddl.elf`.
-
-### Switching NHDDL to USB-only mode
-
-To switch NHDDL to USB-only mode, you'll need to create `nhddl.yaml` with the following contents:
-```yaml
-mode: usb
-```
-Copy this file to Neutrino directory next to `nhddl.elf`.
-
-### Switching NHDDL to MX4SIO-only mode
-
-To switch NHDDL to MX4SIO-only mode, you'll need to create `nhddl.yaml` with the following contents:
-```yaml
-mode: mx4sio
-```
-Copy this file to Neutrino directory next to `nhddl.elf`.
-
-### Switching NHDDL to UDPBD-only mode
-
-To switch NHDDL to UDPBD-only mode, you'll need to create `nhddl.yaml` with the following contents:
-```yaml
-mode: udpbd
-udpbd_ip: <PS2 IP address>
-```
-
-If you've previously set up the network via uLaunchELF and your memory card
-has `SYS-CONF/IPCONFIG.DAT` file, you don't have to add `udpbd_ip`.
-
-Copy this file to the Neutrino directory next to `nhddl.elf`.
-
-### Switching NHDDL to iLink-only mode
-
-To switch NHDDL to iLink-only mode, you'll need to create `nhddl.yaml` with the following contents:
-```yaml
-mode: ilink
-```
-Copy this file to Neutrino directory next to `nhddl.elf`.
 
 ## UI screenshots
 
