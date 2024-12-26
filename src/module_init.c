@@ -41,6 +41,7 @@ IRX_DEFINE(mx4sio_bd_mini);
 IRX_DEFINE(iLinkman);
 IRX_DEFINE(IEEE1394_bd_mini);
 IRX_DEFINE(smap_udpbd);
+IRX_DEFINE(mmceman);
 #endif
 
 // Function used to initialize module arguments.
@@ -72,6 +73,8 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(mcserv, MODE_ALL, NULL),
     INT_MODULE(freepad, MODE_ALL, NULL),
 #ifndef STANDALONE
+    // MMCE Driver
+    {"mmceman", NULL, NULL, 0, NULL, NULL, MODE_MMCE, {"modules/mmceman.irx", "mmceman.irx"}, 0},
     // DEV9
     {"dev9", NULL, NULL, 0, NULL, NULL, MODE_UDPBD | MODE_ATA, {"modules/dev9_ns.irx", "dev9_ns.irx"}, 0},
     // BDM
@@ -93,6 +96,8 @@ static ModuleListEntry moduleList[] = {
     // iLink Mass Storage
     {"IEEE1394_bd_mini", NULL, NULL, 0, NULL, NULL, MODE_ILINK, {"modules/IEEE1394_bd_mini.irx", "IEEE1394_bd_mini.irx"}, 0},
 #else
+    // MMCE Driver
+    INT_MODULE(mmceman, MODE_MMCE, NULL),
     // DEV9
     INT_MODULE(ps2dev9, MODE_UDPBD | MODE_ATA, NULL),
     // BDM
@@ -172,8 +177,8 @@ int initModules() {
 int loadModule(ModuleListEntry *mod) {
   int ret, iopret = 0;
   if ((mod->mode == MODE_MX4SIO) && getMC1Type()) {
-    // If mc1 is a valid memory card, skip MX4SIO modules
-    uiSplashLogString(LEVEL_WARN, "Skipping %s (memory card inserted)\n", mod->name);
+    // If mc1 is a valid memory card or MMCE backend is requested, skip MX4SIO modules
+    uiSplashLogString(LEVEL_WARN, "Skipping %s\n(memory card is inserted in slot 2)\n", mod->name);
     return 0;
   }
 
