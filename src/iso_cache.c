@@ -1,8 +1,8 @@
 // Implements title ID cache to make bulding target list faster
 #include "iso_cache.h"
 #include "common.h"
-#include "iso.h"
 #include "devices.h"
+#include "iso.h"
 #include "options.h"
 #include <malloc.h>
 #include <ps2sdkapi.h>
@@ -13,7 +13,6 @@
 #define CACHE_VERSION 2
 
 const char titleIDCacheFile[] = "/cache.bin";
-#define MAX_CACHE_PATH_LEN MASS_PLACEHOLDER_LEN + BASE_CONFIG_PATH_LEN + (sizeof(titleIDCacheFile) / sizeof(char))
 
 // Structs used to read and write cache file contents
 typedef struct {
@@ -48,19 +47,16 @@ int storeTitleIDCache(TargetList *list) {
   }
 
   // Prepare paths and header
-  char cachePath[MAX_CACHE_PATH_LEN];
-  char dirPath[MAX_CACHE_PATH_LEN];
-  buildConfigFilePath(dirPath, MASS_PLACEHOLDER, NULL);
-  buildConfigFilePath(cachePath, MASS_PLACEHOLDER, titleIDCacheFile);
-
+  char cachePath[PATH_MAX];
+  char dirPath[PATH_MAX];
   CacheEntryHeader header;
   CacheMetadata meta = {.magic = CACHE_MAGIC, .version = CACHE_VERSION, .total = total};
-  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
-    if (deviceModeMap[i].mode  == MODE_NONE) {
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL) {
       break;
     }
-    cachePath[4] = i + '0';
-    dirPath[4] = i + '0';
+    buildConfigFilePath(dirPath, deviceModeMap[i].mountpoint, NULL);
+    buildConfigFilePath(cachePath, deviceModeMap[i].mountpoint, titleIDCacheFile);
 
     // Get path to config directory and make sure it exists
     struct stat st;
@@ -91,6 +87,7 @@ int storeTitleIDCache(TargetList *list) {
 
     // Write each entry
     curTitle = list->first;
+    int mountpointLen = -1;
     while (curTitle != NULL) {
       if (strlen(curTitle->id) < 11) {
         // Ignore empty entries
@@ -98,9 +95,12 @@ int storeTitleIDCache(TargetList *list) {
         continue;
       }
 
-      int mountpointLen = 5;
-      if (curTitle->fullPath[5] == ':') {
-        mountpointLen = 6;
+      // Compare paths without the mountpoint
+      mountpointLen = getRelativePathIdx(curTitle->fullPath);
+      if (mountpointLen == -1) {
+        printf("WARN: Failed to get device mountpoint for %s\n", curTitle->name);
+        curTitle = curTitle->next;
+        continue;
       }
 
       // Write entry header
@@ -135,17 +135,16 @@ int loadTitleIDCache(TitleIDCache *cache) {
   cache->lastMatchedIdx = 0;
 
   // Open cache file for reading
-  char cachePath[MAX_CACHE_PATH_LEN];
-  buildConfigFilePath(cachePath, MASS_PLACEHOLDER, titleIDCacheFile);
+  char cachePath[PATH_MAX];
 
   FILE *file;
   // Load the first found cache file
-  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
-    if (deviceModeMap[i].mode  == MODE_NONE) {
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL) {
       printf("ERROR: failed to open cache file\n");
       return -ENOENT;
     }
-    cachePath[4] = i + '0';
+    buildConfigFilePath(cachePath, deviceModeMap[i].mountpoint, titleIDCacheFile);
 
     file = fopen(cachePath, "rb");
     if (file != NULL)
@@ -227,10 +226,10 @@ char *getCachedTitleID(char *fullPath, TitleIDCache *cache) {
   // This code takes advantage of all entries in the title list being sorted alphabetically.
   // By starting from the index of the last matched entry, we can skip comparing fullPath with entries
   // that have already been matched to a title ID, improving lookup speeds for very large lists.
-
-  int mountpointLen = 5;
-  if (fullPath[5] == ':') {
-    mountpointLen = 6;
+  int mountpointLen = getRelativePathIdx(fullPath);
+  if (mountpointLen == -1) {
+    printf("WARN: Failed to get device mountpoint for %s\n", fullPath);
+    return NULL;
   }
 
   for (int i = cache->lastMatchedIdx; i < cache->total; i++) {

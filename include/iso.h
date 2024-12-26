@@ -2,15 +2,16 @@
 #define _ISO_H_
 
 #include "common.h"
+#include "devices.h"
 #include <stdint.h>
 
 // An entry in TargetList
 typedef struct Target {
-  uint16_t idx;        // ISO index (monotonically increasing). Used to uniquely identify the list entry
-  char *fullPath;      // Full path to ISO
-  char *name;          // Target name (extracted from file name)
-  char *id;            // Title ID
-  ModeType deviceType; // Device type
+  uint16_t idx;           // ISO index (monotonically increasing). Used to uniquely identify the list entry
+  char *fullPath;         // Full path to ISO
+  char *name;             // Target name (extracted from file name)
+  char *id;               // Title ID
+  DeviceMapEntry *device; // Device entry
 
   struct Target *prev; // Previous target in the list
   struct Target *next; // Next target in the list

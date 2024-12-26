@@ -12,7 +12,7 @@
 #include <string.h>
 #include <unistd.h>
 
-int _findISO(DIR *directory, TargetList *result);
+int _findISO(DIR *directory, TargetList *result, DeviceMapEntry *device);
 void insertIntoList(TargetList *result, Target *title);
 void processTitleID(TargetList *result);
 
@@ -26,16 +26,17 @@ const char *ignoredDirs[] = {
 TargetList *findISO() {
   DIR *directory;
   TargetList *result = malloc(sizeof(TargetList));
-  char mountpoint[] = MASS_PLACEHOLDER;
   result->total = 0;
   result->first = NULL;
   result->last = NULL;
 
-  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
-    if (deviceModeMap[i].mode == MODE_NONE) {
+  char *mountpoint;
+
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL) {
       break;
     }
-    mountpoint[4] = i + '0';
+    mountpoint = deviceModeMap[i].mountpoint;
 
     directory = opendir(mountpoint);
     // Check if the directory can be opened
@@ -45,13 +46,20 @@ TargetList *findISO() {
     }
 
     chdir(mountpoint);
-    if (_findISO(directory, result)) {
+    if (_findISO(directory, result, &deviceModeMap[i])) {
       freeTargetList(result);
       closedir(directory);
       return NULL;
     }
     closedir(directory);
   }
+
+  if (result->total == 0) {
+    free(result);
+    return NULL;
+  }
+
+  // Get title IDs for each found title
   processTitleID(result);
 
   if (result->first == NULL) {
@@ -72,7 +80,7 @@ TargetList *findISO() {
 }
 
 // Searches rootpath and adds discovered ISOs to TargetList
-int _findISO(DIR *directory, TargetList *result) {
+int _findISO(DIR *directory, TargetList *result, DeviceMapEntry *device) {
   if (directory == NULL)
     return -ENOENT;
 
@@ -108,7 +116,7 @@ int _findISO(DIR *directory, TargetList *result) {
       }
       chdir(entry->d_name);
       // Process inner directory recursively
-      _findISO(d, result);
+      _findISO(d, result, device);
       // Return back to root directory
       chdir("..");
       closedir(d);
@@ -131,7 +139,7 @@ int _findISO(DIR *directory, TargetList *result) {
         title->prev = NULL;
         title->next = NULL;
         title->fullPath = strdup(titlePath);
-        title->deviceType = deviceModeMap[titlePath[4] - '0'].mode;
+        title->device = device;
 
         // Get file name without the extension
         int nameLength = (int)(fileext - entry->d_name);
@@ -343,7 +351,7 @@ Target *copyTarget(Target *src) {
   copy->fullPath = strdup(src->fullPath);
   copy->name = strdup(src->name);
   copy->id = strdup(src->id);
-  copy->deviceType = src->deviceType;
+  copy->device = src->device;
 
   return copy;
 }
