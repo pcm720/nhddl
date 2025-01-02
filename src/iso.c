@@ -270,6 +270,8 @@ Target *freeTarget(Target *target) {
     if (target->next != NULL) {
       prev->next = target->next;
       target->next->prev = prev;
+    } else {
+      prev->next = NULL;
     }
   }
   free(target);

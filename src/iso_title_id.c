@@ -33,7 +33,7 @@ struct dirTOCEntry {
 static unsigned char iso_buf[SECTOR_SIZE];
 
 // Sets file offset to specified LBA while handling large LBAs
-static void longLseek(int fd, unsigned int lba);
+static int longLseek(int fd, unsigned int lba);
 // Reads Primary Volume Descriptor from specified LBA and extracts root directory LBA
 static int getPVD(int fd, uint32_t *lba, int *length);
 // Retrieves SYSTEM.CNF TOC entry using specified root directory TOC
@@ -66,7 +66,12 @@ char *getTitleID(char *path) {
   }
 
   // Seek to SYSTEM.CNF location and read file contents
-  longLseek(fd, tocEntry->fileLBA);
+  int res = longLseek(fd, tocEntry->fileLBA);
+  if (res < 0) {
+    printf("WARN: %s: Failed to seek to SYSTEM.CNF\n", path);
+    close(fd);
+    return NULL;
+  }
   char *systemCNF = malloc(tocEntry->length);
   if (read(fd, systemCNF, tocEntry->length) != tocEntry->length) {
     printf("WARN: %s: Failed to read SYSTEM.CNF\n", path);
@@ -104,28 +109,40 @@ char *getTitleID(char *path) {
 }
 
 // Sets file offset to specified LBA while handling large LBAs
-static void longLseek(int fd, unsigned int lba) {
+static int longLseek(int fd, unsigned int lba) {
+  int res;
   // If offset fits into INT_MAX, seek and return
   if (lba <= INT_MAX / SECTOR_SIZE) {
-    lseek(fd, lba * SECTOR_SIZE, SEEK_SET);
-    return;
+    res = lseek(fd, lba * SECTOR_SIZE, SEEK_SET);
+    return res;
   }
 
   // Else, seek while handling overflows
   unsigned int remaining, toSeek;
-  lseek(fd, INT_MAX / SECTOR_SIZE * SECTOR_SIZE, SEEK_SET);
+  res = lseek(fd, INT_MAX / SECTOR_SIZE * SECTOR_SIZE, SEEK_SET);
+  if (res < 0) {
+    return res;
+  }
   remaining = lba - INT_MAX / SECTOR_SIZE;
   while (remaining > 0) {
     toSeek = remaining > INT_MAX / SECTOR_SIZE ? INT_MAX / SECTOR_SIZE : remaining;
-    lseek(fd, toSeek * SECTOR_SIZE, SEEK_CUR);
+    res = lseek(fd, toSeek * SECTOR_SIZE, SEEK_CUR);
+    if (res < 0) {
+      return res;
+    }
     remaining -= toSeek;
   }
+
+  return 0;
 }
 
 // Reads Primary Volume Descriptor from specified LBA and extracts root directory LBA
 static int getPVD(int fd, uint32_t *lba, int *length) {
   // Seek to PVD LBA
-  longLseek(fd, TOC_LBA);
+  int res = longLseek(fd, TOC_LBA);
+  if (res < 0) {
+    return -EIO;
+  }
   // Read the sector
   if (read(fd, iso_buf, SECTOR_SIZE) == SECTOR_SIZE) {
     // Make sure the sector contains PVD (type code 1, identifier CD001)
@@ -145,9 +162,13 @@ static int getPVD(int fd, uint32_t *lba, int *length) {
 // Retrieves SYSTEM.CNF TOC entry using specified root directory TOC
 static struct dirTOCEntry *getTOCEntry(int fd, uint32_t tocLBA, int tocLength) {
   // Read TOC entries
+  int res = 0;
   while (tocLength > 0) {
     // Seek to next LBA
-    longLseek(fd, tocLBA);
+    res = longLseek(fd, tocLBA);
+    if (res < 0) {
+      return NULL;
+    }
     // Read the sector
     if (read(fd, iso_buf, SECTOR_SIZE) != SECTOR_SIZE) {
       return NULL;
