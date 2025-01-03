@@ -205,6 +205,44 @@ void inline insertIntoList(TargetList *result, Target *title) {
   free(curUppercase);
 }
 
+// Completely frees Target and returns pointer to the next target in the list
+Target *freeTarget(TargetList *targetList, Target *target) {
+  // Update target list if target is the first or the last element
+  if (targetList->first == target) {
+    targetList->first = target->next;
+  }
+  if (targetList->last == target) {
+    targetList->last = target->prev;
+  }
+
+  Target *next = NULL;
+  // If target has a link to the next element
+  if (target->next != NULL) {
+    // Set return pointer
+    next = target->next;
+    if (target->prev != NULL) {
+      // If target has a link to the previous element, link prev and next together
+      next->prev = target->prev;
+      target->prev->next = next;
+    } else {
+      // Else, remove link to target
+      next->prev = NULL;
+    }
+  } else if (target->prev != NULL) {
+    // If target doesn't have a link to the next element
+    // but has a link to the previous element, remove link to target
+    target->prev->next = NULL;
+  }
+
+  free(target->fullPath);
+  free(target->name);
+  if (target->id != NULL)
+    free(target->id);
+
+  free(target);
+  return next;
+}
+
 // Fills in title ID for every entry in the list
 void processTitleID(TargetList *result) {
   if (result->total == 0)
@@ -242,8 +280,9 @@ void processTitleID(TargetList *result) {
       curTarget->id = getTitleID(curTarget->fullPath);
       if (curTarget->id == NULL) {
         uiSplashLogString(LEVEL_WARN, "Failed to scan\n%s\n", curTarget->fullPath);
-        curTarget = freeTarget(curTarget);
+        curTarget = freeTarget(result, curTarget);
         result->total -= 1;
+        continue;
       }
     }
 
@@ -259,30 +298,11 @@ void processTitleID(TargetList *result) {
   }
 }
 
-// Completely frees Target and returns pointer to a previous argument in the list
-Target *freeTarget(Target *target) {
-  Target *prev = NULL;
-  free(target->fullPath);
-  free(target->name);
-  free(target->id);
-  if (target->prev != NULL) {
-    prev = target->prev;
-    if (target->next != NULL) {
-      prev->next = target->next;
-      target->next->prev = prev;
-    } else {
-      prev->next = NULL;
-    }
-  }
-  free(target);
-  return prev;
-}
-
 // Completely frees TargetList. Passed pointer will not be valid after this function executes
 void freeTargetList(TargetList *result) {
-  Target *target = result->last;
+  Target *target = result->first;
   while (target != NULL) {
-    target = freeTarget(target);
+    target = freeTarget(result, target);
   }
   result->first = NULL;
   result->last = NULL;
