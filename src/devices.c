@@ -32,6 +32,7 @@ static SupportedBackends backends[] = {
     {.name = "BDM", .initFunction = initBDMDevices, .targetModes = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK},
     {.name = "MMCE", .initFunction = initMMCEDevices, .targetModes = MODE_MMCE},
 };
+static char mmceMountpoint[] = "mmceX:";
 
 // Maps mass device index to supported mode.
 // Device must be ignored if mode is MODE_ALL or MODE_NONE
@@ -60,21 +61,20 @@ int initDeviceMap() {
 // Initializes map entries for MMCE devices
 int initMMCEDevices(int newDeviceIdx) {
   DIR *directory;
-  char mountpoint[] = "mmceX:";
 
   int deviceCount = 0;
   for (int i = 0; i < 2; i++) {
-    mountpoint[4] = i + '0';
+    mmceMountpoint[4] = i + '0';
 
-    directory = opendir(mountpoint);
+    directory = opendir(mmceMountpoint);
     if (directory != NULL) {
       closedir(directory);
-      uiSplashLogString(LEVEL_INFO_NODELAY, "Found device %s\n", mountpoint);
+      uiSplashLogString(LEVEL_INFO_NODELAY, "Found device %s\n", mmceMountpoint);
 
       deviceModeMap[newDeviceIdx].mode = MODE_MMCE;
       deviceModeMap[newDeviceIdx].index = i;
-      deviceModeMap[newDeviceIdx].mountpoint = calloc(strlen(mountpoint) + 1, 1);
-      strcpy(deviceModeMap[newDeviceIdx].mountpoint, mountpoint);
+      deviceModeMap[newDeviceIdx].mountpoint = calloc(strlen(mmceMountpoint) + 1, 1);
+      strcpy(deviceModeMap[newDeviceIdx].mountpoint, mmceMountpoint);
       deviceCount++;
       newDeviceIdx++;
     }
@@ -178,4 +178,25 @@ int initBDMDevices(int deviceIdx) {
   }
 
   return deviceCount;
+}
+
+// Uses MMCE devctl calls to switch memory card to given title ID
+void mmceMountVMC(char *titleID) {
+  // Send GameID to both MMCE devices
+  for (int i = '0'; i < '2'; i++) {
+    mmceMountpoint[4] = i;
+    printf("Trying to mount VMC for %s on %s\n", titleID, mmceMountpoint);
+    if (fileXioDevctl(mmceMountpoint, 0x8, titleID, (strlen(titleID) + 1), NULL, 0) < 0) {
+      continue;
+    }
+
+    for (int i = 0; i < 15; i++) {
+      delay(2);
+      // Poll MMCE status until busy bit is clear
+      if ((fileXioDevctl(mmceMountpoint, 0x2, NULL, 0, NULL, 0) & 1) == 0) {
+        printf("VMC mounted\n");
+        break;
+      }
+    }
+  }
 }
