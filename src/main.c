@@ -120,7 +120,10 @@ int init() {
   // Get CWD and try to open it
   if (getcwd(cwdPath, PATH_MAX + 1) && ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0)) {
     close(fd);
-    strcat(cwdPath, "/");
+
+    if (cwdPath[strlen(cwdPath) - 1] != '/') // Add path separator if cwd doesn't have one
+      strcat(cwdPath, "/");
+
     // Try to load options from CWD
     initOptions(cwdPath);
   } else {
@@ -160,7 +163,10 @@ int init() {
   if (getcwd(cwdPath, PATH_MAX + 1) && ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0)) {
     // Skip loading embedded modules if CWD is available
     close(fd);
-    strcat(cwdPath, "/");
+
+    if (cwdPath[strlen(cwdPath) - 1] != '/') // Add path separator if cwd doesn't have one
+      strcat(cwdPath, "/");
+
     printf("Current working directory is %s\n", cwdPath);
   } else {
     cwdPath[0] = '\0';                // CWD is not valid
