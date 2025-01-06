@@ -1,6 +1,5 @@
 #include "common.h"
 #include "devices.h"
-#include "history.h"
 #include "iso.h"
 #include "options.h"
 #include <kernel.h>
@@ -99,11 +98,12 @@ void launchTitle(Target *target, ArgumentList *arguments) {
     return;
   }
 
-  printf("Updating history file and last launched title\n");
+  printf("Updating last launched title\n");
   if (updateLastLaunchedTitle(target->device->mountpoint, target->fullPath)) {
     printf("ERROR: Failed to update last launched title\n");
   }
-  updateHistoryFile(target->id);
+  printf("Mounting VMC on MMCE devices\n");
+  mmceMountVMC(target->id);
 
   // Change device path to <mountpoint><device index>: since <mountpoint>%d: path will not be preserved after Neutrino resets the IOP
   int devIdx = getDeviceNumberIdx(target->fullPath);
