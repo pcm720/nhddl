@@ -149,7 +149,7 @@ int uiInit() {
 int loadCoverArt(char *deviceMountpoint, char *titleID) {
   // Reuse line buffer for building texture path
   // Append cover art path to the mountpoint
-  snprintf(lineBuffer, 255, "%s/%s/%s_COV.png", deviceMountpoint, artPath, titleID);
+  snprintf(lineBuffer, 255, "%s%s/%s_COV.png", deviceMountpoint, artPath, titleID);
   // Upload new texture
   gsKit_TexManager_invalidate(gsGlobal, coverTexture);
   if (gsKit_texture_png(gsGlobal, coverTexture, lineBuffer)) {
