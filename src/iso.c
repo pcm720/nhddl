@@ -22,7 +22,7 @@ const char *ignoredDirs[] = {
 };
 
 // Used by _findISO to limit recursion depth
-#define MAX_SCAN_DEPTH 4
+#define MAX_SCAN_DEPTH 6
 static int curRecursionLevel = 1;
 
 // Generates a list of launch candidates found on BDM devices
