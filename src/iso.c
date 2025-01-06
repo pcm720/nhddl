@@ -37,11 +37,16 @@ TargetList *findISO() {
   char *mountpoint;
 
   for (int i = 0; i < MAX_DEVICES; i++) {
-    if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL) {
+    if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL)
       break;
-    }
+
+    // Ignore devices with doNotScan flag
+    if (deviceModeMap[i].doNotScan)
+      continue;
+
     mountpoint = deviceModeMap[i].mountpoint;
 
+    curRecursionLevel = 1; // Reset recursion level
     directory = opendir(mountpoint);
     // Check if the directory can be opened
     if (directory == NULL) {
@@ -170,8 +175,8 @@ int _findISO(DIR *directory, TargetList *result, DeviceMapEntry *device) {
       }
     }
   }
-
   curRecursionLevel--;
+
   return 0;
 }
 
