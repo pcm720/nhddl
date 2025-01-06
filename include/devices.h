@@ -7,12 +7,13 @@
 
 // Device map entry
 typedef struct {
-  char *mountpoint;
-  ModeType mode;
-  int index;
+  char *mountpoint;  // Device mountpoint
+  ModeType mode;     // Device driver
+  uint8_t index;     // BDM internal device driver number, must be used for passing paths to Neutrino
+  uint8_t doNotScan; // If not zero, device must be ignored during ISO scanning
 } DeviceMapEntry;
 
-// Maps BDM device index (massX:) to supported mode.
+// Contains all available devices.
 // Device must be ignored if mode is MODE_ALL or MODE_NONE
 extern DeviceMapEntry deviceModeMap[];
 

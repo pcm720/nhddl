@@ -8,7 +8,7 @@
 #include <string.h>
 #include <usbhdfsd-common.h>
 
-// Used to get BDM driver name
+// Used to get BDM driver name and make devctl calls
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
 #include <io_common.h>
@@ -26,15 +26,16 @@ typedef struct {
 
 int initBDMDevices();
 int initMMCEDevices();
+void delay(int count);
 
 // List of modules to load
 static SupportedBackends backends[] = {
+    {.name = "MMCE", .initFunction = initMMCEDevices, .targetModes = MODE_ALL},
     {.name = "BDM", .initFunction = initBDMDevices, .targetModes = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK},
-    {.name = "MMCE", .initFunction = initMMCEDevices, .targetModes = MODE_MMCE},
 };
 static char mmceMountpoint[] = "mmceX:";
 
-// Maps mass device index to supported mode.
+// Contains all available devices.
 // Device must be ignored if mode is MODE_ALL or MODE_NONE
 DeviceMapEntry deviceModeMap[MAX_DEVICES] = {};
 
@@ -75,6 +76,9 @@ int initMMCEDevices(int newDeviceIdx) {
       deviceModeMap[newDeviceIdx].index = i;
       deviceModeMap[newDeviceIdx].mountpoint = calloc(strlen(mmceMountpoint) + 1, 1);
       strcpy(deviceModeMap[newDeviceIdx].mountpoint, mmceMountpoint);
+      if (!(LAUNCHER_OPTIONS.mode & MODE_MMCE)) // Set "do not scan" flag if MMCE is not a target mode
+        deviceModeMap[newDeviceIdx].doNotScan = 1;
+
       deviceCount++;
       newDeviceIdx++;
     }
@@ -95,6 +99,27 @@ ModeType mapBDMDriverName(char *driverName) {
   else if (!strncmp(driverName, "udp", 3))
     return MODE_UDPBD;
   return MODE_NONE;
+}
+
+// Uses MMCE devctl calls to switch memory card to given title ID
+void mmceMountVMC(char *titleID) {
+  // Send GameID to both MMCE devices
+  for (int i = '0'; i < '2'; i++) {
+    mmceMountpoint[4] = i;
+    printf("Trying to mount VMC for %s on %s\n", titleID, mmceMountpoint);
+    if (fileXioDevctl(mmceMountpoint, 0x8, titleID, (strlen(titleID) + 1), NULL, 0) < 0) {
+      continue;
+    }
+
+    for (int i = 0; i < 15; i++) {
+      delay(2);
+      // Poll MMCE status until busy bit is clear
+      if ((fileXioDevctl(mmceMountpoint, 0x2, NULL, 0, NULL, 0) & 1) == 0) {
+        printf("VMC mounted\n");
+        break;
+      }
+    }
+  }
 }
 
 //
@@ -141,7 +166,7 @@ int initBDMDevices(int deviceIdx) {
 
   int deviceCount = 0;
   int delayAttempts = 2;
-  if ((LAUNCHER_OPTIONS.mode & MODE_UDPBD)) {
+  if (LAUNCHER_OPTIONS.mode & MODE_UDPBD) {
     // UDPBD needs considerably more time to init
     delayAttempts = 10;
   }
@@ -178,25 +203,4 @@ int initBDMDevices(int deviceIdx) {
   }
 
   return deviceCount;
-}
-
-// Uses MMCE devctl calls to switch memory card to given title ID
-void mmceMountVMC(char *titleID) {
-  // Send GameID to both MMCE devices
-  for (int i = '0'; i < '2'; i++) {
-    mmceMountpoint[4] = i;
-    printf("Trying to mount VMC for %s on %s\n", titleID, mmceMountpoint);
-    if (fileXioDevctl(mmceMountpoint, 0x8, titleID, (strlen(titleID) + 1), NULL, 0) < 0) {
-      continue;
-    }
-
-    for (int i = 0; i < 15; i++) {
-      delay(2);
-      // Poll MMCE status until busy bit is clear
-      if ((fileXioDevctl(mmceMountpoint, 0x2, NULL, 0, NULL, 0) & 1) == 0) {
-        printf("VMC mounted\n");
-        break;
-      }
-    }
-  }
 }
