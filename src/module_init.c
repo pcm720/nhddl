@@ -29,6 +29,7 @@ IRX_DEFINE(sio2man);
 IRX_DEFINE(mcman);
 IRX_DEFINE(mcserv);
 IRX_DEFINE(freepad);
+IRX_DEFINE(mmceman);
 
 #ifdef STANDALONE
 IRX_DEFINE(ps2dev9);
@@ -41,7 +42,6 @@ IRX_DEFINE(mx4sio_bd_mini);
 IRX_DEFINE(iLinkman);
 IRX_DEFINE(IEEE1394_bd_mini);
 IRX_DEFINE(smap_udpbd);
-IRX_DEFINE(mmceman);
 #endif
 
 // Function used to initialize module arguments.
@@ -72,9 +72,8 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(mcman, MODE_ALL, NULL),
     INT_MODULE(mcserv, MODE_ALL, NULL),
     INT_MODULE(freepad, MODE_ALL, NULL),
+    INT_MODULE(mmceman, MODE_ALL, NULL), // MMCE driver
 #ifndef STANDALONE
-    // MMCE Driver
-    {"mmceman", NULL, NULL, 0, NULL, NULL, MODE_MMCE, {"modules/mmceman.irx", "mmceman.irx"}, 0},
     // DEV9
     {"dev9", NULL, NULL, 0, NULL, NULL, MODE_UDPBD | MODE_ATA, {"modules/dev9_ns.irx", "dev9_ns.irx"}, 0},
     // BDM
@@ -96,8 +95,6 @@ static ModuleListEntry moduleList[] = {
     // iLink Mass Storage
     {"IEEE1394_bd_mini", NULL, NULL, 0, NULL, NULL, MODE_ILINK, {"modules/IEEE1394_bd_mini.irx", "IEEE1394_bd_mini.irx"}, 0},
 #else
-    // MMCE Driver
-    INT_MODULE(mmceman, MODE_MMCE, NULL),
     // DEV9
     INT_MODULE(ps2dev9, MODE_UDPBD | MODE_ATA, NULL),
     // BDM
@@ -122,7 +119,7 @@ static ModuleListEntry moduleList[] = {
 };
 #define MODULE_COUNT sizeof(moduleList) / sizeof(ModuleListEntry)
 
-// Returns 0 if memory card in slot 1 is not a formatted memory card
+// Returns 0 if memory card in mc1 is not a formatted PS2 memory card
 // Used to avoid loading MX4SIO module and disabling mc1
 int getMC1Type();
 
@@ -301,7 +298,7 @@ fail:
   return -1;
 }
 
-// Returns 0 if memory card in mc1 is not a formatted memory card
+// Returns 0 if memory card in mc1 is not a formatted PS2 memory card
 // Can be used to avoid loading MX4SIO module
 int getMC1Type() {
   if (mcInit(MC_TYPE_XMC)) {
