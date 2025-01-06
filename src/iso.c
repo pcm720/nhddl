@@ -18,8 +18,12 @@ void processTitleID(TargetList *result);
 
 // Directories to skip when browsing for ISOs
 const char *ignoredDirs[] = {
-    "nhddl", "APPS", "ART", "CFG", "CHT", "LNG", "THM", "VMC", "XEBPLUS",
+    "nhddl", "APPS", "ART", "CFG", "CHT", "LNG", "THM", "VMC", "XEBPLUS", "MemoryCards",
 };
+
+// Used by _findISO to limit recursion depth
+#define MAX_SCAN_DEPTH 4
+static int curRecursionLevel = 1;
 
 // Generates a list of launch candidates found on BDM devices
 // Returns NULL if no targets were found or an error occurs
@@ -92,36 +96,46 @@ int _findISO(DIR *directory, TargetList *result, DeviceMapEntry *device) {
     uiSplashLogString(LEVEL_ERROR, "Failed to get cwd\n");
     return -ENOENT;
   }
+  int cwdLen = strlen(titlePath);     // Get the length of base path string
+  if (titlePath[cwdLen - 1] != '/') { // Add path separator if cwd doesn't have one
+    strcat(titlePath, "/");
+    cwdLen++;
+  }
 
-  int cwdLen = strlen(titlePath); // Get the length of base path string
+  curRecursionLevel++;
+  if (curRecursionLevel == MAX_SCAN_DEPTH)
+    printf("Max recursion limit reached, all directories in %s will be ignored\n", titlePath);
+
   while ((entry = readdir(directory)) != NULL) {
+    // Reset titlePath by ending string on base path
+    titlePath[cwdLen] = '\0';
     // Check if the entry is a directory using d_type
     switch (entry->d_type) {
     case DT_DIR:
+      // Ignore directories if max scan depth is reached
+      if (curRecursionLevel == MAX_SCAN_DEPTH)
+        continue;
+
       // Ignore hidden, special and invalid directories (non-ASCII paths seem to return '?' and cause crashes when used with opendir)
       if ((entry->d_name[0] == '.') || (entry->d_name[0] == '$') || (entry->d_name[0] == '?'))
         continue;
 
       for (int i = 0; i < sizeof(ignoredDirs) / sizeof(char *); i++) {
-        if (!strcmp(ignoredDirs[i], entry->d_name)) {
-          goto skipDirectory;
-        }
+        if (!strcmp(ignoredDirs[i], entry->d_name))
+          continue;
       }
 
-      // Open dir and change cwd
-      DIR *d = opendir(entry->d_name);
-      if (!d) {
-        printf("ERROR: Failed to open %s\n", entry->d_name);
+      // Generate full path, open dir and change cwd
+      strcat(titlePath, entry->d_name);
+      DIR *d = opendir(titlePath);
+      if (d == NULL) {
+        printf("Failed to open %s for scanning\n", entry->d_name);
         continue;
       }
-      chdir(entry->d_name);
+      chdir(titlePath);
       // Process inner directory recursively
       _findISO(d, result, device);
-      // Return back to root directory
-      chdir("..");
       closedir(d);
-    skipDirectory:
-      continue;
     default:
       if (entry->d_name[0] == '.') // Ignore .files (most likely macOS doubles)
         continue;
@@ -130,8 +144,6 @@ int _findISO(DIR *directory, TargetList *result, DeviceMapEntry *device) {
       fileext = strrchr(entry->d_name, '.');
       if ((fileext != NULL) && (!strcmp(fileext, ".iso") || !strcmp(fileext, ".ISO"))) {
         // Generate full path
-        if (titlePath[cwdLen - 1] != '/')
-          strcat(titlePath, "/");
         strcat(titlePath, entry->d_name);
 
         // Initialize target
@@ -155,11 +167,11 @@ int _findISO(DIR *directory, TargetList *result, DeviceMapEntry *device) {
         } else {
           insertIntoList(result, title);
         }
-        titlePath[cwdLen] = '\0'; // reset titlePath by ending string on base path
       }
     }
   }
 
+  curRecursionLevel--;
   return 0;
 }
 
