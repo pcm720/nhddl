@@ -10,7 +10,7 @@ lists them and boots selected ISO via Neutrino.
 It displays visual Game ID to trigger per-game settings on the Pixel FX line of products and writes to memory card history file before launching the title, triggering per-title memory cards on SD2PSX and MemCard PRO2.
 
 Note that this not an attempt at making a Neutrino-based Open PS2 Loader replacement.  
-Since it only launches Neutrino, GSM, PADEMU, IGR, IGS and other stuff is _out-of-scope_ of this launcher unless it's impelemented in Neutrino.
+Since it only launches Neutrino, GSM, PADEMU, IGR, IGS, cheats and other stuff is _out-of-scope_ of this launcher unless it's impelemented in Neutrino.
 
 ## Usage
 
@@ -72,6 +72,9 @@ Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest versi
 
 ### Non-standalone version
 
+The non-standalone version of NHDDL reuses Neutrino modules for BDM support and requires them
+to be present in Neutrino `modules` directory, which makes `nhddl.elf` significantly smaller.  
+These files should already be present in Neutrino release ZIP.  
 Use this version to save space on your memory card.
 
 - Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases/tag/latest)
@@ -88,9 +91,6 @@ You can also install NHDDL from a PSU package (see [this section](#save-applicat
 
 If you're getting `Failed to prepare external modules` error while trying to run NHDDL from the USB drive, MX4SIO, iLink or UDPBD, make sure your ELF launcher initializes BDM modules and doesn't reset the IOP before loading NHDDL.  
 If this is the case, you __must__ place Neutrino on the memory card or use standalone version instead.
-
-The non-standalone version of NHDDL reuses Neutrino modules for BDM support and requires them to be present in Neutrino `modules` directory, which makes `nhddl.elf` significantly smaller.  
-These files should already be present in Neutrino release ZIP.
 
 ### Supported modes
 
@@ -147,15 +147,15 @@ The following files are required for iLink:
 To skip all other devices, `mode: ilink` must be present in `nhddl.yaml`.
 
 #### MMCE (SD2PSX, MemCard PRO2)
-The following files are required for MMCE devices:
-- `mmceman.irx` 
-
+MMCE devices are supported with embedded module.  
 To skip all other devices, `mode: mmce` must be present in `nhddl.yaml`.
 
 ### Storing ISO
 
-ISOs can be stored almost anywhere on the storage device.  
-Only directories that start with `.`, `$` and the following directories are ignored:
+ISOs can be stored almost anywhere on the storage device, but no more than 5 directories deep.  
+For example, ISOs stored in `DVD/A/B/C/D` will be scanned and added to the list, but ISOs stored in `DVD/A/B/C/D/E` will be ignored.  
+
+Furthermore, directories that start with `.`, `$` and the following directories are ignored to speed up the scanning process:
  - `nhddl`
  - `APPS`
  - `ART`
@@ -165,6 +165,7 @@ Only directories that start with `.`, `$` and the following directories are igno
  - `THM`
  - `VMC`
  - `XEBPLUS`
+ - `MemoryCards`
 
 ### Displaying cover art
 
