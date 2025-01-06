@@ -23,11 +23,11 @@ Since it only launches Neutrino, GSM, PADEMU, IGR, IGS, cheats and other stuff i
  
 NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) installation to be present at one of the following paths:
 - `<NHDDL launch directory>/neturino.elf` (__might be case-sensitive__ depending on device)
+- `mmceX:/neutrino/neutrino.elf` (MMCE devices, will work even if MMCE mode is _not_ enabled)
 - `mcX:/APPS/neutrino/neutrino.elf` (memory cards, __case-sensitive__)
 - `mcX:/NEUTRINO/NEUTRINO.ELF` (SAS-compliant path on memory cards, __case-sensitive__)
 - `mcX:/NEUTRINO/neutrino.elf` (SAS-compliant path on memory cards, __case-sensitive__)
 - `massX:/neutrino/neutrino.elf` (BDM devices, if any of BDM modes are enabled)
-- `mmceX:/neutrino/neutrino.elf` (MMCE devices, if MMCE mode is enabled)
 
 By default, NHDDL tries to initialize all supported devices. You can override this behavior and reduce initialization times by setting specific mode in launcher configuration file.  
 See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
