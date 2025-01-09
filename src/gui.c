@@ -278,12 +278,12 @@ int uiLoop(TargetList *titles) {
       // Advance to the next title
       if (selectedTitleIdx < titles->total - 1)
         selectedTitleIdx++;
-    } else if (input & (PAD_RIGHT | PAD_R1)) {
+    } else if (input & PAD_R1) {
       // Switch to the next page
       selectedTitleIdx += maxTitlesPerPage;
       if (selectedTitleIdx >= titles->total)
         selectedTitleIdx = titles->total - 1;
-    } else if (input & (PAD_LEFT | PAD_L1)) {
+    } else if (input & PAD_L1) {
       // Switch to the previous page
       selectedTitleIdx -= maxTitlesPerPage;
       if (selectedTitleIdx < 0)
