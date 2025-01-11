@@ -97,6 +97,10 @@ int _findISO(DIR *directory, TargetList *result) {
 
       // Open dir and change cwd
       DIR *d = opendir(entry->d_name);
+      if (!d) {
+        printf("ERROR: Failed to open %s\n", entry->d_name);
+        continue;
+      }
       chdir(entry->d_name);
       // Process inner directory recursively
       _findISO(d, result);
