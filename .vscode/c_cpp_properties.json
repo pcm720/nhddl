@@ -1,52 +1,38 @@
 {
-    "configurations": [
-        {
-            "compilerPath": "${env:PS2DEV}/ee/bin/mips64r5900el-ps2-elf-gcc",
-            "name": "EE (Open Source SDK)",
-            "includePath": [
-                "${workspaceFolder}/**",
-                "${env:PS2SDK}/common/include/**",
-                "${env:PS2SDK}/ee/include/**",
-                "${env:PS2DEV}/ee/include/**",
-                "${env:PS2DEV}/ee/mips64r5900el-ps2-elf/include/**",
-                "${env:PS2SDK}/ports/include/**",
-                "${env:GSKIT}/include/**"
-            ],
-            "defines": [
-                "_EE"
-            ],
-            "cStandard": "gnu89",
-            "cppStandard": "gnu++98",
-            "intelliSenseMode": "linux-gcc-x64"
-        },
-        {
-            "compilerPath": "${env:PS2DEV}/iop/bin/mipsel-ps2-irx-gcc",
-            "name": "IOP (Open Source SDK)",
-            "includePath": [
-                "/home/ivv/Projects/nhddl/**",
-                "${env:PS2SDK}/common/include/**",
-                "${env:PS2SDK}/iop/include/**",
-                "${env:PS2DEV}/iop/include/**"
-            ],
-            "defines": [
-                "_IOP"
-            ],
-            "cStandard": "gnu89",
-            "cppStandard": "c++03",
-            "intelliSenseMode": "linux-gcc-x64",
-            "compilerPathInCppPropertiesJson": "${env:PS2DEV}/iop/bin/mipsel-ps2-irx-gcc",
-            "mergeConfigurations": false,
-            "browse": {
-                "path": [
-                    "/home/ivv/Projects/nhddl/**",
-                    "${env:PS2SDK}/common/include/**",
-                    "${env:PS2SDK}/iop/include/**",
-                    "${env:PS2DEV}/iop/include/**",
-                    "${workspaceFolder}"
-                ],
-                "limitSymbolsToIncludedHeaders": true
-            }
-        }
-    ],
-    "version": 4
+  "configurations": [
+    {
+      "compilerPath": "${env:PS2DEV}/ee/bin/mips64r5900el-ps2-elf-gcc",
+      "name": "EE (Open Source SDK)",
+      "includePath": [
+        "${env:PS2DEV}/ee/include/**",
+        "${env:PS2DEV}/ee/mips64r5900el-ps2-elf/include/**",
+        "${env:PS2SDK}/common/include/**",
+        "${env:PS2SDK}/ee/include/**",
+        "${env:PS2SDK}/ports/include/**",
+        "${env:GSKIT}/include/**",
+        "${workspaceFolder}/**"
+      ],
+      "intelliSenseMode": "linux-gcc-x64",
+      "mergeConfigurations": false,
+      "defines": [
+        "_EE"
+      ]
+    },
+    {
+      "compilerPath": "${env:PS2DEV}/iop/bin/mipsel-ps2-irx-gcc",
+      "name": "IOP (Open Source SDK)",
+      "includePath": [
+        "${env:PS2DEV}/iop/include",
+        "${env:PS2SDK}/common/include",
+        "${env:PS2SDK}/iop/include",
+        "${workspaceFolder}/**"
+      ],
+      "defines": [
+        "_IOP"
+      ],
+      "intelliSenseMode": "linux-gcc-x64",
+      "mergeConfigurations": false
+    }
+  ],
+  "version": 4
 }
