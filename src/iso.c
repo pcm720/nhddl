@@ -46,13 +46,18 @@ TargetList *findISO() {
 
     chdir(mountpoint);
     if (_findISO(directory, result)) {
-      free(result);
+      freeTargetList(result);
       closedir(directory);
       return NULL;
     }
     closedir(directory);
   }
   processTitleID(result);
+
+  if (result->first == NULL) {
+    freeTargetList(result);
+    return NULL;
+  }
 
   // Set indexes for each title
   int idx = 0;
