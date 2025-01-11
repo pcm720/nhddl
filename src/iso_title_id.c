@@ -126,10 +126,7 @@ static int longLseek(int fd, unsigned int lba) {
   remaining = lba - INT_MAX / SECTOR_SIZE;
   while (remaining > 0) {
     toSeek = remaining > INT_MAX / SECTOR_SIZE ? INT_MAX / SECTOR_SIZE : remaining;
-    res = lseek(fd, toSeek * SECTOR_SIZE, SEEK_CUR);
-    if (res < 0) {
-      return res;
-    }
+    lseek(fd, toSeek * SECTOR_SIZE, SEEK_CUR);
     remaining -= toSeek;
   }
 
