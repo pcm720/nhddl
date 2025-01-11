@@ -7,10 +7,10 @@
 NHDDL is a Neutrino launcher that scans MMCE or _FAT/exFAT-formatted_ BDM devices for ISO files,
 lists them and boots selected ISO via Neutrino.  
 
-It displays visual Game ID to trigger per-game settings on the Pixel FX line of products and writes to memory card history file before launching the title, triggering per-title memory cards on SD2PSX and MemCard PRO2.
+It displays visual Game ID to trigger per-title settings on the Pixel FX line of products and triggers per-title memory cards on SD2PSX and MemCard PRO2.
 
 Note that this not an attempt at making a Neutrino-based Open PS2 Loader replacement.  
-Since it only launches Neutrino, GSM, PADEMU, IGR, IGS, cheats and other stuff is _out-of-scope_ of this launcher unless it's impelemented in Neutrino.
+Since NHDDL only launches Neutrino, GSM, PADEMU, IGR, IGS, cheats and other features supported by OPL is _out-of-scope_ unless they are implemented in Neutrino.
 
 ## Usage
 
@@ -20,7 +20,9 @@ Since it only launches Neutrino, GSM, PADEMU, IGR, IGS, cheats and other stuff i
  - Press **Down** on the d-pad to select the **next title** in the list
  - Press **L1** to switch to the **previous page** or go to the **start of the list**
  - Press **R1** to switch to the **next page** or go to the **end of the list**
- 
+
+### Important notes
+
 NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) installation to be present at one of the following paths:
 - `<NHDDL launch directory>/neturino.elf` (__might be case-sensitive__ depending on device)
 - `mmceX:/neutrino/neutrino.elf` (MMCE devices, will work even if MMCE mode is _not_ enabled)
@@ -32,8 +34,11 @@ NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) install
 By default, NHDDL tries to initialize all supported devices. You can override this behavior and reduce initialization times by setting specific mode in launcher configuration file.  
 See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
 
+
 **Do not plug in any BDM storage devices while running NHDDL!**  
 Doing so might crash NHDDL and/or possibly corrupt the files on your target device due to how BDM drivers work.
+
+## Versions
 
 NHDDL comes in two versions: _standalone_ and _non-standalone_.
 
