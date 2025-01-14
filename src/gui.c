@@ -256,8 +256,12 @@ int uiLoop(TargetList *titles) {
     else
       input = pollInput();
 
-    frameCount = (frameCount + 1) % 10;
-    if (frameCount && (input == prevInput)) // Handle input only every 10th frame unless it changes
+    if (gsGlobal->Mode == GS_MODE_PAL)
+      frameCount = (frameCount + 1) % 8; // Handle input only every 8th frame unless it changes
+    else
+      frameCount = (frameCount + 1) % 10; // Handle input only every 10th frame unless it changes
+
+    if (frameCount && (input == prevInput))
       continue;
 
     frameCount = 0;
@@ -272,22 +276,32 @@ int uiLoop(TargetList *titles) {
       return -1;
     } else if (input & PAD_UP) {
       // Point to the previous title
-      if (selectedTitleIdx > 0)
-        selectedTitleIdx--;
+      selectedTitleIdx--;
+      if (selectedTitleIdx < 0)
+        selectedTitleIdx = titles->total - 1; // Wrap around
     } else if (input & PAD_DOWN) {
       // Advance to the next title
-      if (selectedTitleIdx < titles->total - 1)
-        selectedTitleIdx++;
+      selectedTitleIdx++;
+      if (selectedTitleIdx > titles->total - 1)
+        selectedTitleIdx = 0; // Wrap around
     } else if (input & PAD_R1) {
       // Switch to the next page
-      selectedTitleIdx += maxTitlesPerPage;
-      if (selectedTitleIdx >= titles->total)
-        selectedTitleIdx = titles->total - 1;
+      if (selectedTitleIdx == titles->total - 1) {
+        selectedTitleIdx = 0; // Wrap around if the last title is selected
+      } else {
+        selectedTitleIdx += maxTitlesPerPage;
+        if (selectedTitleIdx >= titles->total)
+          selectedTitleIdx = titles->total - 1;
+      }
     } else if (input & PAD_L1) {
       // Switch to the previous page
-      selectedTitleIdx -= maxTitlesPerPage;
-      if (selectedTitleIdx < 0)
-        selectedTitleIdx = 0;
+      if (selectedTitleIdx == 0) {
+        selectedTitleIdx = titles->total - 1; // Wrap around if the first title is selected
+      } else {
+        selectedTitleIdx -= maxTitlesPerPage;
+        if (selectedTitleIdx < 0)
+          selectedTitleIdx = 0;
+      }
     } else if (input & PAD_TRIANGLE) {
       input = -1;    // Force UI loop to wait once uiTitleOptionsLoop returns
       prevInput = 0; // Reset previous input
