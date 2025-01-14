@@ -15,6 +15,13 @@ GSM, PADEMU, IGR, IGS and other stuff is out-of-scope of this launcher.
 
 ## Usage
 
+### Title list controls
+
+ - Press **Up** on the d-pad to select the **previous title** in the list
+ - Press **Down** on the d-pad to select the **next title** in the list
+ - Press **L1** to switch to the **previous page** or go to the **start of the list**
+ - Press **R1** to switch to the **next page** or go to the **end of the list**
+ 
 NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) installation to be present at one of the following paths:
 - `<NHDDL launch directory>/neturino.elf` (__might be case-sensitive__ depending on device)
 - `mcX:/APPS/neutrino/neutrino.elf` (memory cards, __case-sensitive__)
