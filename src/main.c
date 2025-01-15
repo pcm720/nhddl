@@ -340,28 +340,29 @@ int findNeutrinoELF(char *cwdPath) {
       return 0;
   }
 
-  // If neutrino.elf doesn't exist in CWD, try fallback paths
+  // If neutrino.elf doesn't exist in CWD, try fallback paths on storage devices
   for (int i = 0; i < MAX_DEVICES; i++) {
     NEUTRINO_ELF_PATH[0] = '\0';
     if ((i > 1) && (deviceModeMap[i].mode == MODE_NONE)) {
       break;
     }
 
-    if (i < 2) {
-      for (int j = 0; j < (sizeof(neutrinoMCFallbackPaths) / sizeof(char *)); j++) {
-        neutrinoMCFallbackPaths[j][2] = i + '0';
-        if (!tryFile(neutrinoMCFallbackPaths[j])) {
-          strcpy(NEUTRINO_ELF_PATH, neutrinoMCFallbackPaths[j]);
-          return 0;
-        }
-      }
-    }
     if (deviceModeMap[i].mountpoint != NULL) {
       strcpy(NEUTRINO_ELF_PATH, deviceModeMap[i].mountpoint);
       strcat(NEUTRINO_ELF_PATH, neutrinoStorageFallbackPath);
       if (!tryFile(NEUTRINO_ELF_PATH)) {
         return 0;
       }
+    }
+  }
+
+  // Fallback to memory cards
+  for (int i = 0; i < 2; i++) {
+    NEUTRINO_ELF_PATH[0] = '\0';
+    neutrinoMCFallbackPaths[i][2] = i + '0';
+    if (!tryFile(neutrinoMCFallbackPaths[i])) {
+      strcpy(NEUTRINO_ELF_PATH, neutrinoMCFallbackPaths[i]);
+      return 0;
     }
   }
 
