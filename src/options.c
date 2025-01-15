@@ -93,7 +93,6 @@ int getLastLaunchedTitle(char *titlePath) {
       continue;
     }
     close(fd);
-    return 0;
   }
   return 0;
 }
