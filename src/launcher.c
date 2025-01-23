@@ -16,7 +16,6 @@ extern int size_loader_elf;
 // Arguments
 static char isoArgument[] = "dvd";
 static char bsdArgument[] = "bsd";
-static char bsdfsArgument[] = "bsdfs";
 
 // Neutrino bsd values
 #define BSD_ATA "ata"
@@ -88,10 +87,7 @@ void launchTitle(Target *target, ArgumentList *arguments) {
     bsdValue = BSD_ILINK;
     break;
   case MODE_MMCE:
-    // BSD argument will load mmcedrv
     bsdValue = BSD_MMCE;
-    // MMCE needs bsdfs argument to load mmceman in Load Environment
-    appendArgument(arguments, newArgument(bsdfsArgument, "mmce"));
     break;
   default:
     printf("ERROR: Unsupported mode\n");
