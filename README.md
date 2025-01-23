@@ -10,7 +10,7 @@ lists them and boots selected ISO via Neutrino.
 It displays visual Game ID to trigger per-title settings on the Pixel FX line of products and triggers per-title memory cards on SD2PSX and MemCard PRO2.
 
 Note that this not an attempt at making a Neutrino-based Open PS2 Loader replacement.  
-Since NHDDL only launches Neutrino, GSM, PADEMU, IGR, IGS, cheats and other features supported by OPL is _out-of-scope_ unless they are implemented in Neutrino.
+Since NHDDL only launches Neutrino, GSM, PADEMU, IGR, IGS, cheats and other features supported by OPL are _out-of-scope_ unless they are implemented in Neutrino.
 
 ## Usage
 
@@ -95,7 +95,7 @@ Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest versi
 You can also install NHDDL from a PSU package (see [this section](#save-application-system-psu)), but you'll need to copy Neutrino installation manually using wLaunchELF or another PS2-based file manager.
 
 If you're getting `Failed to prepare external modules` error while trying to run NHDDL from the USB drive, MX4SIO, iLink or UDPBD, make sure your ELF launcher initializes BDM modules and doesn't reset the IOP before loading NHDDL.  
-If this is the case, you __must__ place Neutrino on the memory card or use standalone version instead.
+If this is the case, you __must__ place Neutrino on the memory card, MMCE device or use standalone version instead.
 
 ### Supported modes
 
