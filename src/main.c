@@ -4,6 +4,7 @@
 #include "iso.h"
 #include "module_init.h"
 #include "options.h"
+#include "target.h"
 #include <ctype.h>
 #include <debug.h>
 #include <fcntl.h>
@@ -74,8 +75,30 @@ int main(int argc, char *argv[]) {
     goto fail;
 
   uiSplashLogString(LEVEL_INFO_NODELAY, "Building target list...\n");
-  TargetList *titles = findISO();
-  if (titles == NULL) {
+
+  TargetList *titles = malloc(sizeof(TargetList));
+  titles->total = 0;
+  titles->first = NULL;
+  titles->last = NULL;
+
+  // Scan every initialized device for entries
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL)
+      break;
+
+    // Ignore devices without a scan function
+    if (deviceModeMap[i].scan == NULL)
+      continue;
+
+    res = deviceModeMap[i].scan(titles, &deviceModeMap[i]);
+    if (res != 0) {
+      printf("WARN: failed to scan %s: %d\n", deviceModeMap[i].mountpoint, res);
+      goto fail;
+    }
+  }
+
+  if (titles->total == 0) {
+    freeTargetList(titles);
     uiSplashLogString(LEVEL_WARN, "No targets found\n");
     goto fail;
   }

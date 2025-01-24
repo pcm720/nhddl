@@ -10,7 +10,7 @@ EE_BIN_STANDALONE = $(ELF_BASE_NAME)-standalone_unc.elf
 EE_BIN_PKD = $(ELF_BASE_NAME).elf
 EE_BIN_PKD_STANDALONE = $(ELF_BASE_NAME)-standalone.elf
 
-EE_OBJS = main.o module_init.o common.o iso.o options.o gui.o gui_graphics.o pad.o launcher.o iso_cache.o iso_title_id.o devices.o
+EE_OBJS = main.o module_init.o common.o iso.o options.o gui.o gui_graphics.o pad.o launcher.o iso_cache.o iso_title_id.o devices.o target.o
 IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx mmceman.irx
 ELF_FILES += loader.elf
 

@@ -1,6 +1,7 @@
 #include "devices.h"
 #include "common.h"
 #include "gui.h"
+#include "iso.h"
 #include <errno.h>
 #include <kernel.h>
 #include <stdio.h>
@@ -37,7 +38,7 @@ static char mmceMountpoint[] = "mmceX:";
 
 // Contains all available devices.
 // Device must be ignored if mode is MODE_ALL or MODE_NONE
-DeviceMapEntry deviceModeMap[MAX_DEVICES] = {};
+struct DeviceMapEntry deviceModeMap[MAX_DEVICES] = {};
 
 // Initializes device mode map and returns device count
 int initDeviceMap() {
@@ -76,8 +77,8 @@ int initMMCEDevices(int newDeviceIdx) {
       deviceModeMap[newDeviceIdx].index = i;
       deviceModeMap[newDeviceIdx].mountpoint = calloc(strlen(mmceMountpoint) + 1, 1);
       strcpy(deviceModeMap[newDeviceIdx].mountpoint, mmceMountpoint);
-      if (!(LAUNCHER_OPTIONS.mode & MODE_MMCE)) // Set "do not scan" flag if MMCE is not a target mode
-        deviceModeMap[newDeviceIdx].doNotScan = 1;
+      if (LAUNCHER_OPTIONS.mode & MODE_MMCE) // Set scan function only if MMCE is target mode
+        deviceModeMap[newDeviceIdx].scan = &findISO;
 
       deviceCount++;
       newDeviceIdx++;
@@ -136,7 +137,7 @@ void delay(int count) {
 }
 
 // Gets BDM driver name via fileXio
-int getBDMDeviceDriver(char *mountpoint, DeviceMapEntry *entry) {
+int getBDMDeviceDriver(char *mountpoint, struct DeviceMapEntry *entry) {
   int fd = fileXioDopen(mountpoint);
   if (fd < 0) {
     return -ENODEV;
@@ -197,6 +198,8 @@ int initBDMDevices(int deviceIdx) {
     // Set device mountpoint
     deviceModeMap[deviceIdx].mountpoint = calloc(strlen(mountpoint) + 1, 1);
     strcpy(deviceModeMap[deviceIdx].mountpoint, mountpoint);
+    // Set scan function
+    deviceModeMap[deviceIdx].scan = &findISO;
 
     deviceIdx++;
     deviceCount++;

@@ -62,7 +62,7 @@ int updateLastLaunchedTitle(char *mountpoint, char *titlePath);
 
 // Generates ArgumentList from global config file located on device
 // Will reinitialize result without clearing existing contents. On error, result will contain invalid pointer.
-int getGlobalLaunchArguments(ArgumentList *result, DeviceMapEntry *device);
+int getGlobalLaunchArguments(ArgumentList *result, struct DeviceMapEntry *device);
 
 // Generates ArgumentList from title-specific config file.
 // Will reinitialize result without clearing existing contents. On error, result will contain invalid pointer.
@@ -104,6 +104,6 @@ void insertCompatModeArg(ArgumentList *target, uint8_t modes);
 ArgumentList *loadLaunchArgumentLists(Target *target);
 
 // Parses options file into ArgumentList
-int loadArgumentList(ArgumentList *options, DeviceMapEntry *device, char *filePath);
+int loadArgumentList(ArgumentList *options, struct DeviceMapEntry *device, char *filePath);
 
 #endif

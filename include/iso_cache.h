@@ -14,11 +14,11 @@ typedef struct TitleIDCache {
   CacheEntry *entries; // Pointer to cache entry array
 } TitleIDCache;
 
-// Saves TargetList into title ID cache
-int storeTitleIDCache(TargetList *list);
+// Saves TargetList into title ID cache on given storage device
+int storeTitleIDCache(TargetList *list, struct DeviceMapEntry *device);
 
 // Loads title ID cache from storage into cache
-int loadTitleIDCache(TitleIDCache *cache);
+int loadTitleIDCache(TitleIDCache *cache, struct DeviceMapEntry *device);
 
 // Returns a pointer to title ID or NULL if path doesn't exist in cache
 char *getCachedTitleID(char *fullPath, TitleIDCache *cache);

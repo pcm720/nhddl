@@ -10,8 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-int loadArgumentList(ArgumentList *options, DeviceMapEntry *device, char *filePath);
-int parseOptionsFile(ArgumentList *result, FILE *file, DeviceMapEntry *device);
+int loadArgumentList(ArgumentList *options, struct DeviceMapEntry *device, char *filePath);
+int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *device);
 void appendArgument(ArgumentList *target, Argument *arg);
 Argument *newArgument(char *argName, char *value);
 uint32_t getTimestamp();
@@ -138,7 +138,7 @@ int updateLastLaunchedTitle(char *mountpoint, char *titlePath) {
 }
 
 // Generates ArgumentList from global config file located at targetMounpoint (usually ISO full path)
-int getGlobalLaunchArguments(ArgumentList *result, DeviceMapEntry *device) {
+int getGlobalLaunchArguments(ArgumentList *result, struct DeviceMapEntry *device) {
   char targetPath[PATH_MAX];
   buildConfigFilePath(targetPath, device->mountpoint, globalOptionsPath);
   int ret = loadArgumentList(result, device, targetPath);
@@ -241,7 +241,7 @@ out:
 }
 
 // Parses options file into ArgumentList
-int loadArgumentList(ArgumentList *options, DeviceMapEntry *device, char *filePath) {
+int loadArgumentList(ArgumentList *options, struct DeviceMapEntry *device, char *filePath) {
   // Open options file
   FILE *file = fopen(filePath, "r");
   if (file == NULL) {
@@ -267,7 +267,7 @@ int loadArgumentList(ArgumentList *options, DeviceMapEntry *device, char *filePa
 
 // Parses file into ArgumentList. Result may contain parsed arguments even if an error is returned.
 // Adds mountpoint with the deviceNumber to arguments values that start with \ or /
-int parseOptionsFile(ArgumentList *result, FILE *file, DeviceMapEntry *device) {
+int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *device) {
   // Our lines will mostly consist of file paths, which aren't likely to exceed 300 characters due to 255 character limit in exFAT path component
   char lineBuffer[PATH_MAX + 1];
   lineBuffer[0] = '\0';

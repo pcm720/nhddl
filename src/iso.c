@@ -1,3 +1,4 @@
+// Implements titleScanFunc for file-based devices (MMCE, BDM)
 #include "iso.h"
 #include "common.h"
 #include "devices.h"
@@ -12,9 +13,8 @@
 #include <string.h>
 #include <unistd.h>
 
-int _findISO(DIR *directory, TargetList *result, DeviceMapEntry *device);
-void insertIntoList(TargetList *result, Target *title);
-void processTitleID(TargetList *result);
+int _findISO(DIR *directory, TargetList *result, struct DeviceMapEntry *device);
+void processTitleID(TargetList *result, struct DeviceMapEntry *device);
 
 // Directories to skip when browsing for ISOs
 const char *ignoredDirs[] = {
@@ -25,55 +25,39 @@ const char *ignoredDirs[] = {
 #define MAX_SCAN_DEPTH 6
 static int curRecursionLevel = 1;
 
-// Generates a list of launch candidates found on BDM devices
-// Returns NULL if no targets were found or an error occurs
-TargetList *findISO() {
+// Scans given storage device and appends valid launch candidates to TargetList
+// Returns 0 if successful, non-zero if no targets were found or an error occurs
+int findISO(TargetList *result, struct DeviceMapEntry *device) {
   DIR *directory;
-  TargetList *result = malloc(sizeof(TargetList));
-  result->total = 0;
-  result->first = NULL;
-  result->last = NULL;
 
-  char *mountpoint;
+  if (device->mode == MODE_NONE || device->mountpoint == NULL)
+    return -ENODEV;
 
-  for (int i = 0; i < MAX_DEVICES; i++) {
-    if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL)
-      break;
-
-    // Ignore devices with doNotScan flag
-    if (deviceModeMap[i].doNotScan)
-      continue;
-
-    mountpoint = deviceModeMap[i].mountpoint;
-
-    curRecursionLevel = 1; // Reset recursion level
-    directory = opendir(mountpoint);
-    // Check if the directory can be opened
-    if (directory == NULL) {
-      uiSplashLogString(LEVEL_ERROR, "ERROR: Can't open %s\n", mountpoint);
-      return NULL;
-    }
-
-    chdir(mountpoint);
-    if (_findISO(directory, result, &deviceModeMap[i])) {
-      freeTargetList(result);
-      closedir(directory);
-      return NULL;
-    }
-    closedir(directory);
+  curRecursionLevel = 1; // Reset recursion level
+  directory = opendir(device->mountpoint);
+  // Check if the directory can be opened
+  if (directory == NULL) {
+    uiSplashLogString(LEVEL_ERROR, "ERROR: Can't open %s\n", device->mountpoint);
+    return -ENOENT;
   }
 
+  chdir(device->mountpoint);
+  if (_findISO(directory, result, device)) {
+    freeTargetList(result);
+    closedir(directory);
+    return -ENOENT;
+  }
+  closedir(directory);
+
   if (result->total == 0) {
-    free(result);
-    return NULL;
+    return -ENOENT;
   }
 
   // Get title IDs for each found title
-  processTitleID(result);
+  processTitleID(result, device);
 
   if (result->first == NULL) {
-    freeTargetList(result);
-    return NULL;
+    return -ENOENT;
   }
 
   // Set indexes for each title
@@ -85,11 +69,11 @@ TargetList *findISO() {
     curTitle = curTitle->next;
   }
 
-  return result;
+  return 0;
 }
 
 // Searches rootpath and adds discovered ISOs to TargetList
-int _findISO(DIR *directory, TargetList *result, DeviceMapEntry *device) {
+int _findISO(DIR *directory, TargetList *result, struct DeviceMapEntry *device) {
   if (directory == NULL)
     return -ENOENT;
 
@@ -170,7 +154,7 @@ int _findISO(DIR *directory, TargetList *result, DeviceMapEntry *device) {
           result->first = title;
           result->last = title;
         } else {
-          insertIntoList(result, title);
+          insertIntoTargetList(result, title);
         }
       }
     }
@@ -180,112 +164,15 @@ int _findISO(DIR *directory, TargetList *result, DeviceMapEntry *device) {
   return 0;
 }
 
-// Converts lowercase ASCII string into uppercase
-void toUppercase(char *str) {
-  for (int i = 0; i <= strlen(str); i++)
-    if (str[i] >= 0x61 && str[i] <= 0x7A) {
-      str[i] -= 32;
-    }
-}
-
-// Inserts title in the list while keeping the alphabetical order
-void inline insertIntoList(TargetList *result, Target *title) {
-  // Traverse the list in reverse
-  Target *curTitle = result->last;
-
-  // Covert title name to uppercase
-  char *curUppercase = strdup(title->name);
-  toUppercase(curUppercase);
-
-  // Overall, title name should not exceed PATH_MAX
-  char lastUppercase[PATH_MAX];
-
-  while (1) {
-    // Reset string buffer
-    lastUppercase[0] = '\0';
-    // Convert name of the last title to uppercase
-    strlcpy(lastUppercase, curTitle->name, PATH_MAX);
-    toUppercase(lastUppercase);
-
-    // Compare new title name and the current title name
-    if (strcmp(curUppercase, lastUppercase) >= 0) {
-      // First letter of the new title is after or the same as the current one
-      // New title must be inserted after the current list element
-      if (curTitle->next != NULL) {
-        // Current title has a next title, update the next element
-        curTitle->next->prev = title;
-        title->next = curTitle->next;
-      } else {
-        // Current title has no next title (it's the last list element)
-        result->last = title;
-      }
-      title->prev = curTitle;
-      curTitle->next = title;
-      break;
-    }
-
-    if (curTitle->prev == NULL) {
-      // Current title is the first in this list
-      // New title must be inserted at the beginning
-      curTitle->prev = title;
-      title->next = curTitle;
-      result->first = title;
-      break;
-    }
-
-    // Keep traversing the list
-    curTitle = curTitle->prev;
-  }
-  free(curUppercase);
-}
-
-// Completely frees Target and returns pointer to the next target in the list
-Target *freeTarget(TargetList *targetList, Target *target) {
-  // Update target list if target is the first or the last element
-  if (targetList->first == target) {
-    targetList->first = target->next;
-  }
-  if (targetList->last == target) {
-    targetList->last = target->prev;
-  }
-
-  Target *next = NULL;
-  // If target has a link to the next element
-  if (target->next != NULL) {
-    // Set return pointer
-    next = target->next;
-    if (target->prev != NULL) {
-      // If target has a link to the previous element, link prev and next together
-      next->prev = target->prev;
-      target->prev->next = next;
-    } else {
-      // Else, remove link to target
-      next->prev = NULL;
-    }
-  } else if (target->prev != NULL) {
-    // If target doesn't have a link to the next element
-    // but has a link to the previous element, remove link to target
-    target->prev->next = NULL;
-  }
-
-  free(target->fullPath);
-  free(target->name);
-  if (target->id != NULL)
-    free(target->id);
-
-  free(target);
-  return next;
-}
-
 // Fills in title ID for every entry in the list
-void processTitleID(TargetList *result) {
+void processTitleID(TargetList *result, struct DeviceMapEntry *device) {
   if (result->total == 0)
     return;
 
   // Load title cache
   TitleIDCache *cache = malloc(sizeof(TitleIDCache));
   int isCacheUpdateNeeded = 0;
-  if (loadTitleIDCache(cache)) {
+  if (loadTitleIDCache(cache, device)) {
     uiSplashLogString(LEVEL_WARN, "Failed to load title ID cache, all ISOs will be rescanned\n");
     free(cache);
     cache = NULL;
@@ -301,6 +188,12 @@ void processTitleID(TargetList *result) {
   char *titleID = NULL;
   Target *curTarget = result->first;
   while (curTarget != NULL) {
+    // Ignore targets not belonging to the current device
+    if (curTarget->device != device) {
+      curTarget = curTarget->next;
+      continue;
+    }
+
     // Try to get title ID from cache
     if (cache != NULL) {
       titleID = getCachedTitleID(curTarget->fullPath, cache);
@@ -326,49 +219,8 @@ void processTitleID(TargetList *result) {
 
   if ((cacheMisses > 0) || (isCacheUpdateNeeded)) {
     uiSplashLogString(LEVEL_INFO_NODELAY, "Updating title ID cache...\n");
-    if (storeTitleIDCache(result)) {
+    if (storeTitleIDCache(result, device)) {
       uiSplashLogString(LEVEL_WARN, "Failed to save title ID cache\n");
     }
   }
-}
-
-// Completely frees TargetList. Passed pointer will not be valid after this function executes
-void freeTargetList(TargetList *result) {
-  Target *target = result->first;
-  while (target != NULL) {
-    target = freeTarget(result, target);
-  }
-  result->first = NULL;
-  result->last = NULL;
-  result->total = 0;
-  free(result);
-}
-
-// Finds target with given index in the list and returns a pointer to it
-Target *getTargetByIdx(TargetList *targets, int idx) {
-  Target *current = targets->first;
-  while (1) {
-    if (current->idx == idx) {
-      return current;
-    }
-
-    if (current->next == NULL)
-      break;
-
-    current = current->next;
-  }
-  return NULL;
-}
-
-// Makes and returns a deep copy of src without prev/next pointers.
-Target *copyTarget(Target *src) {
-  Target *copy = calloc(sizeof(Target), 1);
-  copy->idx = src->idx;
-
-  copy->fullPath = strdup(src->fullPath);
-  copy->name = strdup(src->name);
-  copy->id = strdup(src->id);
-  copy->device = src->device;
-
-  return copy;
 }

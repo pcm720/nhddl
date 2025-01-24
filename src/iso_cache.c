@@ -1,4 +1,4 @@
-// Implements title ID cache to make bulding target list faster
+// Implements title ID cache for file-based devices to make building target list faster
 #include "iso_cache.h"
 #include "common.h"
 #include "devices.h"
@@ -26,8 +26,8 @@ typedef struct {
   int total;       // Total number of elements in cache file
 } CacheMetadata;
 
-// Saves TargetList into title ID cache on every storage device
-int storeTitleIDCache(TargetList *list) {
+// Saves TargetList into title ID cache on given storage device
+int storeTitleIDCache(TargetList *list, struct DeviceMapEntry *device) {
   if (list->total == 0) {
     return 0;
   }
@@ -46,91 +46,96 @@ int storeTitleIDCache(TargetList *list) {
     return 0;
   }
 
+  // Make sure path exists
+  if (device->mode == MODE_NONE || device->mountpoint == NULL)
+    return -ENODEV;
+
   // Prepare paths and header
   char cachePath[PATH_MAX];
   char dirPath[PATH_MAX];
   CacheEntryHeader header;
   CacheMetadata meta = {.magic = CACHE_MAGIC, .version = CACHE_VERSION, .total = total};
-  for (int i = 0; i < MAX_DEVICES; i++) {
-    if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL) {
-      break;
-    }
-    buildConfigFilePath(dirPath, deviceModeMap[i].mountpoint, NULL);
-    buildConfigFilePath(cachePath, deviceModeMap[i].mountpoint, titleIDCacheFile);
 
-    // Get path to config directory and make sure it exists
-    struct stat st;
-    if (stat(dirPath, &st) == -1) {
-      printf("Creating config directory: %s\n", dirPath);
-      if (mkdir(dirPath, 0777)) {
-        printf("ERROR: Failed to create directory\n");
-        continue;
-      }
-    }
+  buildConfigFilePath(dirPath, device->mountpoint, NULL);
+  buildConfigFilePath(cachePath, device->mountpoint, titleIDCacheFile);
 
-    // Open cache file for writing
-    FILE *file = fopen(cachePath, "wb");
-    if (file == NULL) {
-      printf("ERROR: Failed to open cache file for writing\n");
+  // Get path to config directory and make sure it exists
+  struct stat st;
+  if (stat(dirPath, &st) == -1) {
+    printf("Creating config directory: %s\n", dirPath);
+    if (mkdir(dirPath, 0777)) {
+      printf("ERROR: Failed to create directory\n");
+      return -EIO;
+    }
+  }
+
+  // Open cache file for writing
+  FILE *file = fopen(cachePath, "wb");
+  if (file == NULL) {
+    printf("ERROR: Failed to open cache file for writing\n");
+    return -EIO;
+  }
+
+  int result;
+  // Write cache file header
+  result = fwrite(&meta, sizeof(CacheMetadata), 1, file);
+  if (!result) {
+    printf("ERROR: Failed to write metadata: %d\n", errno);
+    fclose(file);
+    remove(cachePath);
+    return result;
+  }
+
+  // Write each entry
+  curTitle = list->first;
+  int mountpointLen = -1;
+  while (curTitle != NULL) {
+    // Ignore empty entries or entries not belonging to the current device
+    if ((strlen(curTitle->id) < 11) || (curTitle->device != device)) {
+      curTitle = curTitle->next;
       continue;
     }
 
-    int result;
-    // Write cache file header
-    result = fwrite(&meta, sizeof(CacheMetadata), 1, file);
+    // Compare paths without the mountpoint
+    mountpointLen = getRelativePathIdx(curTitle->fullPath);
+    if (mountpointLen == -1) {
+      printf("WARN: Failed to get device mountpoint for %s\n", curTitle->name);
+      curTitle = curTitle->next;
+      continue;
+    }
+
+    // Write entry header
+    memcpy(header.titleID, curTitle->id, sizeof(header.titleID));
+    header.titleID[11] = '\0';
+    header.pathLength = strlen(curTitle->fullPath) - mountpointLen + 1;
+    result = fwrite(&header, sizeof(CacheEntryHeader), 1, file);
     if (!result) {
-      printf("ERROR: Failed to write metadata: %d\n", errno);
+      printf("ERROR: %s: Failed to write header: %d\n", curTitle->name, errno);
       fclose(file);
       remove(cachePath);
       return result;
     }
-
-    // Write each entry
-    curTitle = list->first;
-    int mountpointLen = -1;
-    while (curTitle != NULL) {
-      if (strlen(curTitle->id) < 11) {
-        // Ignore empty entries
-        curTitle = curTitle->next;
-        continue;
-      }
-
-      // Compare paths without the mountpoint
-      mountpointLen = getRelativePathIdx(curTitle->fullPath);
-      if (mountpointLen == -1) {
-        printf("WARN: Failed to get device mountpoint for %s\n", curTitle->name);
-        curTitle = curTitle->next;
-        continue;
-      }
-
-      // Write entry header
-      memcpy(header.titleID, curTitle->id, sizeof(header.titleID));
-      header.titleID[11] = '\0';
-      header.pathLength = strlen(curTitle->fullPath) - mountpointLen + 1;
-      result = fwrite(&header, sizeof(CacheEntryHeader), 1, file);
-      if (!result) {
-        printf("ERROR: %s: Failed to write header: %d\n", curTitle->name, errno);
-        fclose(file);
-        remove(cachePath);
-        return result;
-      }
-      // Write full ISO path without the mountpoint
-      result = fwrite(curTitle->fullPath + mountpointLen, header.pathLength, 1, file);
-      if (!result) {
-        printf("ERROR: %s: Failed to write full path: %d\n", curTitle->name, errno);
-        fclose(file);
-        remove(cachePath);
-        return result;
-      }
-      curTitle = curTitle->next;
+    // Write full ISO path without the mountpoint
+    result = fwrite(curTitle->fullPath + mountpointLen, header.pathLength, 1, file);
+    if (!result) {
+      printf("ERROR: %s: Failed to write full path: %d\n", curTitle->name, errno);
+      fclose(file);
+      remove(cachePath);
+      return result;
     }
-    fclose(file);
+    curTitle = curTitle->next;
   }
+  fclose(file);
+
   return 0;
 }
 
 // Loads title ID cache from storage into cache
-int loadTitleIDCache(TitleIDCache *cache) {
+int loadTitleIDCache(TitleIDCache *cache, struct DeviceMapEntry *device) {
+  // Make sure path exists
+  if (device->mode == MODE_NONE || device->mountpoint == NULL)
+    return -ENODEV;
+
   cache->total = 0;
   cache->lastMatchedIdx = 0;
 
@@ -139,17 +144,11 @@ int loadTitleIDCache(TitleIDCache *cache) {
 
   FILE *file;
   // Load the first found cache file
-  for (int i = 0; i < MAX_DEVICES; i++) {
-    if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL) {
-      printf("ERROR: failed to open cache file\n");
-      return -ENOENT;
-    }
-    buildConfigFilePath(cachePath, deviceModeMap[i].mountpoint, titleIDCacheFile);
+  buildConfigFilePath(cachePath, device->mountpoint, titleIDCacheFile);
 
-    file = fopen(cachePath, "rb");
-    if (file != NULL)
-      break;
-  }
+  file = fopen(cachePath, "rb");
+  if (file == NULL)
+    return -ENOENT;
 
   int result;
 
