@@ -1,7 +1,7 @@
 #ifndef _TITLE_CACHE_H_
 #define _TITLE_CACHE_H_
 
-#include "iso.h"
+#include "target.h"
 
 typedef struct {
   char titleID[12];

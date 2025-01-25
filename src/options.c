@@ -139,6 +139,10 @@ int updateLastLaunchedTitle(char *mountpoint, char *titlePath) {
 
 // Generates ArgumentList from global config file located at targetMounpoint (usually ISO full path)
 int getGlobalLaunchArguments(ArgumentList *result, struct DeviceMapEntry *device) {
+  if (device->metadev) { // Fallback to metadata device
+    device = device->metadev;
+  }
+
   char targetPath[PATH_MAX];
   buildConfigFilePath(targetPath, device->mountpoint, globalOptionsPath);
   int ret = loadArgumentList(result, device, targetPath);
@@ -152,9 +156,14 @@ int getGlobalLaunchArguments(ArgumentList *result, struct DeviceMapEntry *device
 
 // Generates ArgumentList from global and title-specific config file
 int getTitleLaunchArguments(ArgumentList *result, Target *target) {
+  struct DeviceMapEntry *device = target->device;
+  if (device->metadev) { // Fallback to metadata device
+    device = device->metadev;
+  }
+
   printf("Looking for title-specific config for %s (%s)\n", target->name, target->id);
   char targetPath[PATH_MAX + 1];
-  buildConfigFilePath(targetPath, target->device->mountpoint, NULL);
+  buildConfigFilePath(targetPath, device->mountpoint, NULL);
   // Determine actual title options file from config directory contents
   DIR *directory = opendir(targetPath);
   if (directory == NULL) {
@@ -169,7 +178,7 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
     if (entry->d_type != DT_DIR) {
       // Find file that starts with ISO name (without the extension)
       if (!strncmp(entry->d_name, target->name, strlen(target->name))) {
-        buildConfigFilePath(targetPath, target->device->mountpoint, entry->d_name);
+        buildConfigFilePath(targetPath, device->mountpoint, entry->d_name);
         break;
       }
     }
@@ -183,7 +192,7 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
 
   // Load arguments
   printf("Loading title-specific config from %s\n", targetPath);
-  int ret = loadArgumentList(result, target->device, targetPath);
+  int ret = loadArgumentList(result, device, targetPath);
   if (ret) {
     printf("ERROR: Failed to load argument list: %d\n", ret);
   }
@@ -195,9 +204,14 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
 // '$' before the argument name is used as 'disabled' flag.
 // Empty value means that the argument is empty, but still should be used without the value.
 int updateTitleLaunchArguments(Target *target, ArgumentList *options) {
+  struct DeviceMapEntry *device = target->device;
+  if (device->metadev) { // Fallback to metadata device
+    device = device->metadev;
+  }
+
   // Build file path
   char lineBuffer[PATH_MAX + 1];
-  buildConfigFilePath(lineBuffer, target->device->mountpoint, target->name);
+  buildConfigFilePath(lineBuffer, device->mountpoint, target->name);
   strcat(lineBuffer, ".yaml");
   printf("Saving title-specific config to %s\n", lineBuffer);
 

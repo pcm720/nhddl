@@ -2,7 +2,7 @@
 #include "iso_cache.h"
 #include "common.h"
 #include "devices.h"
-#include "iso.h"
+#include "target.h"
 #include "options.h"
 #include <malloc.h>
 #include <ps2sdkapi.h>

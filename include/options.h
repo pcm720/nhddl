@@ -2,7 +2,7 @@
 #define _OPTIONS_H_
 
 #include "devices.h"
-#include "iso.h"
+#include "target.h"
 #include <ps2sdkapi.h>
 
 // Location of configuration directory relative to storage mountpoint

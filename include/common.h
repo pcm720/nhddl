@@ -13,7 +13,8 @@ typedef enum {
   MODE_USB = (1 << 3),
   MODE_ILINK = (1 << 4),
   MODE_MMCE = (1 << 5),
-  MODE_ALL = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK | MODE_MMCE,
+  MODE_HDL = (1 << 6),
+  MODE_ALL = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK | MODE_MMCE | MODE_HDL,
 } ModeType;
 
 // Supported video mode types

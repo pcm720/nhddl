@@ -11,10 +11,11 @@ typedef int (*titleScanFunc)(TargetList *result, struct DeviceMapEntry *device);
 
 // Device map entry
 struct DeviceMapEntry {
-  char *mountpoint;   // Device mountpoint
-  ModeType mode;      // Device driver
-  uint8_t index;      // BDM internal device driver number, must be used for passing paths to Neutrino
-  titleScanFunc scan; // Function used for scanning the device entry for titles. Can be NULL if device must be ignored during scanning
+  char *mountpoint;               // Device mountpoint
+  titleScanFunc scan;             // Function used for scanning the device entry for titles. Can be NULL if device must be ignored during scanning
+  ModeType mode;                  // Device driver
+  uint8_t index;                  // BDM internal device driver number, must be used for passing paths to Neutrino
+  struct DeviceMapEntry *metadev; // If set, cover art and options will be loaded from metadata device instead of this device. Set during initialization
 };
 
 // Contains all available devices.
@@ -26,5 +27,19 @@ int initDeviceMap();
 
 // Uses MMCE devctl calls to switch memory card to given title ID
 void mmceMountVMC(char *titleID);
+
+//
+// Device-specific scanning functions
+//
+
+// Scans given storage device for ISO files and appends valid launch candidates to TargetList
+// Returns 0 if successful, non-zero if no targets were found or an error occurs
+// Implemented in devices_iso.c
+int findISO(TargetList *list, struct DeviceMapEntry *device);
+
+// Scans given APA HDD for HDL partitions and appends valid launch candidates to TargetList
+// Returns 0 if successful, non-zero if no targets were found or an error occurs
+// Implemented in devices_hdl.c
+int findHDLTargets(TargetList *result, struct DeviceMapEntry *device);
 
 #endif

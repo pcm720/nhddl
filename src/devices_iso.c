@@ -1,5 +1,4 @@
 // Implements titleScanFunc for file-based devices (MMCE, BDM)
-#include "iso.h"
 #include "common.h"
 #include "devices.h"
 #include "gui.h"

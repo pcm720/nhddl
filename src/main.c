@@ -1,7 +1,7 @@
 #include "common.h"
 #include "devices.h"
 #include "gui.h"
-#include "iso.h"
+#include "launcher.h"
 #include "module_init.h"
 #include "options.h"
 #include "target.h"
@@ -253,6 +253,8 @@ ModeType parseMode(const char *modeStr) {
     return MODE_ILINK;
   if (!strcmp(modeStr, "mmce"))
     return MODE_MMCE;
+  if (!strcmp(modeStr, "hdl"))
+    return MODE_HDL;
   return MODE_ALL;
 }
 

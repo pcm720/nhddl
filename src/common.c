@@ -28,6 +28,8 @@ char *modeToString(ModeType mode) {
     return "iLink";
   case MODE_MMCE:
     return "MMCE";
+  case MODE_HDL:
+    return "HDL";
   default:
     return "Unknown";
   }
