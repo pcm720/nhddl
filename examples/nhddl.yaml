@@ -1,4 +1,4 @@
 #video: ntsc # supported video modes: ntsc, pal, 480p
-mode: ata # supported modes: bdm, ata, mx4sio, udpbd, usb, ilink, mmce. If not present or commented out, all devices will be used to search for ISO files
+mode: ata # supported modes: bdm, ata, mx4sio, udpbd, usb, ilink, mmce, hdl. If not present or commented out, all devices will be used to search for ISO files
 mode: mmce # multiple modes are supported via multiple mode strings
 #udpbd_ip: 192.168.1.6 # PS2 IP address for UDPBD mode (commented out)

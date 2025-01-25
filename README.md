@@ -4,7 +4,7 @@
   <img src="img/logo/logo.png">
 </p>
 
-NHDDL is a Neutrino launcher that scans MMCE or _FAT/exFAT-formatted_ BDM devices for ISO files,
+NHDDL is a Neutrino launcher that scans MMCE, APA or _FAT/exFAT-formatted_ BDM devices for ISO files,
 lists them and boots selected ISO via Neutrino.  
 
 It displays visual Game ID to trigger per-title settings on the Pixel FX line of products and triggers per-title memory cards on SD2PSX and MemCard PRO2.
@@ -155,6 +155,20 @@ To skip all other devices, `mode: ilink` must be present in `nhddl.yaml`.
 MMCE devices are supported with embedded module.  
 To skip all other devices, `mode: mmce` must be present in `nhddl.yaml`.
 
+#### HDL (APA-formatted HDD with HD Loader partitions)
+APA HDDs with HD Loader partitions (HDL) are supported partially.
+The following files are required for HDL backend:
+- `bdm.irx`
+- `dev9_ns.irx`
+- `ata_bd.irx`
+- `ps2hdd-bdm.irx`
+
+**Due to implementation limitations, title options and cover art can't be loaded from
+`+OPL` partition on APA HDD.**  
+NHDDL will try to access the first available device other than APA HDD (including MMCE) and load title options and cover art from there.
+
+To skip all other devices, `mode: hdl` must be present in `nhddl.yaml`.
+
 ### Storing ISO
 
 ISOs can be stored almost anywhere on the storage device, but no more than 5 directories deep.  
@@ -175,7 +189,7 @@ Furthermore, directories that start with `.`, `$` and the following directories 
 ### Displaying cover art
 
 NHDDL uses the same file naming convention and file format used by OPL.  
-Just put **140x200 PNG** files named `<title ID>_COV.png` (e.g. `SLUS_200.02_COV.png`) into the `ART` directory on the root of your HDD.  
+Just put **140x200 PNG** files named `<title ID>_COV.png` (e.g. `SLUS_200.02_COV.png`) into the `ART` directory on the root of your device.  
 If unsure where to get your cover art from, check out the latest version of [OPL Manager](https://oplmanager.com).
 
 ## Configuration files
