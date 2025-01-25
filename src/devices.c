@@ -1,7 +1,6 @@
 #include "devices.h"
 #include "common.h"
 #include "gui.h"
-#include "iso.h"
 #include <errno.h>
 #include <kernel.h>
 #include <stdio.h>
@@ -27,12 +26,14 @@ typedef struct {
 
 int initBDMDevices();
 int initMMCEDevices();
+int initHDLFS();
 void delay(int count);
 
 // List of modules to load
 static SupportedBackends backends[] = {
     {.name = "MMCE", .initFunction = initMMCEDevices, .targetModes = MODE_ALL},
     {.name = "BDM", .initFunction = initBDMDevices, .targetModes = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK},
+    {.name = "HDL", .initFunction = initHDLFS, .targetModes = MODE_HDL},
 };
 static char mmceMountpoint[] = "mmceX:";
 
@@ -99,6 +100,8 @@ ModeType mapBDMDriverName(char *driverName) {
     return MODE_ILINK;
   else if (!strncmp(driverName, "udp", 3))
     return MODE_UDPBD;
+  else if (!strncmp(driverName, "hdlfs", 3))
+    return MODE_HDL;
   return MODE_NONE;
 }
 
@@ -121,6 +124,57 @@ void mmceMountVMC(char *titleID) {
       }
     }
   }
+}
+
+// Initializes map entries for APA-formatted HDDs with HDL partitions
+int initHDLFS(int deviceIdx) {
+  // Find the first available device for cover art and title options
+  struct DeviceMapEntry *metadevice = NULL;
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL)
+      break;
+
+    if (!deviceModeMap[i].metadev) {
+      metadevice = &deviceModeMap[i];
+      break;
+    }
+  }
+
+  char mountpoint[] = "hdd?:";
+  DIR *directory;
+
+  int deviceCount = 0;
+  for (int i = 0; i < 2; i++) {
+    deviceModeMap[deviceIdx].mode = MODE_NONE;
+    mountpoint[3] = i + '0';
+
+    // Wait for IOP to initialize device driver
+    for (int attempts = 0; attempts < 2; attempts++) {
+      delay(2);
+      directory = opendir(mountpoint);
+      if (directory != NULL) {
+        closedir(directory);
+        break;
+      }
+    }
+    if (directory == NULL) {
+      break;
+    }
+
+    // Set device mountpoint
+    deviceModeMap[deviceIdx].mode = MODE_HDL;
+    deviceModeMap[deviceIdx].mountpoint = calloc(strlen(mountpoint) + 1, 1);
+    strcpy(deviceModeMap[deviceIdx].mountpoint, mountpoint);
+    deviceModeMap[deviceIdx].metadev = metadevice;
+    deviceModeMap[deviceIdx].index = i;
+    // Set scan function
+    deviceModeMap[deviceIdx].scan = &findHDLTargets;
+
+    deviceIdx++;
+    deviceCount++;
+  }
+
+  return deviceCount;
 }
 
 //
