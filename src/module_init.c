@@ -36,6 +36,7 @@ IRX_DEFINE(ps2dev9);
 IRX_DEFINE(bdm);
 IRX_DEFINE(bdmfs_fatfs);
 IRX_DEFINE(ata_bd);
+IRX_DEFINE(ps2hdd_bdm);
 IRX_DEFINE(usbd_mini);
 IRX_DEFINE(usbmass_bd_mini);
 IRX_DEFINE(mx4sio_bd_mini);
@@ -62,6 +63,8 @@ typedef struct ModuleListEntry {
 
 // Initializes SMAP arguments
 char *initSMAPArguments(uint32_t *argLength);
+// Initializes PS2HDD-BDM arguments
+char *initPS2HDDArguments(uint32_t *argLength);
 
 // List of modules to load
 static ModuleListEntry moduleList[] = {
@@ -94,27 +97,31 @@ static ModuleListEntry moduleList[] = {
     {"iLinkman", NULL, NULL, 0, NULL, NULL, MODE_ILINK, {"modules/iLinkman.irx", "iLinkman.irx"}, 0},
     // iLink Mass Storage
     {"IEEE1394_bd_mini", NULL, NULL, 0, NULL, NULL, MODE_ILINK, {"modules/IEEE1394_bd_mini.irx", "IEEE1394_bd_mini.irx"}, 0},
+    // PS2HDD driver. Should always be last because it can't be used for metadata (title options, cover art)
+    {"ps2hdd-bdm", NULL, NULL, 0, NULL, &initPS2HDDArguments, MODE_HDL, {"modules/ps2hdd-bdm.irx", "ps2hdd-bdm.irx"}, 0},
 #else
     // DEV9
-    INT_MODULE(ps2dev9, MODE_UDPBD | MODE_ATA, NULL),
+    INT_MODULE(ps2dev9, MODE_UDPBD | MODE_ATA | MODE_HDL, NULL),
     // BDM
     INT_MODULE(bdm, MODE_ALL, NULL),
     // FAT/exFAT
     INT_MODULE(bdmfs_fatfs, MODE_ALL, NULL),
-    // SMAP driver. Actually includes small IP stack and UDPTTY
+    // // SMAP driver. Actually includes small IP stack and UDPTTY
     INT_MODULE(smap_udpbd, MODE_UDPBD, &initSMAPArguments),
-    // ATA
-    INT_MODULE(ata_bd, MODE_ATA, NULL),
-    // USBD
+    // // ATA
+    INT_MODULE(ata_bd, MODE_ATA | MODE_HDL, NULL),
+    // // USBD
     INT_MODULE(usbd_mini, MODE_USB, NULL),
-    // USB Mass Storage
+    // // USB Mass Storage
     INT_MODULE(usbmass_bd_mini, MODE_USB, NULL),
-    // MX4SIO
+    // // MX4SIO
     INT_MODULE(mx4sio_bd_mini, MODE_MX4SIO, NULL),
-    // iLink
+    // // iLink
     INT_MODULE(iLinkman, MODE_ILINK, NULL),
-    // iLink Mass Storage
+    // // iLink Mass Storage
     INT_MODULE(IEEE1394_bd_mini, MODE_ILINK, NULL),
+    // PS2HDD driver. Should always be last because it can't be used for metadata (title options, cover art)
+    INT_MODULE(ps2hdd_bdm, MODE_HDL, &initPS2HDDArguments),
 #endif
 };
 #define MODULE_COUNT sizeof(moduleList) / sizeof(ModuleListEntry)
@@ -362,4 +369,11 @@ char *initSMAPArguments(uint32_t *argLength) {
   char *argStr = calloc(sizeof(char), 19);
   snprintf(argStr, sizeof(ipArg), "ip=%s", LAUNCHER_OPTIONS.udpbdIp);
   return argStr;
+}
+
+char ps2hddArguments[] = "-o 4 -n 20";
+// Sets arguments for PS2HDD modules
+char *initPS2HDDArguments(uint32_t *argLength) {
+  *argLength = strlen(ps2hddArguments);
+  return ps2hddArguments;
 }
