@@ -1,6 +1,5 @@
 #include "common.h"
 #include "devices.h"
-#include "iso.h"
 #include "options.h"
 #include <kernel.h>
 #include <sifrpc.h>
@@ -16,6 +15,7 @@ extern int size_loader_elf;
 // Arguments
 static char isoArgument[] = "dvd";
 static char bsdArgument[] = "bsd";
+static char bsdfsArgument[] = "bsdfs";
 
 // Neutrino bsd values
 #define BSD_ATA "ata"
@@ -24,6 +24,9 @@ static char bsdArgument[] = "bsd";
 #define BSD_USB "usb"
 #define BSD_ILINK "ilink"
 #define BSD_MMCE "mmce"
+
+// Neutrino bsdfs values
+#define BSDFS_HDL "hdl"
 
 int LoadELFFromFile(int argc, char *argv[]);
 
@@ -89,13 +92,17 @@ void launchTitle(Target *target, ArgumentList *arguments) {
   case MODE_MMCE:
     bsdValue = BSD_MMCE;
     break;
+  case MODE_HDL:
+    bsdValue = BSD_ATA;
+    appendArgument(arguments, newArgument(bsdfsArgument, BSDFS_HDL));
+    break;
   default:
     printf("ERROR: Unsupported mode\n");
     return;
   }
 
-  printf("Updating last launched title\n");
-  if (updateLastLaunchedTitle(target->device->mountpoint, target->fullPath)) {
+  printf("Updating last launched title\n"); // Only if device doesn't have metadata device
+  if (!target->device->metadev && updateLastLaunchedTitle(target->device->mountpoint, target->fullPath)) {
     printf("ERROR: Failed to update last launched title\n");
   }
   printf("Mounting VMC on MMCE devices\n");
