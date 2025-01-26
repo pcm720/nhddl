@@ -36,13 +36,14 @@ IRX_DEFINE(ps2dev9);
 IRX_DEFINE(bdm);
 IRX_DEFINE(bdmfs_fatfs);
 IRX_DEFINE(ata_bd);
-IRX_DEFINE(ps2hdd_bdm);
 IRX_DEFINE(usbd_mini);
 IRX_DEFINE(usbmass_bd_mini);
 IRX_DEFINE(mx4sio_bd_mini);
 IRX_DEFINE(iLinkman);
 IRX_DEFINE(IEEE1394_bd_mini);
 IRX_DEFINE(smap_udpbd);
+IRX_DEFINE(ps2hdd);
+IRX_DEFINE(ps2fs);
 #endif
 
 // Function used to initialize module arguments.
@@ -53,8 +54,8 @@ typedef struct ModuleListEntry {
   char *name;                     // Module name
   unsigned char *irx;             // Pointer to IRX module
   uint32_t *size;                 // IRX size. Uses pointer to avoid compilation issues with internal modules
-  uint32_t argLength;             // Argument string length
-  char *argStr;                   // Argument string
+  uint32_t argLength;             // Total length of argument string
+  char *argStr;                   // Module arguments
   moduleArgFunc argumentFunction; // Function used to initialize module arguments
   ModeType mode;                  // Used to ignore modules not required for target mode
   char *path[2];                  // Relative path to module (in case module is external)
@@ -65,6 +66,8 @@ typedef struct ModuleListEntry {
 char *initSMAPArguments(uint32_t *argLength);
 // Initializes PS2HDD-BDM arguments
 char *initPS2HDDArguments(uint32_t *argLength);
+// Initializes PS2FS arguments
+char *initPS2FSArguments(uint32_t *argLength);
 
 // List of modules to load
 static ModuleListEntry moduleList[] = {
@@ -97,8 +100,10 @@ static ModuleListEntry moduleList[] = {
     {"iLinkman", NULL, NULL, 0, NULL, NULL, MODE_ILINK, {"modules/iLinkman.irx", "iLinkman.irx"}, 0},
     // iLink Mass Storage
     {"IEEE1394_bd_mini", NULL, NULL, 0, NULL, NULL, MODE_ILINK, {"modules/IEEE1394_bd_mini.irx", "IEEE1394_bd_mini.irx"}, 0},
-    // PS2HDD driver. Should always be last because it can't be used for metadata (title options, cover art)
-    {"ps2hdd-bdm", NULL, NULL, 0, NULL, &initPS2HDDArguments, MODE_HDL, {"modules/ps2hdd-bdm.irx", "ps2hdd-bdm.irx"}, 0},
+    // PS2HDD driver
+    {"ps2hdd", NULL, NULL, 0, NULL, &initPS2HDDArguments, MODE_HDL, {"modules/ps2hdd.irx", "ps2hdd.irx"}, 0},
+    // PFS driver
+    {"ps2fs", NULL, NULL, 0, NULL, &initPS2FSArguments, MODE_HDL, {"modules/ps2fs.irx", "ps2fs.irx"}, 0},
 #else
     // DEV9
     INT_MODULE(ps2dev9, MODE_UDPBD | MODE_ATA | MODE_HDL, NULL),
@@ -106,22 +111,24 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(bdm, MODE_ALL, NULL),
     // FAT/exFAT
     INT_MODULE(bdmfs_fatfs, MODE_ALL, NULL),
-    // // SMAP driver. Actually includes small IP stack and UDPTTY
+    // SMAP driver. Actually includes small IP stack and UDPTTY
     INT_MODULE(smap_udpbd, MODE_UDPBD, &initSMAPArguments),
-    // // ATA
+    // ATA
     INT_MODULE(ata_bd, MODE_ATA | MODE_HDL, NULL),
-    // // USBD
+    // USBD
     INT_MODULE(usbd_mini, MODE_USB, NULL),
-    // // USB Mass Storage
+    // USB Mass Storage
     INT_MODULE(usbmass_bd_mini, MODE_USB, NULL),
-    // // MX4SIO
+    // MX4SIO
     INT_MODULE(mx4sio_bd_mini, MODE_MX4SIO, NULL),
-    // // iLink
+    // iLink
     INT_MODULE(iLinkman, MODE_ILINK, NULL),
-    // // iLink Mass Storage
+    // iLink Mass Storage
     INT_MODULE(IEEE1394_bd_mini, MODE_ILINK, NULL),
-    // PS2HDD driver. Should always be last because it can't be used for metadata (title options, cover art)
-    INT_MODULE(ps2hdd_bdm, MODE_HDL, &initPS2HDDArguments),
+    // PS2HDD driver
+    INT_MODULE(ps2hdd, MODE_HDL, &initPS2HDDArguments),
+    // PFS driver
+    INT_MODULE(ps2fs, MODE_HDL, &initPS2FSArguments),
 #endif
 };
 #define MODULE_COUNT sizeof(moduleList) / sizeof(ModuleListEntry)
@@ -197,9 +204,6 @@ int loadModule(ModuleListEntry *mod) {
       goto failCheck;
     }
   }
-
-  if (mod->argStr != NULL)
-    uiSplashLogString(LEVEL_INFO, "Loading %s with %s\n", mod->name, mod->argStr);
 
   ret = SifExecModuleBuffer(mod->irx, *mod->size, mod->argLength, mod->argStr, &iopret);
   if (ret >= 0)
@@ -371,9 +375,18 @@ char *initSMAPArguments(uint32_t *argLength) {
   return argStr;
 }
 
-char ps2hddArguments[] = "-o 4 -n 20";
+// up to 4 descriptors, 20 buffers
+static char ps2hddArguments[] = "-o""\0""4""\0""-n""\0""20";
 // Sets arguments for PS2HDD modules
 char *initPS2HDDArguments(uint32_t *argLength) {
-  *argLength = strlen(ps2hddArguments);
+  *argLength = sizeof(ps2hddArguments);
   return ps2hddArguments;
+}
+
+// up to 10 descriptors, 40 buffers
+char ps2fsArguments[] = "-o""\0""10""\0""-n""\0""40";
+// Sets arguments for PS2HDD modules
+char *initPS2FSArguments(uint32_t *argLength) {
+  *argLength = sizeof(ps2fsArguments);
+  return ps2fsArguments;
 }
