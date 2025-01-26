@@ -93,7 +93,6 @@ int main(int argc, char *argv[]) {
     res = deviceModeMap[i].scan(titles, &deviceModeMap[i]);
     if (res != 0) {
       printf("WARN: failed to scan %s: %d\n", deviceModeMap[i].mountpoint, res);
-      goto fail;
     }
   }
 
@@ -319,10 +318,13 @@ void initOptions(char *cwdPath) {
 
   // Fallback to memory cards
   for (int i = 0; i < 2; i++) {
-    nhddlFallbackPaths[i][2] = i + '0';
-    if (!tryFile(nhddlFallbackPaths[i])) {
-      strcpy(lineBuffer, nhddlFallbackPaths[i]);
-      break;
+    NEUTRINO_ELF_PATH[0] = '\0';
+    for (int j = 0; j < (sizeof(nhddlFallbackPaths) / sizeof(char *)); j++) {
+      nhddlFallbackPaths[j][2] = i + '0';
+      if (!tryFile(nhddlFallbackPaths[j])) {
+        strcpy(NEUTRINO_ELF_PATH, nhddlFallbackPaths[j]);
+        break;
+      }
     }
   }
 
@@ -396,10 +398,12 @@ int findNeutrinoELF(char *cwdPath) {
   // Fallback to memory cards
   for (int i = 0; i < 2; i++) {
     NEUTRINO_ELF_PATH[0] = '\0';
-    neutrinoMCFallbackPaths[i][2] = i + '0';
-    if (!tryFile(neutrinoMCFallbackPaths[i])) {
-      strcpy(NEUTRINO_ELF_PATH, neutrinoMCFallbackPaths[i]);
-      return 0;
+    for (int j = 0; j < (sizeof(neutrinoMCFallbackPaths) / sizeof(char *)); j++) {
+      neutrinoMCFallbackPaths[j][2] = i + '0';
+      if (!tryFile(neutrinoMCFallbackPaths[j])) {
+        strcpy(NEUTRINO_ELF_PATH, neutrinoMCFallbackPaths[j]);
+        return 0;
+      }
     }
   }
 
