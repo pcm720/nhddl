@@ -1,5 +1,6 @@
 #include "gui.h"
 #include "common.h"
+#include "gui_args.h"
 #include "gui_graphics.h"
 #include "launcher.h"
 #include "options.h"
