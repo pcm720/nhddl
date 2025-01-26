@@ -61,8 +61,6 @@ copy:
 	mkdir modules
 	cp $(PS2SDK)/iop/irx/ps2hdd.irx modules
 	cp $(PS2SDK)/iop/irx/ps2fs.irx modules
-# mmceman module, temporary override until it lands in the SDK
-	cp iop/mmceman/mmceman.irx modules
 
 # ELF loader
 loader/loader.elf: loader
