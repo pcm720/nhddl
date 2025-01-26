@@ -576,6 +576,22 @@ void insertCompatModeArg(ArgumentList *target, uint8_t modes) {
     target->last = newArg;
 }
 
+// Retrieves argument from the list
+// Creates new argument and inserts it into the list if argument with argumentName doesn't exist
+Argument *getArgument(ArgumentList *target, char *argumentName, char *defaultValue) {
+  Argument *arg = target->first;
+  while (arg != NULL) {
+    if (!strcmp(arg->arg, argumentName)) {
+      return arg;
+    }
+    arg = arg->next;
+  }
+
+  arg = newArgument(argumentName, defaultValue);
+  appendArgument(target, arg);
+  return arg;
+}
+
 // Loads both global and title launch arguments, returning pointer to a merged list
 ArgumentList *loadLaunchArgumentLists(Target *target) {
   int res = 0;

@@ -10,13 +10,13 @@ extern const char BASE_CONFIG_PATH[];
 extern const size_t BASE_CONFIG_PATH_LEN;
 
 // Compatibility modes definitions
-#define COMPAT_MODES_ARG "gc"
 typedef struct CompatiblityModeMap {
   int mode;
   char value;
   char *name;
 } CompatiblityModeMap;
 
+#define COMPAT_MODES_ARG "gc"
 #define CM_NUM_MODES (sizeof(COMPAT_MODE_MAP) / sizeof(CompatiblityModeMap))
 #define CM_IOP_FAST_READS 1 << 0
 #define CM_IOP_SYNC_READS 1 << 2
@@ -75,6 +75,10 @@ int updateTitleLaunchArguments(Target *target, ArgumentList *options);
 
 // Completely frees ArgumentList. Passed pointer will not be valid after this function executes
 void freeArgumentList(ArgumentList *result);
+
+// Retrieves argument from the list
+// Creates new argument and inserts it into the list if argument with argumentName doesn't exist
+Argument *getArgument(ArgumentList *target, char *argumentName, char *defaultValue);
 
 // Creates new Argument with passed argName and value (without copying)
 Argument *newArgument(char *argName, char *value);
