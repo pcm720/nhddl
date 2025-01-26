@@ -22,8 +22,9 @@ jobs:
         make
         make cleanobj
         make STANDALONE=1
+        make copy
 
-    - name: Upload ELF
+    - name: Upload binaries
       uses: actions/upload-artifact@v4
       if: steps.make.outcome == 'success'
       with:
@@ -31,6 +32,7 @@ jobs:
         path: |
           nhddl-*.elf
           !nhddl-*_unc.elf
+          modules/*.irx
 
     - name: Upload README.md and YAML examples
       if: steps.make.outcome == 'success'
