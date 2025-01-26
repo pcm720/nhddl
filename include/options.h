@@ -58,7 +58,7 @@ void buildConfigFilePath(char *targetPath, const char *targetMountpoint, const c
 int getLastLaunchedTitle(char *titlePath);
 
 // Writes last launched title path into lastTitle file on title mountpoint
-int updateLastLaunchedTitle(char *mountpoint, char *titlePath);
+int updateLastLaunchedTitle(struct DeviceMapEntry *device, char *titlePath);
 
 // Generates ArgumentList from global config file located on device
 // Will reinitialize result without clearing existing contents. On error, result will contain invalid pointer.

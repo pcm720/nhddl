@@ -50,7 +50,11 @@ int getLastLaunchedTitle(char *titlePath) {
     if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL) {
       break;
     }
-    buildConfigFilePath(targetPath, deviceModeMap[i].mountpoint, lastTitlePath);
+
+    if (deviceModeMap[i].metadev) // Fallback to metadata device if set
+      buildConfigFilePath(targetPath, deviceModeMap[i].metadev->mountpoint, lastTitlePath);
+    else
+      buildConfigFilePath(targetPath, deviceModeMap[i].mountpoint, lastTitlePath);
 
     // Open last launched title file and read it
     int fd = open(targetPath, O_RDONLY);
@@ -89,10 +93,14 @@ int getLastLaunchedTitle(char *titlePath) {
 }
 
 // Writes last launched title path into lastTitle file on title mountpoint
-int updateLastLaunchedTitle(char *mountpoint, char *titlePath) {
+int updateLastLaunchedTitle(struct DeviceMapEntry *device, char *titlePath) {
+  if (device->metadev) { // Fallback to metadata device if set
+    device = device->metadev;
+  }
+
   printf("Writing last launched title as %s\n", titlePath);
   char targetPath[PATH_MAX];
-  buildConfigFilePath(targetPath, mountpoint, NULL);
+  buildConfigFilePath(targetPath, device->mountpoint, NULL);
 
   // Make sure config directory exists
   struct stat st;
@@ -139,7 +147,7 @@ int updateLastLaunchedTitle(char *mountpoint, char *titlePath) {
 
 // Generates ArgumentList from global config file located at targetMounpoint (usually ISO full path)
 int getGlobalLaunchArguments(ArgumentList *result, struct DeviceMapEntry *device) {
-  if (device->metadev) { // Fallback to metadata device
+  if (device->metadev) { // Fallback to metadata device if set
     device = device->metadev;
   }
 
@@ -157,7 +165,7 @@ int getGlobalLaunchArguments(ArgumentList *result, struct DeviceMapEntry *device
 // Generates ArgumentList from global and title-specific config file
 int getTitleLaunchArguments(ArgumentList *result, Target *target) {
   struct DeviceMapEntry *device = target->device;
-  if (device->metadev) { // Fallback to metadata device
+  if (device->metadev) { // Fallback to metadata device if set
     device = device->metadev;
   }
 
@@ -205,7 +213,7 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
 // Empty value means that the argument is empty, but still should be used without the value.
 int updateTitleLaunchArguments(Target *target, ArgumentList *options) {
   struct DeviceMapEntry *device = target->device;
-  if (device->metadev) { // Fallback to metadata device
+  if (device->metadev) { // Fallback to metadata device if set
     device = device->metadev;
   }
 
