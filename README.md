@@ -88,6 +88,7 @@ Use this version to save space on your memory card.
 - Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
 - Unpack Neutrino release
 - Copy `nhddl.elf` to Neutrino folder next to `neutrino.elf`
+  For HDL support, copy `modules/ps2hdd.irx` and `modules/ps2fs.irx` from NHDDL release to Neutrino `modules` directory
 - _Additional step if you need only some of the available modes_:   
   Modify `nhddl.yaml` [accordingly](#launcher-configuration-file) and copy it next to `nhddl.elf`
 - Copy Neutrino folder to your PS2 memory card or your storage device.
