@@ -4,18 +4,21 @@
 #include "common.h"
 #include "target.h"
 
-#define MAX_DEVICES 12
+#define MAX_DEVICES 20
 
 // Must scan the device entry for titles and add them to TargetList
 typedef int (*titleScanFunc)(TargetList *result, struct DeviceMapEntry *device);
+// Must sync the device
+typedef void (*syncFunc)();
 
 // Device map entry
 struct DeviceMapEntry {
   char *mountpoint;               // Device mountpoint
-  titleScanFunc scan;             // Function used for scanning the device entry for titles. Can be NULL if device must be ignored during scanning
+  syncFunc sync;                  // Must sync the device
+  titleScanFunc scan;             // Function used for scanning the device entry for titles. Can be NULL if device must be ignored during scanning. Might not be present in deviceModeMap
+  struct DeviceMapEntry *metadev; // If set, cover art and options will be loaded from metadata device instead of this device. Set during initialization
   ModeType mode;                  // Device driver
   uint8_t index;                  // BDM internal device driver number, must be used for passing paths to Neutrino
-  struct DeviceMapEntry *metadev; // If set, cover art and options will be loaded from metadata device instead of this device. Set during initialization
 };
 
 // Contains all available devices.
@@ -24,6 +27,9 @@ extern struct DeviceMapEntry deviceModeMap[];
 
 // Initializes device mode map and returns device count
 int initDeviceMap();
+
+// Delays for
+void delay(int count);
 
 // Uses MMCE devctl calls to switch memory card to given title ID
 void mmceMountVMC(char *titleID);
