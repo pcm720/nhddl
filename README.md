@@ -24,9 +24,11 @@ Since NHDDL only launches Neutrino, GSM, PADEMU, IGR, IGS, cheats and other feat
 ### Important notes
 
 NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) installation to be present at one of the following paths:
-- `<NHDDL launch directory>/neturino.elf` (__might be case-sensitive__ depending on device)
+- `<NHDDL launch directory>/neutrino.elf` (__might be case-sensitive__ depending on device)
 - `mmceX:/neutrino/neutrino.elf` (MMCE devices, will work even if MMCE mode is _not_ enabled)
 - `massX:/neutrino/neutrino.elf` (BDM devices, if any of BDM modes are enabled)
+- `hdd0:/<OPL partition>/neutrino/neutrino.elf` (APA device, if HDL mode is enabled)  
+  `OPL partition` must be one of the following, in order of priority: `+OPL`, `OPL` or `__common`
 - `mcX:/APPS/neutrino/neutrino.elf` (memory cards, __case-sensitive__)
 - `mcX:/NEUTRINO/NEUTRINO.ELF` (SAS-compliant path on memory cards, __case-sensitive__)
 - `mcX:/NEUTRINO/neutrino.elf` (SAS-compliant path on memory cards, __case-sensitive__)
@@ -156,20 +158,23 @@ MMCE devices are supported with embedded module.
 To skip all other devices, `mode: mmce` must be present in `nhddl.yaml`.
 
 #### HDL (APA-formatted HDD with HD Loader partitions)
-APA HDDs with HD Loader partitions (HDL) are supported partially.
 The following files are required for HDL backend:
 - `bdm.irx`
 - `dev9_ns.irx`
 - `ata_bd.irx`
-- `ps2hdd-bdm.irx`
+- `ps2hdd.irx`
+- `ps2fs.irx`
+The last two modules are a part of PS2SDK and included in NHDDL distribution.
 
-**Due to implementation limitations, title options and cover art can't be loaded from
-`+OPL` partition on APA HDD.**  
-NHDDL will try to access the first available device other than APA HDD (including MMCE) and load title options and cover art from there.
+Note that HDL backend **does not support** VMCs and virtual HDDs.  
+Cover art and title options will be loaded from one of the following APA partitions:
+- `+OPL`
+- `OPL`
+- `__common`
 
 To skip all other devices, `mode: hdl` must be present in `nhddl.yaml`.
 
-### Storing ISO
+### Storing ISO (MMCE, BDM backends)
 
 ISOs can be stored almost anywhere on the storage device, but no more than 5 directories deep.  
 For example, ISOs stored in `DVD/A/B/C/D` will be scanned and added to the list, but ISOs stored in `DVD/A/B/C/D/E` will be ignored.  
@@ -202,10 +207,12 @@ Launcher configuration is read from the `nhddl.yaml` file.
 
 Configuration file is loaded from one of the following paths:
 - `<NHDDL launch directory>/nhddl.yaml` (__might be case-sensitive__ depending on device)
+- `mmceX:/nhddl/nhddl.yaml` (MMCE devices, if MMCE mode is enabled)
+- `massX:/nhddl/nhddl.yaml` (BDM devices, if any of BDM modes are enabled)
+- `hdd0:/<OPL partition>/neutrino/neutrino.elf` (APA device, if HDL mode is enabled)  
+  `OPL partition` must be one of the following, in order of priority: `+OPL`, `OPL` or `__common`
 - `mcX:/NHDDL/nhddl.yaml` (memory cards, __case-sensitive__)
 - `mcX:/NHDDL-CONF/nhddl.yaml` (memory cards, __case-sensitive__)
-- `massX:/nhddl/nhddl.yaml` (BDM devices, if any of BDM modes are enabled)
-- `mmceX:/nhddl/nhddl.yaml` (MMCE devices, if MMCE mode is enabled)
 
 This file is _completely optional_ and must be used only to force video mode in NHDDL UI or set NHDDL device mode.  
 By default, default video mode is used and all BDM devices are used to look for ISO files.
