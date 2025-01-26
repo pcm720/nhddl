@@ -296,27 +296,33 @@ void initOptions(char *cwdPath) {
   }
 
   // If config file doesn't exist in CWD, try fallback paths
+  struct DeviceMapEntry *device;
   for (int i = 0; i < MAX_DEVICES; i++) {
     lineBuffer[0] = '\0';
     if ((i > 1) && (deviceModeMap[i].mode == MODE_NONE)) {
       break;
     }
 
-    if (i < 2) {
-      for (int j = 0; j < (sizeof(nhddlFallbackPaths) / sizeof(char *)); j++) {
-        nhddlFallbackPaths[j][2] = i + '0';
-        if (!tryFile(nhddlFallbackPaths[j])) {
-          strcpy(lineBuffer, nhddlFallbackPaths[j]);
-          break;
-        }
-      }
-    }
-    if (deviceModeMap[i].mountpoint != NULL) {
-      strcpy(lineBuffer, deviceModeMap[i].mountpoint);
+    if (deviceModeMap[i].metadev)
+      device = deviceModeMap[i].metadev;
+    else
+      device = &deviceModeMap[i];
+
+    if (device->mountpoint != NULL) {
+      strcpy(lineBuffer, device->mountpoint);
       strcat(lineBuffer, nhddlStorageFallbackPath);
       if (!tryFile(lineBuffer)) {
         break;
       }
+    }
+  }
+
+  // Fallback to memory cards
+  for (int i = 0; i < 2; i++) {
+    nhddlFallbackPaths[i][2] = i + '0';
+    if (!tryFile(nhddlFallbackPaths[i])) {
+      strcpy(lineBuffer, nhddlFallbackPaths[i]);
+      break;
     }
   }
 
@@ -366,14 +372,20 @@ int findNeutrinoELF(char *cwdPath) {
   }
 
   // If neutrino.elf doesn't exist in CWD, try fallback paths on storage devices
+  struct DeviceMapEntry *device;
   for (int i = 0; i < MAX_DEVICES; i++) {
     NEUTRINO_ELF_PATH[0] = '\0';
     if ((i > 1) && (deviceModeMap[i].mode == MODE_NONE)) {
       break;
     }
 
-    if (deviceModeMap[i].mountpoint != NULL) {
-      strcpy(NEUTRINO_ELF_PATH, deviceModeMap[i].mountpoint);
+    if (deviceModeMap[i].metadev)
+      device = deviceModeMap[i].metadev;
+    else
+      device = &deviceModeMap[i];
+
+    if (device->mountpoint != NULL) {
+      strcpy(NEUTRINO_ELF_PATH, device->mountpoint);
       strcat(NEUTRINO_ELF_PATH, neutrinoStorageFallbackPath);
       if (!tryFile(NEUTRINO_ELF_PATH)) {
         return 0;
