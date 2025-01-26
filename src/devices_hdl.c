@@ -15,13 +15,13 @@
 int checkAPAHeader() {
   int result = -1;
 
-  // Allocate memory for storing data for the first two sectors.
+  // Allocate memory for storing data for the first sector.
   uint8_t *pSectorData = (uint8_t *)malloc(512);
   if (pSectorData == NULL) {
     return -ENOMEM;
   }
 
-  // Read the first two sectors via devctl
+  // Read the sector via devctl
   hddAtaTransfer_t *args = (hddAtaTransfer_t *)pSectorData;
   args->lba = 0;
   args->size = 1;
@@ -35,7 +35,7 @@ int checkAPAHeader() {
   if (strncmp((const char *)&pSectorData[4], "APA", 3)) {
     result = 1; // Sector doesn't contain APA magic
   }
-  // Cleanup and return.
+
   free(pSectorData);
   return result;
 }
@@ -69,7 +69,6 @@ struct DeviceMapEntry *mountPFS() {
 }
 
 void syncHDL() {
-  // NHDDL might need to load neutrino.elf, so just sync instead.
   fileXioDevctl("pfs:", PDIOC_CLOSEALL, NULL, 0, NULL, 0);
   fileXioSync("pfs0:", FXIO_WAIT);
 }
