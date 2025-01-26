@@ -101,10 +101,15 @@ void launchTitle(Target *target, ArgumentList *arguments) {
     return;
   }
 
-  printf("Updating last launched title\n"); // Only if device doesn't have metadata device
-  if (!target->device->metadev && updateLastLaunchedTitle(target->device->mountpoint, target->fullPath)) {
+  printf("Updating last launched title\n");
+  if (updateLastLaunchedTitle(target->device, target->fullPath)) {
     printf("ERROR: Failed to update last launched title\n");
   }
+
+  // Sync storage device before loading Neutrino
+  if (target->device->sync)
+    target->device->sync();
+
   printf("Mounting VMC on MMCE devices\n");
   mmceMountVMC(target->id);
 
