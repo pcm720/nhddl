@@ -94,16 +94,6 @@ void appendArgumentCopy(ArgumentList *target, Argument *arg);
 // Expects result to be initialized with zeroes. All arguments in resulting list are a deep copy of arguments in source lists.
 void mergeArgumentLists(ArgumentList *list1, ArgumentList *list2);
 
-// Parses compatibility mode argument value into a bitmask
-uint8_t parseCompatModes(char *stringValue);
-
-// Stores compatibility mode from bitmask into argument value and sets isDisabled flag accordingly.
-// Target must be at least 6 bytes long, including null terminator
-void storeCompatModes(Argument *target, uint8_t modes);
-
-// Inserts a new compat mode arg into the argument list
-void insertCompatModeArg(ArgumentList *target, uint8_t modes);
-
 // Loads both global and title launch arguments, returning pointer to a merged list
 ArgumentList *loadLaunchArgumentLists(Target *target);
 

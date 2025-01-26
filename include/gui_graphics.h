@@ -1,5 +1,5 @@
-#ifndef _BMFONT_H_
-#define _BMFONT_H_
+#ifndef _GUI_GRAPHICS_H_
+#define _GUI_GRAPHICS_H_
 
 #include <stdint.h>
 
