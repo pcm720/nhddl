@@ -58,6 +58,7 @@ clean:
 	rm -rf $(EE_BIN) $(EE_BIN_PKD) $(EE_BIN_STANDALONE) $(EE_BIN_PKD_STANDALONE) $(EE_ASM_DIR) $(EE_OBJS_DIR)
 
 copy:
+	mkdir modules
 	cp $(PS2SDK)/iop/irx/ps2hdd.irx modules
 	cp $(PS2SDK)/iop/irx/ps2fs.irx modules
 # mmceman module, temporary override until it lands in the SDK
