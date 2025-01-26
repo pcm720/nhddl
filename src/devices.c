@@ -52,7 +52,7 @@ int initDeviceMap() {
 
     uiSplashLogString(LEVEL_INFO_NODELAY, "Initializing %s backend\n", backends[i].name);
     if ((res = backends[i].initFunction(deviceCount)) < 0) {
-      uiSplashLogString(LEVEL_ERROR, "Failed to initialize %s backend: %d\n", backends[i].name, res);
+      printf("ERROR: Failed to initialize %s backend: %d\n", backends[i].name, res);
       continue;
     }
     deviceCount += res;

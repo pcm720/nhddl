@@ -146,6 +146,7 @@ typedef struct // size = 1024
 #define HDL_GAME_DATA_OFFSET 0x100000 // Sector 0x800 in the extended attribute area.
 #define HDL_FS_MAGIC 0x1337
 
+// Scans given partition and returns new Target if partition has a valid HDL header
 Target *scanPartition(char *deviceMountpoint, char *partitionName, uint32_t startSector) {
   HDLHeader header;
 
