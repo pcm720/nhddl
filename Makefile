@@ -60,6 +60,8 @@ clean:
 copy:
 	cp $(PS2SDK)/iop/irx/ps2hdd.irx modules
 	cp $(PS2SDK)/iop/irx/ps2fs.irx modules
+# mmceman module, temporary override until it lands in the SDK
+	cp iop/mmceman/mmceman.irx modules
 
 # ELF loader
 loader/loader.elf: loader
@@ -74,6 +76,10 @@ iop/smap_udpbd/smap_udpbd.irx: iop/smap_udpbd
 
 %smap_udpbd_irx.c: iop/smap_udpbd/smap_udpbd.irx
 	$(BIN2C) iop/smap_udpbd/$(*:$(EE_SRC_DIR)%=%)smap_udpbd.irx $@ $(*:$(EE_SRC_DIR)%=%)smap_udpbd_irx
+
+# mmceman module, temporary override until it lands in the SDK
+%mmceman_irx.c:
+	$(BIN2C) iop/mmceman/mmceman.irx $@ $(*:$(EE_SRC_DIR)%=%)mmceman_irx
 
 # IRX files
 %_irx.c:
