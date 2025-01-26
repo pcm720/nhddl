@@ -10,13 +10,13 @@ EE_BIN_STANDALONE = $(ELF_BASE_NAME)-standalone_unc.elf
 EE_BIN_PKD = $(ELF_BASE_NAME).elf
 EE_BIN_PKD_STANDALONE = $(ELF_BASE_NAME)-standalone.elf
 
-EE_OBJS = main.o module_init.o common.o options.o gui.o gui_graphics.o pad.o launcher.o iso_cache.o iso_title_id.o devices.o devices_iso.o devices_hdl.o target.o
+EE_OBJS = main.o module_init.o common.o options.o gui.o gui_graphics.o pad.o launcher.o iso_cache.o iso_title_id.o devices.o devices_mmce.o devices_bdm.o devices_iso.o devices_hdl.o target.o
 IRX_FILES += sio2man.irx mcman.irx mcserv.irx fileXio.irx iomanX.irx freepad.irx mmceman.irx
 ELF_FILES += loader.elf
 
 ifeq ($(STANDALONE), 1)
  GIT_VERSION := "$(GIT_VERSION)-standalone"
- IRX_FILES += ps2dev9.irx bdm.irx bdmfs_fatfs.irx ata_bd.irx usbd_mini.irx smap_udpbd.irx ps2hdd_bdm.irx
+ IRX_FILES += ps2dev9.irx bdm.irx bdmfs_fatfs.irx ata_bd.irx usbd_mini.irx smap_udpbd.irx ps2hdd.irx ps2fs.irx
  IRX_FILES += usbmass_bd_mini.irx mx4sio_bd_mini.irx iLinkman.irx IEEE1394_bd_mini.irx udptty.irx
  EE_CFLAGS += -DSTANDALONE
  EE_BIN = $(EE_BIN_STANDALONE)
@@ -57,6 +57,10 @@ clean:
 	$(MAKE) -C iop/smap_udpbd clean
 	rm -rf $(EE_BIN) $(EE_BIN_PKD) $(EE_BIN_STANDALONE) $(EE_BIN_PKD_STANDALONE) $(EE_ASM_DIR) $(EE_OBJS_DIR)
 
+copy:
+	cp $(PS2SDK)/iop/irx/ps2hdd.irx modules
+	cp $(PS2SDK)/iop/irx/ps2fs.irx modules
+
 # ELF loader
 loader/loader.elf: loader
 	$(MAKE) -C $<
@@ -70,10 +74,6 @@ iop/smap_udpbd/smap_udpbd.irx: iop/smap_udpbd
 
 %smap_udpbd_irx.c: iop/smap_udpbd/smap_udpbd.irx
 	$(BIN2C) iop/smap_udpbd/$(*:$(EE_SRC_DIR)%=%)smap_udpbd.irx $@ $(*:$(EE_SRC_DIR)%=%)smap_udpbd_irx
-
-# ps2hdd-bdm.irx
-%ps2hdd_bdm_irx.c:
-	$(BIN2C) $(PS2SDK)/iop/irx/$(*:$(EE_SRC_DIR)%=%)ps2hdd-bdm.irx $@ $(*:$(EE_SRC_DIR)%=%)ps2hdd_bdm_irx
 
 # IRX files
 %_irx.c:
