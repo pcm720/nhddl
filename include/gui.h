@@ -1,7 +1,7 @@
 #ifndef _GUI_H_
 #define _GUI_H_
 
-#include "iso.h"
+#include "target.h"
 
 int uiInit();
 int uiLoop(TargetList *titles);

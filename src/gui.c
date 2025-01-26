@@ -146,19 +146,13 @@ int uiInit() {
 }
 
 // Invalidates currently loaded texture and loads a new one
-int loadCoverArt(char *titlePath, char *titleID) {
-  // Reuse line buffer for building texture path
-  // Get device mountpoint into the buffer
-  int pathSize = 5;
-  if (titlePath[4] == ':') {
-    strncpy(lineBuffer, titlePath, 5);
-  } else { // Handle numbered devices
-    strncpy(lineBuffer, titlePath, 6);
-    pathSize = 6;
+int loadCoverArt(struct DeviceMapEntry *device, char *titleID) {
+  if (device->metadev) { // Fallback to metadata device
+    device = device->metadev;
   }
-
+  // Reuse line buffer for building texture path
   // Append cover art path to the mountpoint
-  snprintf(lineBuffer + pathSize, 255 - pathSize, "%s/%s_COV.png", artPath, titleID);
+  snprintf(lineBuffer, 255, "%s%s/%s_COV.png", device->mountpoint, artPath, titleID);
   // Upload new texture
   gsKit_TexManager_invalidate(gsGlobal, coverTexture);
   if (gsKit_texture_png(gsGlobal, coverTexture, lineBuffer)) {
@@ -205,9 +199,11 @@ int uiLoop(TargetList *titles) {
     int mountpointLen;
     while (curTarget != NULL) {
       // Compare paths without the mountpoint
-      mountpointLen = 5;
-      if (curTarget->fullPath[5] == ':') {
-        mountpointLen = 6;
+      mountpointLen = getRelativePathIdx(curTarget->fullPath);
+      if (mountpointLen == -1) {
+        printf("WARN: Failed to get device mountpoint for %s\n", curTarget->name);
+        curTarget = curTarget->next;
+        continue;
       }
 
       if (!strcmp(lastTitle, &curTarget->fullPath[mountpointLen])) {
@@ -224,7 +220,7 @@ int uiLoop(TargetList *titles) {
   free(lastTitle);
 
   // Load cover art
-  isCoverUninitialized = loadCoverArt(curTarget->fullPath, curTarget->id);
+  isCoverUninitialized = loadCoverArt(curTarget->device, curTarget->id);
 
   // Main UI loop
   int frameCount = 0;
@@ -237,7 +233,7 @@ int uiLoop(TargetList *titles) {
     // Reload target if index has changed
     if (curTarget->idx != selectedTitleIdx) {
       curTarget = getTargetByIdx(titles, selectedTitleIdx);
-      isCoverUninitialized = loadCoverArt(curTarget->fullPath, curTarget->id);
+      isCoverUninitialized = loadCoverArt(curTarget->device, curTarget->id);
     }
 
     // Draw title list
@@ -370,7 +366,7 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
       drawTextWindow(coverArtX1,
                      drawTextWindow(coverArtX1, coverArtY2 + 5, coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER,
                                     curTitle->id), // Use y coordinate return by title ID drawing function as an argument
-                     coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER, modeToString(curTitle->deviceType));
+                     coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER, modeToString(curTitle->device->mode));
     }
 
     // Draw title name

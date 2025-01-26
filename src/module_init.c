@@ -29,6 +29,7 @@ IRX_DEFINE(sio2man);
 IRX_DEFINE(mcman);
 IRX_DEFINE(mcserv);
 IRX_DEFINE(freepad);
+IRX_DEFINE(mmceman);
 
 #ifdef STANDALONE
 IRX_DEFINE(ps2dev9);
@@ -41,18 +42,21 @@ IRX_DEFINE(mx4sio_bd_mini);
 IRX_DEFINE(iLinkman);
 IRX_DEFINE(IEEE1394_bd_mini);
 IRX_DEFINE(smap_udpbd);
+IRX_DEFINE(ps2hdd);
+IRX_DEFINE(ps2fs);
 #endif
 
 // Function used to initialize module arguments.
 // Must set argLength and return non-null pointer to a argument string if successful.
+// Returned pointer must point to dynamically allocated memory
 typedef char *(*moduleArgFunc)(uint32_t *argLength);
 
 typedef struct ModuleListEntry {
   char *name;                     // Module name
   unsigned char *irx;             // Pointer to IRX module
   uint32_t *size;                 // IRX size. Uses pointer to avoid compilation issues with internal modules
-  uint32_t argLength;             // Argument string length
-  char *argStr;                   // Argument string
+  uint32_t argLength;             // Total length of argument string
+  char *argStr;                   // Module arguments
   moduleArgFunc argumentFunction; // Function used to initialize module arguments
   ModeType mode;                  // Used to ignore modules not required for target mode
   char *path[2];                  // Relative path to module (in case module is external)
@@ -61,6 +65,10 @@ typedef struct ModuleListEntry {
 
 // Initializes SMAP arguments
 char *initSMAPArguments(uint32_t *argLength);
+// Initializes PS2HDD-BDM arguments
+char *initPS2HDDArguments(uint32_t *argLength);
+// Initializes PS2FS arguments
+char *initPS2FSArguments(uint32_t *argLength);
 
 // List of modules to load
 static ModuleListEntry moduleList[] = {
@@ -71,6 +79,7 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(mcman, MODE_ALL, NULL),
     INT_MODULE(mcserv, MODE_ALL, NULL),
     INT_MODULE(freepad, MODE_ALL, NULL),
+    INT_MODULE(mmceman, MODE_ALL, NULL), // MMCE driver
 #ifndef STANDALONE
     // DEV9
     {"dev9", NULL, NULL, 0, NULL, NULL, MODE_UDPBD | MODE_ATA, {"modules/dev9_ns.irx", "dev9_ns.irx"}, 0},
@@ -92,9 +101,13 @@ static ModuleListEntry moduleList[] = {
     {"iLinkman", NULL, NULL, 0, NULL, NULL, MODE_ILINK, {"modules/iLinkman.irx", "iLinkman.irx"}, 0},
     // iLink Mass Storage
     {"IEEE1394_bd_mini", NULL, NULL, 0, NULL, NULL, MODE_ILINK, {"modules/IEEE1394_bd_mini.irx", "IEEE1394_bd_mini.irx"}, 0},
+    // PS2HDD driver
+    {"ps2hdd", NULL, NULL, 0, NULL, &initPS2HDDArguments, MODE_HDL, {"modules/ps2hdd.irx", "ps2hdd.irx"}, 0},
+    // PFS driver
+    {"ps2fs", NULL, NULL, 0, NULL, &initPS2FSArguments, MODE_HDL, {"modules/ps2fs.irx", "ps2fs.irx"}, 0},
 #else
     // DEV9
-    INT_MODULE(ps2dev9, MODE_UDPBD | MODE_ATA, NULL),
+    INT_MODULE(ps2dev9, MODE_UDPBD | MODE_ATA | MODE_HDL, NULL),
     // BDM
     INT_MODULE(bdm, MODE_ALL, NULL),
     // FAT/exFAT
@@ -102,7 +115,7 @@ static ModuleListEntry moduleList[] = {
     // SMAP driver. Actually includes small IP stack and UDPTTY
     INT_MODULE(smap_udpbd, MODE_UDPBD, &initSMAPArguments),
     // ATA
-    INT_MODULE(ata_bd, MODE_ATA, NULL),
+    INT_MODULE(ata_bd, MODE_ATA | MODE_HDL, NULL),
     // USBD
     INT_MODULE(usbd_mini, MODE_USB, NULL),
     // USB Mass Storage
@@ -113,11 +126,15 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(iLinkman, MODE_ILINK, NULL),
     // iLink Mass Storage
     INT_MODULE(IEEE1394_bd_mini, MODE_ILINK, NULL),
+    // PS2HDD driver
+    INT_MODULE(ps2hdd, MODE_HDL, &initPS2HDDArguments),
+    // PFS driver
+    INT_MODULE(ps2fs, MODE_HDL, &initPS2FSArguments),
 #endif
 };
 #define MODULE_COUNT sizeof(moduleList) / sizeof(ModuleListEntry)
 
-// Returns 0 if memory card in slot 1 is not a formatted memory card
+// Returns 0 if memory card in mc1 is not a formatted PS2 memory card
 // Used to avoid loading MX4SIO module and disabling mc1
 int getMC1Type();
 
@@ -161,9 +178,8 @@ int initModules() {
       }
       moduleList[i].loaded = 1;
     }
-    // Free loaded external module
-    if ((moduleList[i].irx != NULL) && (moduleList[i].path[0] != NULL))
-      freeModule(&moduleList[i]);
+    // Clean up modules
+    freeModule(&moduleList[i]);
   }
   return 0;
 }
@@ -173,7 +189,7 @@ int loadModule(ModuleListEntry *mod) {
   int ret, iopret = 0;
   if ((mod->mode == MODE_MX4SIO) && getMC1Type()) {
     // If mc1 is a valid memory card, skip MX4SIO modules
-    uiSplashLogString(LEVEL_WARN, "Skipping %s (memory card inserted)\n", mod->name);
+    uiSplashLogString(LEVEL_WARN, "Skipping %s\n(memory card is inserted in slot 2)\n", mod->name);
     return 0;
   }
 
@@ -188,9 +204,6 @@ int loadModule(ModuleListEntry *mod) {
       goto failCheck;
     }
   }
-
-  if (mod->argStr != NULL)
-    uiSplashLogString(LEVEL_INFO, "Loading %s with %s\n", mod->name, mod->argStr);
 
   ret = SifExecModuleBuffer(mod->irx, *mod->size, mod->argLength, mod->argStr, &iopret);
   if (ret >= 0)
@@ -213,10 +226,12 @@ failCheck:
 }
 
 // Frees dynamically allocated memory for ModuleListEntry
-// Must not be called on embedded modules
 void freeModule(ModuleListEntry *mod) {
-  free(mod->irx);
-  free(mod->size);
+  if ((mod->irx != NULL) && (mod->path[0] != NULL)) {
+    // Only for external modules
+    free(mod->irx);
+    free(mod->size);
+  }
   if (mod->argStr != NULL)
     free(mod->argStr);
 }
@@ -296,7 +311,7 @@ fail:
   return -1;
 }
 
-// Returns 0 if memory card in mc1 is not a formatted memory card
+// Returns 0 if memory card in mc1 is not a formatted PS2 memory card
 // Can be used to avoid loading MX4SIO module
 int getMC1Type() {
   if (mcInit(MC_TYPE_XMC)) {
@@ -359,5 +374,39 @@ char *initSMAPArguments(uint32_t *argLength) {
   *argLength = 19;
   char *argStr = calloc(sizeof(char), 19);
   snprintf(argStr, sizeof(ipArg), "ip=%s", LAUNCHER_OPTIONS.udpbdIp);
+  return argStr;
+}
+
+// up to 4 descriptors, 20 buffers
+static char ps2hddArguments[] = "-o"
+                                "\0"
+                                "4"
+                                "\0"
+                                "-n"
+                                "\0"
+                                "20";
+// Sets arguments for PS2HDD modules
+char *initPS2HDDArguments(uint32_t *argLength) {
+  *argLength = sizeof(ps2hddArguments);
+
+  char *argStr = malloc(sizeof(ps2hddArguments));
+  memcpy(argStr, ps2hddArguments, sizeof(ps2hddArguments));
+  return argStr;
+}
+
+// up to 10 descriptors, 40 buffers
+char ps2fsArguments[] = "-o"
+                        "\0"
+                        "10"
+                        "\0"
+                        "-n"
+                        "\0"
+                        "40";
+// Sets arguments for PS2HDD modules
+char *initPS2FSArguments(uint32_t *argLength) {
+  *argLength = sizeof(ps2fsArguments);
+
+  char *argStr = malloc(sizeof(ps2fsArguments));
+  memcpy(argStr, ps2fsArguments, sizeof(ps2fsArguments));
   return argStr;
 }

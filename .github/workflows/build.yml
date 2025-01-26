@@ -7,7 +7,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ghcr.io/ps2homebrew/ps2homebrew:main@sha256:6f9370f3437840c438616e2abb16131a485cac57eb928b941e22783c57baf985
+    container: ghcr.io/ps2homebrew/ps2homebrew:main
     steps:
     - uses: actions/checkout@v4
 
@@ -22,8 +22,9 @@ jobs:
         make
         make cleanobj
         make STANDALONE=1
+        make copy
 
-    - name: Upload ELF
+    - name: Upload binaries
       uses: actions/upload-artifact@v4
       if: steps.make.outcome == 'success'
       with:
@@ -31,13 +32,15 @@ jobs:
         path: |
           nhddl-*.elf
           !nhddl-*_unc.elf
+          modules/*.irx
 
-    - name: Upload YAML examples
+    - name: Upload README.md and YAML examples
       if: steps.make.outcome == 'success'
       uses: actions/upload-artifact@v4
       with:
         name: examples
         path: |
+          README.md
           examples/*.yaml
 
   release:
@@ -64,7 +67,7 @@ jobs:
       run: |
         mv nhddl/nhddl-${{ env.GIT_VERSION }}.elf nhddl.elf
         mv nhddl/nhddl-${{ env.GIT_VERSION }}-standalone.elf nhddl-standalone.elf
-        zip -r nhddl-${{ env.GIT_VERSION }}.zip nhddl.elf nhddl-standalone.elf examples
+        zip -r nhddl-${{ env.GIT_VERSION }}.zip nhddl.elf nhddl-standalone.elf examples README.md
 
     - uses: "marvinpinto/action-automatic-releases@latest"
       if: github.ref == 'refs/heads/main'

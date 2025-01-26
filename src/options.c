@@ -10,8 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-int parseOptionsFile(ArgumentList *result, FILE *file, char deviceNumber);
-int loadArgumentList(ArgumentList *options, char *filePath);
+int loadArgumentList(ArgumentList *options, struct DeviceMapEntry *device, char *filePath);
+int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *device);
 void appendArgument(ArgumentList *target, Argument *arg);
 Argument *newArgument(char *argName, char *value);
 uint32_t getTimestamp();
@@ -20,22 +20,12 @@ const char BASE_CONFIG_PATH[] = "/nhddl";
 const size_t BASE_CONFIG_PATH_LEN = sizeof(BASE_CONFIG_PATH) / sizeof(char);
 
 const char globalOptionsPath[] = "/global.yaml";
-#define MAX_GLOBAL_OPTS_LEN (MASS_PLACEHOLDER_LEN + BASE_CONFIG_PATH_LEN + (sizeof(globalOptionsPath) / sizeof(char)))
-
 const char lastTitlePath[] = "/lastTitle.bin";
-#define MAX_LAST_TITLE_LEN (MASS_PLACEHOLDER_LEN + BASE_CONFIG_PATH_LEN + (sizeof(lastTitlePath) / sizeof(char)))
 
 // Writes full path to targetFileName into targetPath.
 // If targetFileName is NULL, will return path to config directory
 void buildConfigFilePath(char *targetPath, const char *targetMountpoint, const char *targetFileName) {
-  if (targetMountpoint[4] == ':') {
-    strncpy(targetPath, targetMountpoint, 5);
-    targetPath[5] = '\0';
-  } else { // Handle numbered devices
-    strncpy(targetPath, targetMountpoint, 6);
-    targetPath[6] = '\0';
-  }
-
+  strcpy(targetPath, targetMountpoint);
   strcat(targetPath, BASE_CONFIG_PATH); // Append base config path
   if (targetFileName != NULL) {
     // Append / to path if targetFileName doesn't have it already
@@ -50,18 +40,21 @@ void buildConfigFilePath(char *targetPath, const char *targetMountpoint, const c
 // Searches for the latest file across all mounted BDM devices
 int getLastLaunchedTitle(char *titlePath) {
   printf("Reading last launched title\n");
-  char targetPath[MAX_LAST_TITLE_LEN];
+  char targetPath[PATH_MAX];
   targetPath[0] = '\0';
-  buildConfigFilePath(targetPath, MASS_PLACEHOLDER, lastTitlePath);
 
   uint32_t maxTimestamp = 0;
   uint32_t timestamp = 0;
   size_t fsize = 0;
-  for (int i = 0; i < MAX_MASS_DEVICES; i++) {
-    if (deviceModeMap[i].mode == MODE_NONE) {
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    if (deviceModeMap[i].mode == MODE_NONE || deviceModeMap[i].mountpoint == NULL) {
       break;
     }
-    targetPath[4] = i + '0';
+
+    if (deviceModeMap[i].metadev) // Fallback to metadata device if set
+      buildConfigFilePath(targetPath, deviceModeMap[i].metadev->mountpoint, lastTitlePath);
+    else
+      buildConfigFilePath(targetPath, deviceModeMap[i].mountpoint, lastTitlePath);
 
     // Open last launched title file and read it
     int fd = open(targetPath, O_RDONLY);
@@ -94,14 +87,20 @@ int getLastLaunchedTitle(char *titlePath) {
     }
     close(fd);
   }
+  if (targetPath[0] == '\0')
+    return -ENOENT;
   return 0;
 }
 
 // Writes last launched title path into lastTitle file on title mountpoint
-int updateLastLaunchedTitle(char *titlePath) {
+int updateLastLaunchedTitle(struct DeviceMapEntry *device, char *titlePath) {
+  if (device->metadev) { // Fallback to metadata device if set
+    device = device->metadev;
+  }
+
   printf("Writing last launched title as %s\n", titlePath);
-  char targetPath[MAX_LAST_TITLE_LEN];
-  buildConfigFilePath(targetPath, titlePath, NULL);
+  char targetPath[PATH_MAX];
+  buildConfigFilePath(targetPath, device->mountpoint, NULL);
 
   // Make sure config directory exists
   struct stat st;
@@ -129,9 +128,11 @@ int updateLastLaunchedTitle(char *titlePath) {
   }
 
   // Write path without the mountpoint
-  int mountpointLen = 5;
-  if (titlePath[5] == ':') {
-    mountpointLen = 6;
+  int mountpointLen = getRelativePathIdx(titlePath);
+  if (mountpointLen < 0) {
+    printf("ERROR: Failed to get mountpoint length\n");
+    close(fd);
+    return -EIO;
   }
 
   size_t writeLen = strlen(titlePath) + 1 - mountpointLen;
@@ -145,11 +146,14 @@ int updateLastLaunchedTitle(char *titlePath) {
 }
 
 // Generates ArgumentList from global config file located at targetMounpoint (usually ISO full path)
-int getGlobalLaunchArguments(ArgumentList *result, const char *targetMountpoint) {
-  char targetPath[MAX_GLOBAL_OPTS_LEN];
-  buildConfigFilePath(targetPath, targetMountpoint, globalOptionsPath);
-  int ret = loadArgumentList(result, targetPath);
+int getGlobalLaunchArguments(ArgumentList *result, struct DeviceMapEntry *device) {
+  if (device->metadev) { // Fallback to metadata device if set
+    device = device->metadev;
+  }
 
+  char targetPath[PATH_MAX];
+  buildConfigFilePath(targetPath, device->mountpoint, globalOptionsPath);
+  int ret = loadArgumentList(result, device, targetPath);
   Argument *curArg = result->first;
   while (curArg != NULL) {
     curArg->isGlobal = 1;
@@ -160,9 +164,14 @@ int getGlobalLaunchArguments(ArgumentList *result, const char *targetMountpoint)
 
 // Generates ArgumentList from global and title-specific config file
 int getTitleLaunchArguments(ArgumentList *result, Target *target) {
+  struct DeviceMapEntry *device = target->device;
+  if (device->metadev) { // Fallback to metadata device if set
+    device = device->metadev;
+  }
+
   printf("Looking for title-specific config for %s (%s)\n", target->name, target->id);
   char targetPath[PATH_MAX + 1];
-  buildConfigFilePath(targetPath, target->fullPath, NULL);
+  buildConfigFilePath(targetPath, device->mountpoint, NULL);
   // Determine actual title options file from config directory contents
   DIR *directory = opendir(targetPath);
   if (directory == NULL) {
@@ -177,7 +186,7 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
     if (entry->d_type != DT_DIR) {
       // Find file that starts with ISO name (without the extension)
       if (!strncmp(entry->d_name, target->name, strlen(target->name))) {
-        buildConfigFilePath(targetPath, target->fullPath, entry->d_name);
+        buildConfigFilePath(targetPath, device->mountpoint, entry->d_name);
         break;
       }
     }
@@ -191,7 +200,7 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
 
   // Load arguments
   printf("Loading title-specific config from %s\n", targetPath);
-  int ret = loadArgumentList(result, targetPath);
+  int ret = loadArgumentList(result, device, targetPath);
   if (ret) {
     printf("ERROR: Failed to load argument list: %d\n", ret);
   }
@@ -203,9 +212,14 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
 // '$' before the argument name is used as 'disabled' flag.
 // Empty value means that the argument is empty, but still should be used without the value.
 int updateTitleLaunchArguments(Target *target, ArgumentList *options) {
+  struct DeviceMapEntry *device = target->device;
+  if (device->metadev) { // Fallback to metadata device if set
+    device = device->metadev;
+  }
+
   // Build file path
   char lineBuffer[PATH_MAX + 1];
-  buildConfigFilePath(lineBuffer, target->fullPath, target->name);
+  buildConfigFilePath(lineBuffer, device->mountpoint, target->name);
   strcat(lineBuffer, ".yaml");
   printf("Saving title-specific config to %s\n", lineBuffer);
 
@@ -226,7 +240,12 @@ int updateTitleLaunchArguments(Target *target, ArgumentList *options) {
     // Skip enabled global arguments
     // Write disabled global arguments as disabled empty arguments
     if (!tArg->isGlobal) {
-      len = sprintf(lineBuffer, "%s%s: %s\n", (tArg->isDisabled) ? "$" : "", tArg->arg, tArg->value);
+      // Check if arg is a file path and trim mountpoint
+      len = getRelativePathIdx(tArg->value);
+      if (len > 0)
+        len = sprintf(lineBuffer, "%s%s: %s\n", (tArg->isDisabled) ? "$" : "", tArg->arg, &tArg->value[len]);
+      else
+        len = sprintf(lineBuffer, "%s%s: %s\n", (tArg->isDisabled) ? "$" : "", tArg->arg, tArg->value);
     } else if (tArg->isDisabled) {
       len = sprintf(lineBuffer, "$%s:\n", tArg->arg);
     }
@@ -244,7 +263,7 @@ out:
 }
 
 // Parses options file into ArgumentList
-int loadArgumentList(ArgumentList *options, char *filePath) {
+int loadArgumentList(ArgumentList *options, struct DeviceMapEntry *device, char *filePath) {
   // Open options file
   FILE *file = fopen(filePath, "r");
   if (file == NULL) {
@@ -257,11 +276,8 @@ int loadArgumentList(ArgumentList *options, char *filePath) {
   options->first = NULL;
   options->last = NULL;
 
-  // Get driver device number (will be used by Neutrino)
-  char deviceNumber = deviceModeMap[filePath[4] - '0'].index + '0';
-
   // Parse options file
-  if (parseOptionsFile(options, file, deviceNumber)) {
+  if (parseOptionsFile(options, file, device)) {
     fclose(file);
     freeArgumentList(options);
     return -EIO;
@@ -272,8 +288,8 @@ int loadArgumentList(ArgumentList *options, char *filePath) {
 }
 
 // Parses file into ArgumentList. Result may contain parsed arguments even if an error is returned.
-// Replaces 'X' in argument values that start with MASS_PLACEHOLDER with the deviceNumber
-int parseOptionsFile(ArgumentList *result, FILE *file, char deviceNumber) {
+// Adds mountpoint with the deviceNumber to arguments values that start with \ or /
+int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *device) {
   // Our lines will mostly consist of file paths, which aren't likely to exceed 300 characters due to 255 character limit in exFAT path component
   char lineBuffer[PATH_MAX + 1];
   lineBuffer[0] = '\0';
@@ -361,16 +377,18 @@ int parseOptionsFile(ArgumentList *result, FILE *file, char deviceNumber) {
     if (!strcmp(COMPAT_MODES_ARG, arg->arg) && valueLength > CM_NUM_MODES + 1) {
       // Always allocate at least (CM_NUM_MODES + 1) bytes for compatibility mode string
       arg->value = calloc(sizeof(char), CM_NUM_MODES + 1);
+    } else if ((device != NULL) && ((lineBuffer[startIdx] == '/') || (lineBuffer[startIdx] == '\\'))) {
+      // Add device mountpoint to argument value if path starts with \ or /
+      arg->value = calloc(sizeof(char), valueLength + 1 + strlen(device->mountpoint));
+      // Replace current mountpoint with device number.
+      strcpy(arg->value, device->mountpoint);
+      arg->value[getDeviceNumberIdx(arg->value)] = device->index + '0';
     } else {
       arg->value = calloc(sizeof(char), valueLength + 1);
     }
 
     // Copy the value and add argument to the list
-    strncpy(arg->value, &lineBuffer[startIdx], valueLength);
-    // Replace X in path with the actual device number if argument starts with MASS_PLACEHOLDER
-    if (!strncmp(arg->value, MASS_PLACEHOLDER, MASS_PLACEHOLDER_LEN-1)) {
-      arg->value[4] = deviceNumber;
-    }
+    strncat(arg->value, &lineBuffer[startIdx], valueLength);
     appendArgument(result, arg);
 
   next:
@@ -563,7 +581,7 @@ ArgumentList *loadLaunchArgumentLists(Target *target) {
   int res = 0;
   // Initialize global argument list
   ArgumentList *globalArguments = calloc(sizeof(ArgumentList), 1);
-  if ((res = getGlobalLaunchArguments(globalArguments, target->fullPath))) {
+  if ((res = getGlobalLaunchArguments(globalArguments, target->device))) {
     printf("WARN: Failed to load global launch arguments: %d\n", res);
   }
   // Initialize title list and merge global into it

@@ -1,9 +1,9 @@
 #ifndef _OPTIONS_H_
 #define _OPTIONS_H_
 
-#include <iso.h>
+#include "devices.h"
+#include "target.h"
 #include <ps2sdkapi.h>
-
 
 // Location of configuration directory relative to storage mountpoint
 extern const char BASE_CONFIG_PATH[];
@@ -44,7 +44,7 @@ typedef struct Argument {
 
 // A linked list of options from config file
 typedef struct {
-  int total;              // Total number of arguments
+  int total;       // Total number of arguments
   Argument *first; // First target
   Argument *last;  // Last target
 } ArgumentList;
@@ -58,11 +58,11 @@ void buildConfigFilePath(char *targetPath, const char *targetMountpoint, const c
 int getLastLaunchedTitle(char *titlePath);
 
 // Writes last launched title path into lastTitle file on title mountpoint
-int updateLastLaunchedTitle(char *titlePath);
+int updateLastLaunchedTitle(struct DeviceMapEntry *device, char *titlePath);
 
-// Generates ArgumentList from global config file located at targetMounpoint (usually ISO full path)
+// Generates ArgumentList from global config file located on device
 // Will reinitialize result without clearing existing contents. On error, result will contain invalid pointer.
-int getGlobalLaunchArguments(ArgumentList *result, const char *targetMountpoint);
+int getGlobalLaunchArguments(ArgumentList *result, struct DeviceMapEntry *device);
 
 // Generates ArgumentList from title-specific config file.
 // Will reinitialize result without clearing existing contents. On error, result will contain invalid pointer.
@@ -104,6 +104,6 @@ void insertCompatModeArg(ArgumentList *target, uint8_t modes);
 ArgumentList *loadLaunchArgumentLists(Target *target);
 
 // Parses options file into ArgumentList
-int loadArgumentList(ArgumentList *options, char *filePath);
+int loadArgumentList(ArgumentList *options, struct DeviceMapEntry *device, char *filePath);
 
 #endif
