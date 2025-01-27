@@ -1,6 +1,6 @@
 // Implements support for MMCE devices
-#include "devices.h"
 #include "common.h"
+#include "devices.h"
 #include "gui.h"
 #include <errno.h>
 #include <kernel.h>
@@ -31,8 +31,7 @@ int initMMCEDevices(int newDeviceIdx) {
       deviceModeMap[newDeviceIdx].mode = MODE_MMCE;
       deviceModeMap[newDeviceIdx].index = i;
       deviceModeMap[newDeviceIdx].mountpoint = strdup(mmceMountpoint);
-      if (LAUNCHER_OPTIONS.mode & MODE_MMCE) // Set scan function only if MMCE is one of the target modes
-        deviceModeMap[newDeviceIdx].scan = &findISO;
+      deviceModeMap[newDeviceIdx].scan = &findISO;
 
       deviceCount++;
       newDeviceIdx++;
