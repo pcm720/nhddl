@@ -278,7 +278,7 @@ int tryFile(char *filepath) {
   return 0;
 }
 
-// Loads NHDDL options from optionsFile on memory card
+// Loads NHDDL options from optionsFile
 void initOptions(char *cwdPath) {
   LAUNCHER_OPTIONS.vmode = VMODE_NONE;
   LAUNCHER_OPTIONS.mode = MODE_ALL;
@@ -298,9 +298,8 @@ void initOptions(char *cwdPath) {
   struct DeviceMapEntry *device;
   for (int i = 0; i < MAX_DEVICES; i++) {
     lineBuffer[0] = '\0';
-    if ((i > 1) && (deviceModeMap[i].mode == MODE_NONE)) {
+    if (deviceModeMap[i].mode == MODE_NONE)
       break;
-    }
 
     if (deviceModeMap[i].metadev)
       device = deviceModeMap[i].metadev;
@@ -316,13 +315,20 @@ void initOptions(char *cwdPath) {
     }
   }
 
-  // Fallback to memory cards
+  // Fallback to memory cards and MMCE devices
   for (int i = 0; i < 2; i++) {
-    NEUTRINO_ELF_PATH[0] = '\0';
+    lineBuffer[0] = '\0';
+
+    // Try MMCE first
+    sprintf(lineBuffer, "mmce%d:%s", i, nhddlStorageFallbackPath);
+    if (!tryFile(lineBuffer))
+      break;
+
+    // Try memory card paths
     for (int j = 0; j < (sizeof(nhddlFallbackPaths) / sizeof(char *)); j++) {
       nhddlFallbackPaths[j][2] = i + '0';
       if (!tryFile(nhddlFallbackPaths[j])) {
-        strcpy(NEUTRINO_ELF_PATH, nhddlFallbackPaths[j]);
+        strcpy(lineBuffer, nhddlFallbackPaths[j]);
         break;
       }
     }
@@ -377,9 +383,8 @@ int findNeutrinoELF(char *cwdPath) {
   struct DeviceMapEntry *device;
   for (int i = 0; i < MAX_DEVICES; i++) {
     NEUTRINO_ELF_PATH[0] = '\0';
-    if ((i > 1) && (deviceModeMap[i].mode == MODE_NONE)) {
+    if (deviceModeMap[i].mode == MODE_NONE)
       break;
-    }
 
     if (deviceModeMap[i].metadev)
       device = deviceModeMap[i].metadev;
@@ -389,15 +394,21 @@ int findNeutrinoELF(char *cwdPath) {
     if (device->mountpoint != NULL) {
       strcpy(NEUTRINO_ELF_PATH, device->mountpoint);
       strcat(NEUTRINO_ELF_PATH, neutrinoStorageFallbackPath);
-      if (!tryFile(NEUTRINO_ELF_PATH)) {
+      if (!tryFile(NEUTRINO_ELF_PATH))
         return 0;
-      }
     }
   }
 
-  // Fallback to memory cards
+  // Fallback to memory cards and MMCE devices
   for (int i = 0; i < 2; i++) {
     NEUTRINO_ELF_PATH[0] = '\0';
+
+    // Try MMCE first
+    sprintf(NEUTRINO_ELF_PATH, "mmce%d:%s", i, neutrinoStorageFallbackPath);
+    if (!tryFile(NEUTRINO_ELF_PATH))
+      return 0;
+
+    // Try memory card paths
     for (int j = 0; j < (sizeof(neutrinoMCFallbackPaths) / sizeof(char *)); j++) {
       neutrinoMCFallbackPaths[j][2] = i + '0';
       if (!tryFile(neutrinoMCFallbackPaths[j])) {
