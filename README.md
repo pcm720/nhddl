@@ -301,5 +301,6 @@ DVD/
 </details>
 <details>
     <summary>Title options</summary>
-    <img src="img/options.png">
+    <img src="img/options1.png">
+    <img src="img/options2.png">
 </details>
