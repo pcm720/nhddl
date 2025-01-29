@@ -11,9 +11,6 @@
 // Loads 32-bit RGBA PNG texture from memory into GSTEXTURE and uploads it to GS VRAM.
 int gsKit_texture_png_mem(GSGLOBAL *gsGlobal, GSTEXTURE *texture, void *buf, size_t size);
 
-// Initialized in gui.c
-extern GSGLOBAL *gsGlobal;
-
 // Array of initialized GS textures containing font pages
 GSTEXTURE **fontPages;
 // Graphics textures

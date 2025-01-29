@@ -1,7 +1,23 @@
 #ifndef _GUI_GRAPHICS_H_
 #define _GUI_GRAPHICS_H_
 
+#include <gsKit.h>
 #include <stdint.h>
+
+// Predefined colors
+// static const uint64_t ColorWhite = GS_SETREG_RGBA(0xFF, 0xFF, 0xFF, 0x80);
+static const uint64_t ColorBlack = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x80);
+static const uint64_t ColorSelected = GS_SETREG_RGBA(0x00, 0x72, 0xA0, 0x80);
+static const uint64_t ColorGrey = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80);
+
+static const uint64_t FontMainColor = ColorGrey;
+static const uint64_t BGColor = ColorBlack;
+static const uint64_t HeaderTextColor = GS_SETREG_RGBA(0x60, 0x60, 0x60, 0x80);
+static const uint64_t WarnTextColor = GS_SETREG_RGBA(0x60, 0x60, 0x00, 0x80);
+static const uint64_t ErrorTextColor = GS_SETREG_RGBA(0x60, 0x00, 0x00, 0x80);
+
+// Initialized in gui.c
+extern GSGLOBAL *gsGlobal;
 
 #define ALIGN_LEFT 0 << 0
 #define ALIGN_RIGHT 1 << 0

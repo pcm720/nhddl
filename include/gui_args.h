@@ -3,36 +3,41 @@
 
 #include "options.h"
 
-// Compatibility modes definitions
-typedef struct CompatiblityModeMap {
-  int mode;
-  char value;
-  char *name;
-} CompatiblityModeMap;
+typedef enum {
+  ACTION_NONE,          // Will do nothing
+  ACTION_NEXT_ARGUMENT, // Switch to the next argument in chain
+  ACTION_PREV_ARGUMENT, // Switch to the previous argument in chain
+} ActionType;
 
-#define COMPAT_MODES_ARG "gc"
-#define CM_NUM_MODES (sizeof(COMPAT_MODE_MAP) / sizeof(CompatiblityModeMap))
-#define CM_IOP_FAST_READS 1 << 0
-#define CM_IOP_SYNC_READS 1 << 2
-#define CM_EE_UNHOOK_SYSCALLS 1 << 3
-#define CM_IOP_EMULATE_DVD_DL 1 << 5
-#define CM_IOP_FIX_BUFFER_OVERRUN 1 << 7
-static const CompatiblityModeMap COMPAT_MODE_MAP[] = {
-    {CM_IOP_FAST_READS, '0', "IOP: Fast reads"},
-    {CM_IOP_SYNC_READS, '2', "IOP: Sync reads"},
-    {CM_EE_UNHOOK_SYSCALLS, '3', "EE : Unhook syscalls"},
-    {CM_IOP_EMULATE_DVD_DL, '5', "IOP: Emulate DVD-DL"},
-    {CM_IOP_FIX_BUFFER_OVERRUN, '7', "IOP: Fix game buffer overrun"},
-};
+struct NeutrinoArgument;
 
-// Parses compatibility mode argument value into a bitmask
-uint8_t parseCompatModes(char *stringValue);
+// Must draw within specified limits and
+// return the bottom Y coordinate of the last line.
+typedef int (*drawFunc)(struct NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int maxWidth, int maxHeight);
 
-// Stores compatibility mode from bitmask into argument value and sets isDisabled flag accordingly.
-// Target must be at least 6 bytes long, including null terminator
-void storeCompatModes(Argument *target, uint8_t modes);
+// Must process given input and return one of ActionType
+typedef ActionType (*handleInputFunc)(struct NeutrinoArgument *arg, int input);
 
-// Inserts a new compat mode arg into the argument list
-void insertCompatModeArg(ArgumentList *target, uint8_t modes);
+// Must find argument in the list (or insert a new one) and store new value
+// Can remove argument if value is empty
+typedef void (*marshalFunc)(struct NeutrinoArgument *arg, ArgumentList *list);
+
+// Must find argument in the list and parse value
+typedef void (*unmarshalFunc)(struct NeutrinoArgument *arg, ArgumentList *list);
+
+typedef struct NeutrinoArgument {
+  const char *name;
+  const char *arg;
+  drawFunc draw;
+  handleInputFunc handleInput;
+  unmarshalFunc unmarshal;
+  marshalFunc marshal;
+  uint8_t state;            // Internal argument state
+  uint8_t activeElementIdx; // Active element index
+} NeutrinoArgument;
+
+// Defined in gui_args.c
+extern NeutrinoArgument uiArguments[];
+extern int uiArgumentsTotal;
 
 #endif
