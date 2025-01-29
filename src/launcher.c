@@ -40,12 +40,6 @@ int assembleArgv(ArgumentList *arguments, char *argv[]) {
   argv[0] = NEUTRINO_ELF_PATH;
   while (curArg != NULL) {
     if (!curArg->isDisabled) {
-      if (!strlen(curArg->value) && !strcmp(COMPAT_MODES_ARG, curArg->arg)) {
-        // Skip empty compatibility mode argument
-        curArg = curArg->next;
-        continue;
-      }
-
       argSize = strlen(curArg->arg) + strlen(curArg->value) + 3; // + \0, = and -
       char *value = calloc(sizeof(char), argSize);
 

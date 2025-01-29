@@ -9,28 +9,6 @@
 extern const char BASE_CONFIG_PATH[];
 extern const size_t BASE_CONFIG_PATH_LEN;
 
-// Compatibility modes definitions
-#define COMPAT_MODES_ARG "gc"
-typedef struct CompatiblityModeMap {
-  int mode;
-  char value;
-  char *name;
-} CompatiblityModeMap;
-
-#define CM_NUM_MODES (sizeof(COMPAT_MODE_MAP) / sizeof(CompatiblityModeMap))
-#define CM_IOP_FAST_READS 1 << 0
-#define CM_IOP_SYNC_READS 1 << 2
-#define CM_EE_UNHOOK_SYSCALLS 1 << 3
-#define CM_IOP_EMULATE_DVD_DL 1 << 5
-#define CM_IOP_FIX_BUFFER_OVERRUN 1 << 7
-static const CompatiblityModeMap COMPAT_MODE_MAP[] = {
-    {CM_IOP_FAST_READS, '0', "IOP: Fast reads"},
-    {CM_IOP_SYNC_READS, '2', "IOP: Sync reads"},
-    {CM_EE_UNHOOK_SYSCALLS, '3', "EE : Unhook syscalls"},
-    {CM_IOP_EMULATE_DVD_DL, '5', "IOP: Emulate DVD-DL"},
-    {CM_IOP_FIX_BUFFER_OVERRUN, '7', "IOP: Fix game buffer overrun"},
-};
-
 // An entry in ArgumentList
 typedef struct Argument {
   char *arg;   // Argument
@@ -76,8 +54,15 @@ int updateTitleLaunchArguments(Target *target, ArgumentList *options);
 // Completely frees ArgumentList. Passed pointer will not be valid after this function executes
 void freeArgumentList(ArgumentList *result);
 
-// Creates new Argument with passed argName and value (without copying)
-Argument *newArgument(char *argName, char *value);
+// Retrieves argument from the list
+Argument *getArgument(ArgumentList *target, const char *argumentName);
+
+// Creates new argument and inserts it into the list
+Argument *insertArgument(ArgumentList *target, const char *argumentName, char *value);
+
+// Creates new Argument with passed argName and value.
+// Copies both argName and value
+Argument *newArgument(const char *argName, char *value);
 
 // Appends arg to the end of target
 void appendArgument(ArgumentList *target, Argument *arg);
@@ -89,16 +74,6 @@ void appendArgumentCopy(ArgumentList *target, Argument *arg);
 // Merges two lists into one, ignoring arguments in the second list that already exist in the first list.
 // Expects result to be initialized with zeroes. All arguments in resulting list are a deep copy of arguments in source lists.
 void mergeArgumentLists(ArgumentList *list1, ArgumentList *list2);
-
-// Parses compatibility mode argument value into a bitmask
-uint8_t parseCompatModes(char *stringValue);
-
-// Stores compatibility mode from bitmask into argument value and sets isDisabled flag accordingly.
-// Target must be at least 6 bytes long, including null terminator
-void storeCompatModes(Argument *target, uint8_t modes);
-
-// Inserts a new compat mode arg into the argument list
-void insertCompatModeArg(ArgumentList *target, uint8_t modes);
 
 // Loads both global and title launch arguments, returning pointer to a merged list
 ArgumentList *loadLaunchArgumentLists(Target *target);

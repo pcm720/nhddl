@@ -13,7 +13,6 @@
 int loadArgumentList(ArgumentList *options, struct DeviceMapEntry *device, char *filePath);
 int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *device);
 void appendArgument(ArgumentList *target, Argument *arg);
-Argument *newArgument(char *argName, char *value);
 uint32_t getTimestamp();
 
 const char BASE_CONFIG_PATH[] = "/nhddl";
@@ -369,15 +368,13 @@ int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *de
       substrIdx--;
     }
 
-    Argument *arg = newArgument(argName, NULL);
+    Argument *arg = newArgument(argName, "");
+    free(argName);
     arg->isDisabled = isDisabled;
 
     // Allocate memory for the argument value
     size_t valueLength = substrIdx - startIdx;
-    if (!strcmp(COMPAT_MODES_ARG, arg->arg) && valueLength > CM_NUM_MODES + 1) {
-      // Always allocate at least (CM_NUM_MODES + 1) bytes for compatibility mode string
-      arg->value = calloc(sizeof(char), CM_NUM_MODES + 1);
-    } else if ((device != NULL) && ((lineBuffer[startIdx] == '/') || (lineBuffer[startIdx] == '\\'))) {
+    if ((device != NULL) && ((lineBuffer[startIdx] == '/') || (lineBuffer[startIdx] == '\\'))) {
       // Add device mountpoint to argument value if path starts with \ or /
       arg->value = calloc(sizeof(char), valueLength + 1 + strlen(device->mountpoint));
       // Replace current mountpoint with device number.
@@ -404,11 +401,13 @@ int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *de
 // Completely frees Argument and returns pointer to a previous argument in the list
 Argument *freeArgument(Argument *arg) {
   Argument *prev = NULL;
-  free(arg->arg);
-  free(arg->value);
-  if (arg->prev != NULL) {
+  if (arg->arg)
+    free(arg->arg);
+  if (arg->value)
+    free(arg->value);
+  if (arg->prev)
     prev = arg->prev;
-  }
+
   free(arg);
   return prev;
 }
@@ -431,8 +430,10 @@ Argument *copyArgument(Argument *src) {
   Argument *copy = calloc(sizeof(Argument), 1);
   copy->isGlobal = src->isGlobal;
   copy->isDisabled = src->isDisabled;
-  copy->arg = strdup(src->arg);
-  copy->value = strdup(src->value);
+  if (src->arg)
+    copy->arg = strdup(src->arg);
+  if (src->value)
+    copy->value = strdup(src->value);
   return copy;
 }
 
@@ -440,23 +441,31 @@ Argument *copyArgument(Argument *src) {
 // Keeps next and prev pointers.
 void replaceArgument(Argument *dst, Argument *src) {
   // Do a deep copy for argument and value
-  free(dst->arg);
-  free(dst->value);
+  if (dst->arg)
+    free(dst->arg);
+  if (dst->value)
+    free(dst->value);
   dst->isGlobal = src->isGlobal;
   dst->isDisabled = src->isDisabled;
-  dst->arg = strdup(src->arg);
-  dst->value = strdup(src->value);
+  if (src->arg)
+    dst->arg = strdup(src->arg);
+  if (src->value)
+    dst->value = strdup(src->value);
 }
 
-// Creates new Argument with passed argName and value (without copying)
-Argument *newArgument(char *argName, char *value) {
+// Creates new Argument with passed argName and value.
+// Copies both argName and value
+Argument *newArgument(const char *argName, char *value) {
   Argument *arg = malloc(sizeof(Argument));
-  arg->arg = argName;
-  arg->value = value;
   arg->isDisabled = 0;
   arg->isGlobal = 0;
   arg->prev = NULL;
   arg->next = NULL;
+  if (argName)
+    arg->arg = strdup(argName);
+  if (value)
+    arg->value = strdup(value);
+
   return arg;
 }
 
@@ -464,16 +473,7 @@ Argument *newArgument(char *argName, char *value) {
 void appendArgument(ArgumentList *target, Argument *arg) {
   target->total++;
 
-  // Always put compatibility mode argument first
-  if (!strcmp(COMPAT_MODES_ARG, arg->arg)) {
-    arg->next = target->first;
-    target->first = arg;
-    if (target->last == NULL)
-      target->last = arg;
-    return;
-  }
-
-  if (target->first == NULL) {
+  if (!target->first) {
     target->first = arg;
   } else {
     target->last->next = arg;
@@ -507,8 +507,8 @@ void mergeArgumentLists(ArgumentList *list1, ArgumentList *list2) {
       // If result already contains argument with the same name, skip it
       if (!strcmp(curArg2->arg, curArg1->arg)) {
         isDuplicate = 1;
-        // If argument is not a compat mode flag, disabled and has no value
-        if (strcmp(COMPAT_MODES_ARG, curArg2->arg) && curArg1->isDisabled && (curArg1->value[0] == '\0')) {
+        // If argument is disabled and has no value
+        if (curArg1->isDisabled && (curArg1->value[0] == '\0')) {
           // Replace element in list1 with disabled element from list2
           replaceArgument(curArg1, curArg2);
           curArg1->isDisabled = 1;
@@ -525,55 +525,23 @@ void mergeArgumentLists(ArgumentList *list1, ArgumentList *list2) {
   }
 }
 
-// Parses compatibility mode argument value into a bitmask
-uint8_t parseCompatModes(char *stringValue) {
-  uint8_t result = 0;
-  for (int i = 0; i < strlen(stringValue); i++) {
-    for (int j = 0; j < CM_NUM_MODES; j++) {
-      if (stringValue[i] == COMPAT_MODE_MAP[j].value) {
-        result |= COMPAT_MODE_MAP[j].mode;
-        break;
-      }
+// Retrieves argument from the list
+Argument *getArgument(ArgumentList *target, const char *argumentName) {
+  Argument *arg = target->first;
+  while (arg != NULL) {
+    if (!strcmp(arg->arg, argumentName)) {
+      return arg;
     }
+    arg = arg->next;
   }
-  return result;
+  return NULL;
 }
 
-// Stores compatibility mode from bitmask into argument value and sets isDisabled flag accordingly.
-// Target must be at least 6 bytes long, including null terminator
-void storeCompatModes(Argument *target, uint8_t modes) {
-  int pos = 0;
-
-  for (int i = 0; i < CM_NUM_MODES; i++) {
-    if (modes & COMPAT_MODE_MAP[i].mode) {
-      target->value[pos] = COMPAT_MODE_MAP[i].value;
-      pos++;
-    }
-  }
-
-  target->value[pos] = '\0';
-
-  if (!pos)
-    target->isDisabled = 1;
-  else
-    target->isDisabled = 0;
-}
-
-// Inserts a new compat mode arg into the argument list
-void insertCompatModeArg(ArgumentList *target, uint8_t modes) {
-  Argument *newArg = calloc(sizeof(Argument), 1);
-  newArg->arg = strdup(COMPAT_MODES_ARG);
-
-  newArg->value = calloc(sizeof(char), CM_NUM_MODES + 1);
-  storeCompatModes(newArg, modes);
-
-  target->total++;
-
-  // Put at the start of the list
-  newArg->next = target->first;
-  target->first = newArg;
-  if (target->last == NULL)
-    target->last = newArg;
+// Creates new argument and inserts it into the list
+Argument *insertArgument(ArgumentList *target, const char *argumentName, char *value) {
+  Argument *arg = newArgument(argumentName, value);
+  appendArgument(target, arg);
+  return arg;
 }
 
 // Loads both global and title launch arguments, returning pointer to a merged list

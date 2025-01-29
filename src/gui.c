@@ -1,5 +1,6 @@
 #include "gui.h"
 #include "common.h"
+#include "gui_args.h"
 #include "gui_graphics.h"
 #include "launcher.h"
 #include "options.h"
@@ -23,8 +24,8 @@
 void closeUI();
 int uiLoop(TargetList *titles);
 int uiTitleOptionsLoop(Target *title);
+int uiArgumentListLoop(Target *target, ArgumentList *titleArguments);
 void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover);
-void drawArgumentList(ArgumentList *arguments, int baseX, uint8_t compatModes, int selectedArgIdx);
 void uiLaunchTitle(Target *target, ArgumentList *arguments);
 void drawGameID(const char *game_id);
 int createSplashThread();
@@ -38,18 +39,6 @@ static char lineBuffer[255];
 // Path relative to storage device mountpoint.
 // Used to load cover art
 static const char artPath[] = "/ART";
-
-// Predefined colors
-// static const uint64_t ColorWhite = GS_SETREG_RGBA(0xFF, 0xFF, 0xFF, 0x80);
-static const uint64_t ColorBlack = GS_SETREG_RGBA(0x00, 0x00, 0x00, 0x80);
-static const uint64_t ColorSelected = GS_SETREG_RGBA(0x00, 0x72, 0xA0, 0x80);
-static const uint64_t ColorGrey = GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80);
-
-static const uint64_t FontMainColor = ColorGrey;
-static const uint64_t BGColor = ColorBlack;
-static const uint64_t HeaderTextColor = GS_SETREG_RGBA(0x60, 0x60, 0x60, 0x80);
-static const uint64_t WarnTextColor = GS_SETREG_RGBA(0x60, 0x60, 0x00, 0x80);
-static const uint64_t ErrorTextColor = GS_SETREG_RGBA(0x60, 0x00, 0x00, 0x80);
 
 // Cover art sprite coordinates
 // Initialized during uiInit from screen width and height
@@ -272,14 +261,10 @@ int uiLoop(TargetList *titles) {
       return -1;
     } else if (input & PAD_UP) {
       // Point to the previous title
-      selectedTitleIdx--;
-      if (selectedTitleIdx < 0)
-        selectedTitleIdx = titles->total - 1; // Wrap around
+      selectedTitleIdx = ((selectedTitleIdx - 1) + titles->total) % titles->total;
     } else if (input & PAD_DOWN) {
       // Advance to the next title
-      selectedTitleIdx++;
-      if (selectedTitleIdx > titles->total - 1)
-        selectedTitleIdx = 0; // Wrap around
+      selectedTitleIdx = (selectedTitleIdx + 1) % titles->total;
     } else if (input & PAD_R1) {
       // Switch to the next page
       if (selectedTitleIdx == titles->total - 1) {
@@ -302,7 +287,7 @@ int uiLoop(TargetList *titles) {
       input = -1;    // Force UI loop to wait once uiTitleOptionsLoop returns
       prevInput = 0; // Reset previous input
       // Enter title options screen
-      if ((res = uiTitleOptionsLoop(curTarget))) {
+      if ((res = uiTitleOptionsLoop(curTarget)) < 0) {
         // Something went wrong, main loop must exit immediately
         return -1;
       }
@@ -322,15 +307,15 @@ void drawTitleListFooter(int baseX) {
   int baseY = gsGlobal->Height - footerHeight;
   drawIconWindow(baseX, baseY, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
   drawIconWindow(baseX + getIconWidth(ICON_CIRCLE), baseY, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
-  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), baseY, 0, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER,
+  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), baseY, 0, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_VCENTER,
                  "Launch title");
 
   drawIconWindow(0, baseY, gsGlobal->Width - getLineWidth("Exit") - 5, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_START);
-  drawTextWindow(5 + getIconWidth(ICON_START), baseY, gsGlobal->Width, gsGlobal->Height, 0, HeaderTextColor, ALIGN_CENTER, "Exit");
+  drawTextWindow(5 + getIconWidth(ICON_START), baseY, gsGlobal->Width, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_CENTER, "Exit");
 
   drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Title options"), baseY, gsGlobal->Width - baseX,
                  gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
-  drawTextWindow(0, baseY, gsGlobal->Width - baseX, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT, "Title options");
+  drawTextWindow(0, baseY, gsGlobal->Width - baseX, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT, "Title options");
 }
 
 // Draws title list
@@ -381,7 +366,7 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
 
   // Draw cover art if it exists
   if (selectedTitleCover != NULL) {
-    // Temproraily disable alpha blending
+    // Temporaily disable alpha blending
     // Some PNGs require inverted alpha channel value to display properly
     // Since cover art has nothing to blend, we can bypass the issue altogether
     gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
@@ -397,7 +382,7 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
 void drawTitleOptionsFooter(int baseX) {
   drawIconWindow(baseX, gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
   drawIconWindow(baseX + getIconWidth(ICON_CIRCLE), gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
-  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0,
+  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), gsGlobal->Height - 1 - footerHeight, 0, gsGlobal->Height, 0,
                  HeaderTextColor, ALIGN_VCENTER, "Toggle");
 
   drawIconWindow((gsGlobal->Width * 3 / 8) - getIconWidth(ICON_SQUARE), gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height, 0,
@@ -407,55 +392,155 @@ void drawTitleOptionsFooter(int baseX) {
 
   drawIconWindow((gsGlobal->Width * 5 / 8), gsGlobal->Height - footerHeight, gsGlobal->Width - getLineWidth("Save") - 5, gsGlobal->Height, 0,
                  FontMainColor, ALIGN_VCENTER, ICON_START);
-  drawTextWindow((gsGlobal->Width * 5 / 8) + 5 + getIconWidth(ICON_START), gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height, 0,
+  drawTextWindow((gsGlobal->Width * 5 / 8) + 5 + getIconWidth(ICON_START), gsGlobal->Height - 1 - footerHeight, gsGlobal->Width, gsGlobal->Height, 0,
                  HeaderTextColor, ALIGN_VCENTER, "Save");
 
   drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Cancel"), gsGlobal->Height - footerHeight,
                  gsGlobal->Width - baseX, gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
-  drawTextWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width - baseX, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT,
+  drawTextWindow(0, gsGlobal->Height - 1 - footerHeight, gsGlobal->Width - baseX, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT,
                  "Cancel");
+
+  drawTextWindow(0, gsGlobal->Height - 1 - footerHeight - getFontLineHeight() / 2, gsGlobal->Width, gsGlobal->Height, 0, HeaderTextColor,
+                 ALIGN_TOP | ALIGN_HCENTER, "Switch views");
+  drawIconWindow(0, gsGlobal->Height - footerHeight - getFontLineHeight() / 2, (gsGlobal->Width - getLineWidth("Switch views")) / 2 - 5,
+                 gsGlobal->Height, 0, FontMainColor, ALIGN_TOP | ALIGN_RIGHT, ICON_L1);
+  drawIconWindow((gsGlobal->Width + getLineWidth("Switch views")) / 2 + 5, gsGlobal->Height - footerHeight - getFontLineHeight() / 2, gsGlobal->Width,
+                 gsGlobal->Height, 0, FontMainColor, ALIGN_TOP | ALIGN_LEFT, ICON_R1);
 }
 
-// Title options screen handler
+// Draws well-known Neutrino arguments
+// Returns -1 if error occurs
 int uiTitleOptionsLoop(Target *target) {
   int res = 0;
-  uint8_t modes = 0;
 
   // Load arguments from config files
   ArgumentList *titleArguments = loadLaunchArgumentLists(target);
-
-  // Parse compatibility modes
-  if ((titleArguments->total != 0) && !strcmp(COMPAT_MODES_ARG, titleArguments->first->arg)) {
-    modes = parseCompatModes(titleArguments->first->value);
-  } else {
-    // Insert compat mode flag if it doesn't exist
-    // Assuming that compat mode flag always exists makes working with arguments much easier.
-    insertCompatModeArg(titleArguments, modes);
-  }
-
-  // Indexes 0 through CM_NUM_MODES are reserved for compatibility modes
-  int selectedArgIdx = 0;
-  int totalIndexes = (titleArguments->total - 1) + (CM_NUM_MODES - 1);
   int input = 0;
+  int activeArgumentIdx = 0;
 
-  // Always start with the second element since the first
-  // is guaranteed to be a compatibility mode flag
-  Argument *curArgument = titleArguments->first->next;
+  // Parse arguments
+  for (int i = 0; i < (uiArgumentsTotal); i++)
+    uiArguments[i].parse(&uiArguments[i], titleArguments);
 
+  int baseX = keepoutArea + 10;
+  int i = 0;
   while (1) {
     gsKit_clear(gsGlobal, BGColor);
 
     // Draw header
-    int baseX = keepoutArea + 10;
     snprintf(lineBuffer, 255, "%s\n%s", target->name, target->id);
     drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, lineBuffer);
-    drawTextWindow(baseX, headerHeight + 1.5 * getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, FontMainColor, ALIGN_HCENTER,
-                   "Compatibility modes");
+
+    int startY = headerHeight + 1.5 * getFontLineHeight();
+    for (i = 0; i < uiArgumentsTotal; i++) {
+      startY =
+          getFontLineHeight() + uiArguments[i].draw(&uiArguments[i], (i == activeArgumentIdx) ? 1 : 0, baseX, startY, 0, gsGlobal->Width - baseX, 0);
+    }
 
     // Draw footer
     drawTitleOptionsFooter(baseX);
 
-    drawArgumentList(titleArguments, baseX, modes, selectedArgIdx);
+    gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
+    gsKit_sync_flip(gsGlobal);
+
+    // Process user inputs
+    input = waitForInput(-1);
+    if (input & (PAD_L1 | PAD_R1)) {
+      // Show full argument list
+      if ((res = uiArgumentListLoop(target, titleArguments)))
+        goto exit;
+
+      // Re-parse arguments
+      activeArgumentIdx = 0;
+      for (i = 0; i < uiArgumentsTotal; i++)
+        uiArguments[i].parse(&uiArguments[i], titleArguments);
+    } else if (input & PAD_SQUARE) {
+      // Launch title without saving arguments
+      uiLaunchTitle(target, titleArguments);
+      res = -1; // If this was somehow reached, something went terribly wrong
+      goto exit;
+    } else if (input & PAD_START) {
+      updateTitleLaunchArguments(target, titleArguments);
+      goto exit;
+    } else if (input & PAD_TRIANGLE) {
+      // Quit to title list
+      goto exit;
+    } else {
+      switch (uiArguments[activeArgumentIdx].handleInput(&uiArguments[activeArgumentIdx], input)) {
+      case ACTION_CHANGED:
+        uiArguments[activeArgumentIdx].marshal(&uiArguments[activeArgumentIdx], titleArguments);
+        break;
+      case ACTION_NEXT_ARGUMENT:
+        if (activeArgumentIdx < uiArgumentsTotal - 1)
+          activeArgumentIdx++;
+        break;
+      case ACTION_PREV_ARGUMENT:
+        if (activeArgumentIdx > 0)
+          activeArgumentIdx--;
+        break;
+      default:
+      }
+    }
+  }
+exit:
+  freeArgumentList(titleArguments);
+  return res;
+}
+
+// Handles all arguments in arugment list
+// Returns -1 if error occurs, 1 if parent needs to exit to title list
+int uiArgumentListLoop(Target *target, ArgumentList *titleArguments) {
+  int selectedArgIdx = 0;
+  int input = 0;
+
+  Argument *curArgument = titleArguments->first;
+  while (1) {
+    gsKit_clear(gsGlobal, BGColor);
+    int baseX = keepoutArea + 10;
+
+    // Draw header
+    snprintf(lineBuffer, 255, "%s\n%s", target->name, target->id);
+    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, lineBuffer);
+    drawTextWindow(baseX, headerHeight + 1.5 * getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, FontMainColor, ALIGN_HCENTER, "Launch arguments");
+
+    // Draw footer
+    drawTitleOptionsFooter(baseX);
+
+    int startY = headerHeight + 2.5 * getFontLineHeight();
+    int idx = 0;
+
+    // Set number of elements per page according to line height and available screen height
+    int maxArguments = (gsGlobal->Height - startY - footerHeight - getFontLineHeight() / 2) / getFontLineHeight();
+    int curPage = selectedArgIdx / maxArguments;
+
+    snprintf(lineBuffer, 255, "Page %d/%d", curPage + 1, (!titleArguments->total) ? 1 : DIV_ROUND(titleArguments->total, maxArguments));
+    startY = drawTextWindow(baseX, startY - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_RIGHT, lineBuffer);
+
+    Argument *argument = titleArguments->first;
+    while (argument != NULL) {
+      // Do not display arguments before the current page
+      if (idx < maxArguments * curPage) {
+        idx++;
+        goto next;
+      }
+      // Do not display arguments beyond the current page
+      if (idx >= maxArguments * (curPage + 1)) {
+        break;
+      }
+
+      // Draw argument
+      if (!argument->isDisabled)
+        drawIconWindow(baseX, startY, 20, startY + getFontLineHeight(), 0, FontMainColor, ALIGN_CENTER, ICON_ENABLED);
+
+      snprintf(lineBuffer, 255, "%s%s%s %s", ((argument->isGlobal) ? "[G] " : ""), argument->arg, (!strlen(argument->value)) ? "" : ":",
+               argument->value);
+      startY = drawText(baseX + getIconWidth(ICON_ENABLED), startY, 0, 0, 0, ((selectedArgIdx == idx) ? ColorSelected : FontMainColor), lineBuffer);
+
+      idx++;
+    next:
+      argument = argument->next;
+    }
 
     gsKit_queue_exec(gsGlobal);
     gsKit_finish();
@@ -464,108 +549,30 @@ int uiTitleOptionsLoop(Target *target) {
     // Process user inputs
     input = waitForInput(-1);
     if (input & (PAD_CROSS | PAD_CIRCLE)) {
-      if (selectedArgIdx < CM_NUM_MODES) {
-        // Change compat flag in bit mask and update argument value
-        modes ^= COMPAT_MODE_MAP[selectedArgIdx].mode;
-        storeCompatModes(titleArguments->first, modes);
-        titleArguments->first->isGlobal = 0;
-      } else {
-        // Toggle argument
-        curArgument->isDisabled = !curArgument->isDisabled;
-      }
+      // Toggle argument
+      curArgument->isDisabled = !curArgument->isDisabled;
+      // If the argument was disabled, reset global flag
+      if (curArgument->isDisabled) curArgument->isGlobal = 0;
     } else if (input & PAD_UP) {
       // Point to the previous argument
-      if (selectedArgIdx > 0) {
-        selectedArgIdx--;
-        if (selectedArgIdx >= CM_NUM_MODES)
-          curArgument = curArgument->prev;
-      }
+      selectedArgIdx = (selectedArgIdx - 1 + titleArguments->total) % titleArguments->total;
+      curArgument = (curArgument->prev) ? curArgument->prev : titleArguments->last;
     } else if (input & PAD_DOWN) {
-      // Advance to the next argument, accounting for compatibility modes
-      if (selectedArgIdx < totalIndexes) {
-        selectedArgIdx++;
-        if (selectedArgIdx > CM_NUM_MODES)
-          curArgument = curArgument->next;
-      }
+      // Advance to the next argument
+      selectedArgIdx = (selectedArgIdx + 1) % titleArguments->total;
+      curArgument = (curArgument->next) ? curArgument->next : titleArguments->first;
+    } else if (input & (PAD_L1 | PAD_R1)) {
+      return 0;
     } else if (input & PAD_SQUARE) {
       // Launch title without saving arguments
       uiLaunchTitle(target, titleArguments);
-      res = 1; // If this was somehow reached, something went terribly wrong
-      goto exit;
+      return -1; // If this was somehow reached, something went terribly wrong
     } else if (input & PAD_START) {
       updateTitleLaunchArguments(target, titleArguments);
-      goto exit;
+      return 1;
     } else if (input & PAD_TRIANGLE) {
-      // Quit to title list
-      goto exit;
+      return 1;
     }
-  }
-exit:
-  freeArgumentList(titleArguments);
-  return res;
-}
-
-// Draws title arguments
-void drawArgumentList(ArgumentList *arguments, int baseX, uint8_t compatModes, int selectedArgIdx) {
-  int startY = headerHeight + 2.5 * getFontLineHeight();
-  int idx = 0;
-
-  // Draw compatibility modes
-
-  // Indexes 0 through CM_NUM_MODES are reserved for compatibility modes
-  for (idx = 0; idx < CM_NUM_MODES; idx++) {
-    if (compatModes & COMPAT_MODE_MAP[idx].mode) {
-      drawIconWindow(baseX, startY, 20, startY + getFontLineHeight(), 0, FontMainColor, ALIGN_CENTER, ICON_ENABLED);
-    }
-    startY = drawText(baseX + getIconWidth(ICON_ENABLED), startY, 0, 0, 0, ((selectedArgIdx == idx) ? ColorSelected : FontMainColor),
-                      COMPAT_MODE_MAP[idx].name);
-  }
-
-  // Draw other arguments
-  if (arguments->total == 1) {
-    // First argument is always compatibility mode flags
-    return;
-  }
-
-  // Advance start Y offset and add some space after compatibility modes
-  startY += 10;
-  idx = 0; // Reset index
-
-  startY = drawTextWindow(baseX, startY, gsGlobal->Width - baseX, 0, 0, FontMainColor, ALIGN_CENTER, "Launch arguments");
-
-  // Set number of elements per page according to line height and available screen height
-  int maxArguments = (gsGlobal->Height - startY - footerHeight) / getFontLineHeight();
-  int curPage = (selectedArgIdx - (int)CM_NUM_MODES) / maxArguments;
-
-  snprintf(lineBuffer, 255, "Page %d/%d", curPage + 1, DIV_ROUND(arguments->total - 1, maxArguments));
-  startY = drawTextWindow(baseX, startY - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_RIGHT, lineBuffer);
-
-  // Always start with the second element since the first
-  // is guaranteed to be a compatibility mode flag
-  Argument *argument = arguments->first->next;
-  while (argument != NULL) {
-    // Do not display arguments before the current page
-    if (idx < maxArguments * curPage) {
-      idx++;
-      goto next;
-    }
-    // Do not display arguments beyond the current page
-    if (idx >= maxArguments * (curPage + 1)) {
-      break;
-    }
-
-    // Draw argument
-    if (!argument->isDisabled)
-      drawIconWindow(baseX, startY, 20, startY + getFontLineHeight(), 0, FontMainColor, ALIGN_CENTER, ICON_ENABLED);
-
-    snprintf(lineBuffer, 255, "%s%s%s %s", ((argument->isGlobal) ? "[G] " : ""), argument->arg, (!strlen(argument->value)) ? "" : ":",
-             argument->value);
-    startY = drawText(baseX + getIconWidth(ICON_ENABLED), startY, 0, 0, 0,
-                      (((selectedArgIdx - (int)CM_NUM_MODES) == idx) ? ColorSelected : FontMainColor), lineBuffer);
-
-    idx++;
-  next:
-    argument = argument->next;
   }
 }
 
@@ -631,13 +638,12 @@ void drawGameID(const char *gameID) {
   int height = 2;
 
   for (int i = 0; i < data_len; i++) {
-    for (int ii = 7; ii >= 0; ii--) {
-      int x = xstart + (i * 16 + ((7 - ii) * 2));
+    for (int j = 7; j >= 0; j--) {
+      int x = xstart + (i * 16 + ((7 - j) * 2));
       int x1 = x + 1;
-
       gsKit_prim_sprite(gsGlobal, x, ystart, x1, ystart + height, 0, GS_SETREG_RGBA(0xFF, 0x00, 0xFF, 0x80));
 
-      uint32_t color = (data[i] >> ii) & 1 ? GS_SETREG_RGBA(0x00, 0xFF, 0xFF, 0x80) : GS_SETREG_RGBA(0xFF, 0xFF, 0x00, 0x80);
+      uint32_t color = (data[i] >> j) & 1 ? GS_SETREG_RGBA(0x00, 0xFF, 0xFF, 0x80) : GS_SETREG_RGBA(0xFF, 0xFF, 0x00, 0x80);
       gsKit_prim_sprite(gsGlobal, x1, ystart, x1 + 1, ystart + height, 0, color);
     }
   }
