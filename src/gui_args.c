@@ -11,19 +11,19 @@
 int gcDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int maxWidth, int maxHeight);
 ActionType gcInput(NeutrinoArgument *arg, int input);
 void gcMarshal(NeutrinoArgument *arg, ArgumentList *list);
-void gcUnmarshal(NeutrinoArgument *arg, ArgumentList *list);
+void gcParse(NeutrinoArgument *arg, ArgumentList *list);
 
 // GSM handlers
 int gsmDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int maxWidth, int maxHeight);
 ActionType gsmInput(NeutrinoArgument *arg, int input);
 void gsmMarshal(NeutrinoArgument *arg, ArgumentList *list);
-void gsmUnmarshal(NeutrinoArgument *arg, ArgumentList *list);
+void gsmParse(NeutrinoArgument *arg, ArgumentList *list);
 
 // PS2 Logo handlers
 int ps2LogoDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int maxWidth, int maxHeight);
 ActionType ps2LogoInput(NeutrinoArgument *arg, int input);
 void ps2LogoMarshal(NeutrinoArgument *arg, ArgumentList *list);
-void ps2LogoUnmarshal(NeutrinoArgument *arg, ArgumentList *list);
+void ps2LogoParse(NeutrinoArgument *arg, ArgumentList *list);
 
 NeutrinoArgument uiArguments[] = {
     {.name = "Compatibility modes",
@@ -32,7 +32,7 @@ NeutrinoArgument uiArguments[] = {
      .state = 0,
      .draw = gcDraw,
      .handleInput = gcInput,
-     .unmarshal = gcUnmarshal,
+     .parse = gcParse,
      .marshal = gcMarshal},
     {.name = "Video mode",
      .arg = "gsm",
@@ -40,7 +40,7 @@ NeutrinoArgument uiArguments[] = {
      .state = 0,
      .draw = gsmDraw,
      .handleInput = gsmInput,
-     .unmarshal = gsmUnmarshal,
+     .parse = gsmParse,
      .marshal = gsmMarshal},
     {.name = "Show PS2 logo",
      .arg = "logo",
@@ -48,7 +48,7 @@ NeutrinoArgument uiArguments[] = {
      .state = 0,
      .draw = ps2LogoDraw,
      .handleInput = ps2LogoInput,
-     .unmarshal = ps2LogoUnmarshal,
+     .parse = ps2LogoParse,
      .marshal = ps2LogoMarshal},
 };
 int uiArgumentsTotal = sizeof(uiArguments) / sizeof(NeutrinoArgument);
@@ -98,6 +98,7 @@ int gcDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int max
 ActionType gcInput(NeutrinoArgument *arg, int input) {
   if (input & (PAD_CROSS | PAD_CIRCLE)) {
     arg->state ^= gcValueMap[arg->activeElementIdx].mode;
+    return ACTION_CHANGED;
   } else if (input & PAD_UP) {
     if (arg->activeElementIdx == 0)
       return ACTION_PREV_ARGUMENT;
@@ -138,10 +139,12 @@ void gcMarshal(NeutrinoArgument *arg, ArgumentList *list) {
   larg->value[pos] = '\0';
 
   // Remove global flag only if value has changed and has value
-  if (strcmp(prevValue, larg->value) && pos)
-    larg->isGlobal = 0;
+  if (prevValue) {
+    if (strcmp(prevValue, larg->value) && pos)
+      larg->isGlobal = 0;
 
-  free(prevValue);
+    free(prevValue);
+  }
 
   if (!pos)
     larg->isDisabled = 1;
@@ -149,15 +152,21 @@ void gcMarshal(NeutrinoArgument *arg, ArgumentList *list) {
     larg->isDisabled = 0;
 }
 
-void gcUnmarshal(NeutrinoArgument *arg, ArgumentList *list) {
+void gcParse(NeutrinoArgument *arg, ArgumentList *list) {
   arg->state = 0;
   arg->activeElementIdx = 0;
   Argument *larg = getArgument(list, arg->arg);
   if (!larg)
     return;
 
-  if (larg->isDisabled)
+  if (larg->isDisabled) {
+    // Force empty value
+    if (larg->value)
+      free(larg->value);
+
+    larg->value = strdup("");
     return;
+  }
 
   for (int i = 0; i < strlen(larg->value); i++) {
     for (int j = 0; j < ARG_GC_NUM_MODES; j++) {
@@ -167,6 +176,8 @@ void gcUnmarshal(NeutrinoArgument *arg, ArgumentList *list) {
       }
     }
   }
+  if (!arg->state)
+    larg->isDisabled = 1;
 }
 
 //
@@ -209,6 +220,8 @@ ActionType gsmInput(NeutrinoArgument *arg, int input) {
     // Reset state if only field flipping is enabled
     if (arg->state == gsmValueMap[2].mode)
       arg->state = 0;
+
+    return ACTION_CHANGED;
   } else if (input & PAD_UP) {
     if (arg->activeElementIdx == 0)
       return ACTION_PREV_ARGUMENT;
@@ -249,10 +262,12 @@ void gsmMarshal(NeutrinoArgument *arg, ArgumentList *list) {
   larg->value[pos] = '\0';
 
   // Remove global flag only if value has changed and has value
-  if (strcmp(prevValue, larg->value) && pos)
-    larg->isGlobal = 0;
+  if (prevValue) {
+    if (strcmp(prevValue, larg->value) && pos)
+      larg->isGlobal = 0;
 
-  free(prevValue);
+    free(prevValue);
+  }
 
   if (!pos)
     larg->isDisabled = 1;
@@ -260,15 +275,21 @@ void gsmMarshal(NeutrinoArgument *arg, ArgumentList *list) {
     larg->isDisabled = 0;
 }
 
-void gsmUnmarshal(NeutrinoArgument *arg, ArgumentList *list) {
+void gsmParse(NeutrinoArgument *arg, ArgumentList *list) {
   arg->state = 0;
   arg->activeElementIdx = 0;
   Argument *larg = getArgument(list, arg->arg);
   if (!larg)
     return;
 
-  if (larg->isDisabled)
+  if (larg->isDisabled) {
+    // Force empty value
+    if (larg->value)
+      free(larg->value);
+
+    larg->value = strdup("");
     return;
+  }
 
   for (int i = 0; i < strlen(larg->value); i++) {
     for (int j = 0; j < ARG_GSM_NUM_MODES; j++) {
@@ -278,6 +299,8 @@ void gsmUnmarshal(NeutrinoArgument *arg, ArgumentList *list) {
       }
     }
   }
+  if (!arg->state)
+    larg->isDisabled = 1;
 }
 
 //
@@ -293,6 +316,7 @@ int ps2LogoDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, in
 ActionType ps2LogoInput(NeutrinoArgument *arg, int input) {
   if (input & (PAD_CROSS | PAD_CIRCLE)) {
     arg->state ^= 1;
+    return ACTION_CHANGED;
   } else if (input & PAD_UP) {
     return ACTION_PREV_ARGUMENT;
   } else if (input & PAD_DOWN) {
@@ -310,16 +334,16 @@ void ps2LogoMarshal(NeutrinoArgument *arg, ArgumentList *list) {
     larg = insertArgument(list, arg->arg, "");
   }
 
+  larg->isGlobal = 0;
   if (arg->state) {
     larg->isDisabled = 0;
     return;
   }
 
   larg->isDisabled = 1;
-  return;
 }
 
-void ps2LogoUnmarshal(NeutrinoArgument *arg, ArgumentList *list) {
+void ps2LogoParse(NeutrinoArgument *arg, ArgumentList *list) {
   arg->state = 0;
   Argument *larg = getArgument(list, arg->arg);
   if (!larg)

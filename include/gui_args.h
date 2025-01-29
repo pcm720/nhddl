@@ -5,6 +5,7 @@
 
 typedef enum {
   ACTION_NONE,          // Will do nothing
+  ACTION_CHANGED,       // Input has changed
   ACTION_NEXT_ARGUMENT, // Switch to the next argument in chain
   ACTION_PREV_ARGUMENT, // Switch to the previous argument in chain
 } ActionType;
@@ -19,18 +20,17 @@ typedef int (*drawFunc)(struct NeutrinoArgument *arg, uint8_t isActive, int x, i
 typedef ActionType (*handleInputFunc)(struct NeutrinoArgument *arg, int input);
 
 // Must find argument in the list (or insert a new one) and store new value
-// Can remove argument if value is empty
 typedef void (*marshalFunc)(struct NeutrinoArgument *arg, ArgumentList *list);
 
-// Must find argument in the list and parse value
-typedef void (*unmarshalFunc)(struct NeutrinoArgument *arg, ArgumentList *list);
+// Must find argument in the list, validate and parse value
+typedef void (*parseFunc)(struct NeutrinoArgument *arg, ArgumentList *list);
 
 typedef struct NeutrinoArgument {
   const char *name;
   const char *arg;
   drawFunc draw;
   handleInputFunc handleInput;
-  unmarshalFunc unmarshal;
+  parseFunc parse;
   marshalFunc marshal;
   uint8_t state;            // Internal argument state
   uint8_t activeElementIdx; // Active element index

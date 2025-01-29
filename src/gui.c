@@ -420,7 +420,7 @@ int uiTitleOptionsLoop(Target *target) {
 
   // Parse arguments
   for (int i = 0; i < (uiArgumentsTotal); i++)
-    uiArguments[i].unmarshal(&uiArguments[i], titleArguments);
+    uiArguments[i].parse(&uiArguments[i], titleArguments);
 
   int baseX = keepoutArea + 10;
   int i = 0;
@@ -447,10 +447,6 @@ int uiTitleOptionsLoop(Target *target) {
     // Process user inputs
     input = waitForInput(-1);
     if (input & (PAD_L1 | PAD_R1)) {
-      // Marshal arguments
-      for (i = 0; i < uiArgumentsTotal; i++)
-        uiArguments[i].marshal(&uiArguments[i], titleArguments);
-
       // Show full argument list
       if ((res = uiArgumentListLoop(target, titleArguments)))
         goto exit;
@@ -458,21 +454,13 @@ int uiTitleOptionsLoop(Target *target) {
       // Re-parse arguments
       activeArgumentIdx = 0;
       for (i = 0; i < uiArgumentsTotal; i++)
-        uiArguments[i].unmarshal(&uiArguments[i], titleArguments);
+        uiArguments[i].parse(&uiArguments[i], titleArguments);
     } else if (input & PAD_SQUARE) {
-      // Marshal arguments
-      for (i = 0; i < uiArgumentsTotal; i++)
-        uiArguments[i].marshal(&uiArguments[i], titleArguments);
-
       // Launch title without saving arguments
       uiLaunchTitle(target, titleArguments);
       res = -1; // If this was somehow reached, something went terribly wrong
       goto exit;
     } else if (input & PAD_START) {
-      // Marshal arguments
-      for (i = 0; i < uiArgumentsTotal; i++)
-        uiArguments[i].marshal(&uiArguments[i], titleArguments);
-
       updateTitleLaunchArguments(target, titleArguments);
       goto exit;
     } else if (input & PAD_TRIANGLE) {
@@ -480,6 +468,9 @@ int uiTitleOptionsLoop(Target *target) {
       goto exit;
     } else {
       switch (uiArguments[activeArgumentIdx].handleInput(&uiArguments[activeArgumentIdx], input)) {
+      case ACTION_CHANGED:
+        uiArguments[activeArgumentIdx].marshal(&uiArguments[activeArgumentIdx], titleArguments);
+        break;
       case ACTION_NEXT_ARGUMENT:
         if (activeArgumentIdx < uiArgumentsTotal - 1)
           activeArgumentIdx++;
@@ -560,6 +551,8 @@ int uiArgumentListLoop(Target *target, ArgumentList *titleArguments) {
     if (input & (PAD_CROSS | PAD_CIRCLE)) {
       // Toggle argument
       curArgument->isDisabled = !curArgument->isDisabled;
+      // If the argument was disabled, reset global flag
+      if (curArgument->isDisabled) curArgument->isGlobal = 0;
     } else if (input & PAD_UP) {
       // Point to the previous argument
       selectedArgIdx = (selectedArgIdx - 1 + titleArguments->total) % titleArguments->total;
