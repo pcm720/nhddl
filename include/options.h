@@ -60,7 +60,8 @@ Argument *getArgument(ArgumentList *target, const char *argumentName);
 // Creates new argument and inserts it into the list
 Argument *insertArgument(ArgumentList *target, const char *argumentName, char *value);
 
-// Creates new Argument with passed argName and value (without copying)
+// Creates new Argument with passed argName and value.
+// Copies both argName and value
 Argument *newArgument(const char *argName, char *value);
 
 // Appends arg to the end of target

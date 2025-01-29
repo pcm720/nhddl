@@ -368,7 +368,8 @@ int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *de
       substrIdx--;
     }
 
-    Argument *arg = newArgument(argName, NULL);
+    Argument *arg = newArgument(argName, "");
+    free(argName);
     arg->isDisabled = isDisabled;
 
     // Allocate memory for the argument value
@@ -400,11 +401,13 @@ int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *de
 // Completely frees Argument and returns pointer to a previous argument in the list
 Argument *freeArgument(Argument *arg) {
   Argument *prev = NULL;
-  free(arg->arg);
-  free(arg->value);
-  if (arg->prev != NULL) {
+  if (arg->arg)
+    free(arg->arg);
+  if (arg->value)
+    free(arg->value);
+  if (arg->prev)
     prev = arg->prev;
-  }
+
   free(arg);
   return prev;
 }
@@ -427,8 +430,10 @@ Argument *copyArgument(Argument *src) {
   Argument *copy = calloc(sizeof(Argument), 1);
   copy->isGlobal = src->isGlobal;
   copy->isDisabled = src->isDisabled;
-  copy->arg = strdup(src->arg);
-  copy->value = strdup(src->value);
+  if (src->arg)
+    copy->arg = strdup(src->arg);
+  if (src->value)
+    copy->value = strdup(src->value);
   return copy;
 }
 
@@ -436,23 +441,31 @@ Argument *copyArgument(Argument *src) {
 // Keeps next and prev pointers.
 void replaceArgument(Argument *dst, Argument *src) {
   // Do a deep copy for argument and value
-  free(dst->arg);
-  free(dst->value);
+  if (dst->arg)
+    free(dst->arg);
+  if (dst->value)
+    free(dst->value);
   dst->isGlobal = src->isGlobal;
   dst->isDisabled = src->isDisabled;
-  dst->arg = strdup(src->arg);
-  dst->value = strdup(src->value);
+  if (src->arg)
+    dst->arg = strdup(src->arg);
+  if (src->value)
+    dst->value = strdup(src->value);
 }
 
-// Creates new Argument with passed argName and value (without copying)
+// Creates new Argument with passed argName and value.
+// Copies both argName and value
 Argument *newArgument(const char *argName, char *value) {
   Argument *arg = malloc(sizeof(Argument));
-  arg->arg = strdup(argName);
-  arg->value = value;
   arg->isDisabled = 0;
   arg->isGlobal = 0;
   arg->prev = NULL;
   arg->next = NULL;
+  if (argName)
+    arg->arg = strdup(argName);
+  if (value)
+    arg->value = strdup(value);
+
   return arg;
 }
 
@@ -460,7 +473,7 @@ Argument *newArgument(const char *argName, char *value) {
 void appendArgument(ArgumentList *target, Argument *arg) {
   target->total++;
 
-  if (target->first == NULL) {
+  if (!target->first) {
     target->first = arg;
   } else {
     target->last->next = arg;
