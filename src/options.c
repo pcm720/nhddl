@@ -13,7 +13,6 @@
 int loadArgumentList(ArgumentList *options, struct DeviceMapEntry *device, char *filePath);
 int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *device);
 void appendArgument(ArgumentList *target, Argument *arg);
-Argument *newArgument(char *argName, char *value);
 uint32_t getTimestamp();
 
 const char BASE_CONFIG_PATH[] = "/nhddl";
@@ -446,9 +445,9 @@ void replaceArgument(Argument *dst, Argument *src) {
 }
 
 // Creates new Argument with passed argName and value (without copying)
-Argument *newArgument(char *argName, char *value) {
+Argument *newArgument(const char *argName, char *value) {
   Argument *arg = malloc(sizeof(Argument));
-  arg->arg = argName;
+  arg->arg = strdup(argName);
   arg->value = value;
   arg->isDisabled = 0;
   arg->isGlobal = 0;
@@ -514,8 +513,7 @@ void mergeArgumentLists(ArgumentList *list1, ArgumentList *list2) {
 }
 
 // Retrieves argument from the list
-// Creates new argument and inserts it into the list if argument with argumentName doesn't exist
-Argument *getArgument(ArgumentList *target, char *argumentName, char *defaultValue) {
+Argument *getArgument(ArgumentList *target, const char *argumentName) {
   Argument *arg = target->first;
   while (arg != NULL) {
     if (!strcmp(arg->arg, argumentName)) {
@@ -523,8 +521,12 @@ Argument *getArgument(ArgumentList *target, char *argumentName, char *defaultVal
     }
     arg = arg->next;
   }
+  return NULL;
+}
 
-  arg = newArgument(argumentName, defaultValue);
+// Creates new argument and inserts it into the list
+Argument *insertArgument(ArgumentList *target, const char *argumentName, char *value) {
+  Argument *arg = newArgument(argumentName, value);
   appendArgument(target, arg);
   return arg;
 }

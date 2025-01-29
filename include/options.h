@@ -55,11 +55,13 @@ int updateTitleLaunchArguments(Target *target, ArgumentList *options);
 void freeArgumentList(ArgumentList *result);
 
 // Retrieves argument from the list
-// Creates new argument and inserts it into the list if argument with argumentName doesn't exist
-Argument *getArgument(ArgumentList *target, char *argumentName, char *defaultValue);
+Argument *getArgument(ArgumentList *target, const char *argumentName);
+
+// Creates new argument and inserts it into the list
+Argument *insertArgument(ArgumentList *target, const char *argumentName, char *value);
 
 // Creates new Argument with passed argName and value (without copying)
-Argument *newArgument(char *argName, char *value);
+Argument *newArgument(const char *argName, char *value);
 
 // Appends arg to the end of target
 void appendArgument(ArgumentList *target, Argument *arg);
