@@ -552,7 +552,8 @@ int uiArgumentListLoop(Target *target, ArgumentList *titleArguments) {
       // Toggle argument
       curArgument->isDisabled = !curArgument->isDisabled;
       // If the argument was disabled, reset global flag
-      if (curArgument->isDisabled) curArgument->isGlobal = 0;
+      if (curArgument->isDisabled)
+        curArgument->isGlobal = 0;
     } else if (input & PAD_UP) {
       // Point to the previous argument
       selectedArgIdx = (selectedArgIdx - 1 + titleArguments->total) % titleArguments->total;
@@ -654,11 +655,12 @@ void drawGameID(const char *gameID) {
 //
 
 struct {
-  int32_t doneSema;      // Used to signal UI splash thread to exit
-  int32_t newStringSema; // Used to signal UI splash thread that a new string is ready
-  int32_t drawnSema;     // Used to signal that UI splash thread has finished drawing or closed
-  UILogLevelType level;  // Log level
-  char buf[255];         // String buffer. String must be null-terminated
+  int32_t doneSema;          // Used to signal UI splash thread to exit
+  int32_t newStringSema;     // Used to signal UI splash thread that a new string is ready
+  int32_t drawnSema;         // Used to signal that UI splash thread has finished drawing or closed
+  UILogLevelType level;      // Log level
+  char neutrinoVersion[100]; // Neutrino version string
+  char buf[255];             // String buffer. String must be null-terminated
 } logBuffer = {};
 #define THREAD_STACK_SIZE 0x1000
 static uint8_t threadStack[THREAD_STACK_SIZE] __attribute__((aligned(16)));
@@ -738,6 +740,9 @@ void uiSplashThread() {
       break;
     }
     drawTextWindow(0, logStartY, gsGlobal->Width, gsGlobal->Height - footerHeight, 0, color, ALIGN_CENTER, logBuffer.buf);
+    if (logBuffer.neutrinoVersion[0] != '\0')
+      drawTextWindow(0, (gsGlobal->Height / 4 + getLogoHeight() + getFontLineHeight() + 10), gsGlobal->Width, 0, 0,
+                     GS_SETREG_RGBA(0x40, 0x40, 0x40, 0x80), ALIGN_HCENTER, logBuffer.neutrinoVersion);
     SignalSema(logBuffer.drawnSema);
   }
   gsKit_queue_reset(gsGlobal->Per_Queue);
@@ -778,4 +783,16 @@ void uiSplashLogString(UILogLevelType level, const char *str, ...) {
     sleep(2);
     return;
   }
+}
+
+// Sets Neutrino version on the splash screen
+void uiSplashSetNeutrinoVersion(const char *str) {
+  if (str[0] == '\0')
+    return;
+
+  strcpy(logBuffer.neutrinoVersion, "Neutrino");
+  strcat(logBuffer.neutrinoVersion, str);
+
+  SignalSema(logBuffer.newStringSema);
+  WaitSema(logBuffer.drawnSema);
 }
