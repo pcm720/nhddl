@@ -176,7 +176,8 @@ int init() {
   }
   // Get Neturino version
   char *neutrinoVersion = getNeutrinoVersion();
-  uiSplashLogString(LEVEL_INFO, "Found Neutrino%s at\n%s\n", neutrinoVersion, NEUTRINO_ELF_PATH);
+  uiSplashSetNeutrinoVersion(neutrinoVersion);
+  uiSplashLogString(LEVEL_INFO, "Found Neutrino at\n%s\n", NEUTRINO_ELF_PATH);
   free(neutrinoVersion);
 
   return 0;
@@ -216,7 +217,8 @@ int init() {
   }
   // Get Neturino version
   char *neutrinoVersion = getNeutrinoVersion();
-  uiSplashLogString(LEVEL_INFO, "Found Neutrino%s at\n%s\n", neutrinoVersion, NEUTRINO_ELF_PATH);
+  uiSplashSetNeutrinoVersion(neutrinoVersion);
+  uiSplashLogString(LEVEL_INFO, "Found Neutrino at\n%s\n", NEUTRINO_ELF_PATH);
   free(neutrinoVersion);
 
   // Get Neutrino directory by trimming ELF file name from the path
