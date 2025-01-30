@@ -1,7 +1,7 @@
-
+EE_LINKFILE := linkfile
 EE_CFLAGS = -D_EE -Os -G0 -Wall
 EE_CFLAGS += -fdata-sections -ffunction-sections
-EE_LDFLAGS = -Tlinkfile -Wl,-zmax-page-size=128
+EE_LDFLAGS = -Wl,-zmax-page-size=128
 EE_LDFLAGS += -s -Wl,--gc-sections
 
 EE_BIN = loader.elf
@@ -18,5 +18,5 @@ all: $(EE_BIN)
 clean:
 	rm -f -r $(EE_OBJS) $(EE_BIN)
 
-include $(PS2SDK)/Defs.make
-include Rules.make
+include $(PS2SDK)/samples/Makefile.pref
+include $(PS2SDK)/samples/Makefile.eeglobal
