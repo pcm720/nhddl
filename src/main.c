@@ -50,6 +50,8 @@ int init();
 void initOptions(char *basePath);
 // Attempts to find neutrino.elf at current path or one of fallback paths
 int findNeutrinoELF();
+// Reads version.txt from NEUTRINO_ELF_PATH; returns empty string if the file could not be read
+char *getNeutrinoVersion();
 // Tries to load IPCONFIG.DAT from memory card
 void parseIPConfig();
 
@@ -172,7 +174,10 @@ int init() {
     uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
     return -ENOENT;
   }
-  uiSplashLogString(LEVEL_INFO, "Found neutrino.elf at\n%s\n", NEUTRINO_ELF_PATH);
+  // Get Neturino version
+  char *neutrinoVersion = getNeutrinoVersion();
+  uiSplashLogString(LEVEL_INFO, "Found Neutrino%s at\n%s\n", neutrinoVersion, NEUTRINO_ELF_PATH);
+  free(neutrinoVersion);
 
   return 0;
 }
@@ -209,7 +214,10 @@ int init() {
     uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
     return -ENOENT;
   }
-  uiSplashLogString(LEVEL_INFO, "Found neutrino.elf at\n%s\n", NEUTRINO_ELF_PATH);
+  // Get Neturino version
+  char *neutrinoVersion = getNeutrinoVersion();
+  uiSplashLogString(LEVEL_INFO, "Found Neutrino%s at\n%s\n", neutrinoVersion, NEUTRINO_ELF_PATH);
+  free(neutrinoVersion);
 
   // Get Neutrino directory by trimming ELF file name from the path
   char *neutrinoELFDir = calloc(sizeof(char), strlen(NEUTRINO_ELF_PATH) - sizeof(neutrinoELF) + 3);
@@ -422,4 +430,44 @@ int findNeutrinoELF(char *cwdPath) {
     return -ENOENT;
   }
   return 0;
+}
+
+// Reads version.txt from NEUTRINO_ELF_PATH
+// Returns empty string if the file could not be read
+char *getNeutrinoVersion() {
+  // Get full path to Neutrino directory
+  const char *slashIdx = strrchr(NEUTRINO_ELF_PATH, '/');
+  if (slashIdx == NULL)
+    return strdup("");
+
+  // Get the length of directory path
+  int len = slashIdx - NEUTRINO_ELF_PATH;
+
+  // Build path to version.txt
+  char versionFilePath[PATH_MAX];
+  strncpy(versionFilePath, NEUTRINO_ELF_PATH, len);
+  versionFilePath[len] = '\0';
+  strcat(versionFilePath, "/version.txt");
+
+  // Open version.txt
+  FILE *file = fopen(versionFilePath, "r");
+  if (file == NULL)
+    return strdup("");
+
+  // Read the first line into versionFilePath, reusing it
+  versionFilePath[0] = ' ';
+  if (fgets(&versionFilePath[1], sizeof(versionFilePath) - 1, file) == NULL) {
+    fclose(file);
+    return strdup("");
+  }
+
+  fclose(file);
+
+  // Trim newline
+  len = strlen(versionFilePath);
+  if (len > 0 && versionFilePath[len - 1] == '\n') {
+    versionFilePath[len - 1] = '\0';
+  }
+
+  return strdup(versionFilePath);
 }
