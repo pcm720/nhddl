@@ -791,7 +791,7 @@ void uiSplashSetNeutrinoVersion(const char *str) {
     return;
 
   strcpy(logBuffer.neutrinoVersion, "Neutrino");
-  strcat(logBuffer.neutrinoVersion, str);
+  strncat(logBuffer.neutrinoVersion, str, 100-10);
 
   SignalSema(logBuffer.newStringSema);
   WaitSema(logBuffer.drawnSema);
