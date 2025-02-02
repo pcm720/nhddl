@@ -58,13 +58,13 @@ int getLastLaunchedTitle(char *titlePath) {
     // Open last launched title file and read it
     int fd = open(targetPath, O_RDONLY);
     if (fd < 0) {
-      printf("WARN: Failed to open last launched title file on device %d: %d\n", i, fd);
+      printf("WARN: Failed to open last launched title file on device %s: %d\n", deviceModeMap[i].mountpoint, fd);
       continue;
     }
 
     // Read file timestamp (first 4 bytes)
     if (read(fd, &timestamp, sizeof(timestamp)) != sizeof(timestamp)) {
-      printf("WARN: Failed to read last launched title file on device %d\n", i);
+      printf("WARN: Failed to read last launched title file on device %s\n", deviceModeMap[i].mountpoint);
       close(fd);
       continue;
     }
