@@ -82,7 +82,7 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(mmceman, MODE_ALL, NULL), // MMCE driver
 #ifndef STANDALONE
     // DEV9
-    {"dev9", NULL, NULL, 0, NULL, NULL, MODE_UDPBD | MODE_ATA, {"modules/dev9_ns.irx", "dev9_ns.irx"}, 0},
+    {"dev9", NULL, NULL, 0, NULL, NULL, MODE_UDPBD | MODE_ATA | MODE_HDL, {"modules/dev9_ns.irx", "dev9_ns.irx"}, 0},
     // BDM
     {"bdm", NULL, NULL, 0, NULL, NULL, MODE_ALL, {"modules/bdm.irx", "bdm.irx"}, 0},
     // FAT/exFAT
@@ -90,7 +90,7 @@ static ModuleListEntry moduleList[] = {
     // SMAP driver. Actually includes small IP stack and UDPTTY
     {"smap_udpbd", NULL, NULL, 0, NULL, &initSMAPArguments, MODE_UDPBD, {"modules/smap_udpbd.irx", "smap_udpbd.irx"}, 0},
     // ATA
-    {"ata_bd", NULL, NULL, 0, NULL, NULL, MODE_ATA, {"modules/ata_bd.irx", "ata_bd.irx"}, 0},
+    {"ata_bd", NULL, NULL, 0, NULL, NULL, MODE_ATA | MODE_HDL, {"modules/ata_bd.irx", "ata_bd.irx"}, 0},
     // USBD
     {"usbd_mini", NULL, NULL, 0, NULL, NULL, MODE_USB, {"modules/usbd_mini.irx", "usbd_mini.irx"}, 0},
     // USB Mass Storage
