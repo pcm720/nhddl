@@ -107,13 +107,11 @@ void launchTitle(Target *target, ArgumentList *arguments) {
   printf("Mounting VMC on MMCE devices\n");
   mmceMountVMC(target->id);
 
-  // Change device path to <mountpoint><device index>: since <mountpoint>%d: path will not be preserved after Neutrino resets the IOP
-  int devIdx = getDeviceNumberIdx(target->fullPath);
-  if (devIdx != -1)
-    target->fullPath[devIdx] = target->device->index + '0';
-
+  // Append bsd and ISO path
   appendArgument(arguments, newArgument(bsdArgument, bsdValue));
   appendArgument(arguments, newArgument(isoArgument, target->fullPath));
+  // Use quickboot to reduce load times
+  appendArgument(arguments, newArgument("qb", ""));
 
   // Assemble argv
   char **argv = malloc(((arguments->total) + 1) * sizeof(char *));
@@ -170,15 +168,9 @@ int LoadELFFromFile(int argc, char *argv[]) {
   void *pdata;
   int i;
 
-  // Wipes memory where the loader is going to be allocated (see loader/linkfile for memory regions)
-  for (i = 0x00084000; i < 0x100000; i += 64) {
-    asm volatile("\tsq $0, 0(%0) \n"
-                 "\tsq $0, 16(%0) \n"
-                 "\tsq $0, 32(%0) \n"
-                 "\tsq $0, 48(%0) \n" ::"r"(i));
-  }
+  // Wipe memory region where the ELF loader is going to be loaded (see loader/linkfile)
+  memset((void *)0x00084000, 0, 0x00100000 - 0x00084000);
 
-  /* NB: LOADER.ELF is embedded  */
   boot_elf = (uint8_t *)loader_elf;
   eh = (elf_header_t *)boot_elf;
   if (_lw((uint32_t)&eh->ident) != ELF_MAGIC)
@@ -186,16 +178,13 @@ int LoadELFFromFile(int argc, char *argv[]) {
 
   eph = (elf_pheader_t *)(boot_elf + eh->phoff);
 
-  /* Scan through the ELF's program headers and copy them into RAM, then zero out any non-loaded regions.  */
+  // Scan through the ELF's program headers and copy them into RAM
   for (i = 0; i < eh->phnum; i++) {
     if (eph[i].type != ELF_PT_LOAD)
       continue;
 
     pdata = (void *)(boot_elf + eph[i].offset);
     memcpy(eph[i].vaddr, pdata, eph[i].filesz);
-
-    if (eph[i].memsz > eph[i].filesz)
-      memset((void *)((uint8_t *)(eph[i].vaddr) + eph[i].filesz), 0, eph[i].memsz - eph[i].filesz);
   }
 
   SifExitRpc();
