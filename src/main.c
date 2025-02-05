@@ -46,8 +46,8 @@ static char neutrinoStorageFallbackPath[] = "/neutrino/neutrino.elf";
 
 // Initializes modules, NHDDL configuraton, Neutrino path and device map
 int init();
-// Loads NHDDL options from option file
-void initOptions(char *basePath);
+// Loads NHDDL options from optionsFile
+int initOptions(char *cwdPath);
 // Attempts to find neutrino.elf at current path or one of fallback paths
 int findNeutrinoELF();
 // Reads version.txt from NEUTRINO_ELF_PATH; returns empty string if the file could not be read
@@ -134,11 +134,8 @@ int initDevices() {
   return 0;
 }
 
-// Split init into two versions
-// since they differ enough to make the code too complicated otherwise
-#ifdef STANDALONE
-// Standalone init
 int init() {
+  int optionsFileNotRead = -1;
   int fd, res;
   char cwdPath[PATH_MAX + 1];
   // Get CWD and try to open it
@@ -149,66 +146,35 @@ int init() {
       strcat(cwdPath, "/");
 
     // Try to load options from CWD
-    initOptions(cwdPath);
+    optionsFileNotRead = initOptions(cwdPath);
   } else {
     cwdPath[0] = '\0';                // CWD is not valid
     LAUNCHER_OPTIONS.mode = MODE_ALL; // Force mode to ALL to load all modules
   }
 
-  uiSplashLogString(LEVEL_INFO, "Loading embedded modules...\n");
-  // Init modules
-  if ((res = initModules()) != 0) {
-    return res;
-  }
-  // Init device map
-  if (initDevices() < 0) {
-    return -EIO;
-  }
+  uiSplashLogString(LEVEL_INFO_NODELAY, "Loading modules...\n");
 
-  // Reload options
-  uiSplashLogString(LEVEL_INFO_NODELAY, "Loading options file...\n");
-  initOptions(cwdPath);
-
-  // Make sure neutrino ELF exists
-  if (findNeutrinoELF(cwdPath)) {
-    uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
-    return -ENOENT;
-  }
-  // Get Neturino version
-  char *neutrinoVersion = getNeutrinoVersion();
-  uiSplashSetNeutrinoVersion(neutrinoVersion);
-  uiSplashLogString(LEVEL_INFO, "Found Neutrino at\n%s\n", NEUTRINO_ELF_PATH);
-  free(neutrinoVersion);
-
-  return 0;
-}
-#else
-// Non-standalone init
-int init() {
-  int fd, res;
-  char cwdPath[PATH_MAX + 1];
-  // Get CWD and try to open it
-  if (getcwd(cwdPath, PATH_MAX + 1) && ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0)) {
-    // Skip loading embedded modules if CWD is available
-    close(fd);
-
-    if (cwdPath[strlen(cwdPath) - 1] != '/') // Add path separator if cwd doesn't have one
-      strcat(cwdPath, "/");
-
-    printf("Current working directory is %s\n", cwdPath);
-  } else {
-    cwdPath[0] = '\0';                // CWD is not valid
-    LAUNCHER_OPTIONS.mode = MODE_ALL; // Force mode to ALL
-    // Load embedded modules first to make sure memory card is available
-    uiSplashLogString(LEVEL_INFO, "Loading embedded modules...\n");
-    // Init modules
-    if ((res = initModules()) != 0) {
+  // Initialize base modules first and try to load NHDDL config
+  // from base devices (memory cards and MMCE) before proceeding
+  if (optionsFileNotRead) {
+    if ((res = initModules(INIT_TYPE_PARTIAL)) != 0) {
       return res;
     }
+    initOptions(cwdPath);
   }
-  // Try to load options file from currently initalized filesystems
-  uiSplashLogString(LEVEL_INFO_NODELAY, "Loading options file...\n");
-  initOptions(cwdPath);
+
+  // Init the rest of the modules
+  if ((res = initModules(INIT_TYPE_FULL)) != 0) {
+    return res;
+  }
+  // Init device map
+  if (initDevices() < 0) {
+    return -EIO;
+  }
+
+  // Reload options
+  if (optionsFileNotRead)
+    initOptions(cwdPath);
 
   // Make sure neutrino ELF exists
   if (findNeutrinoELF(cwdPath)) {
@@ -221,32 +187,8 @@ int init() {
   uiSplashLogString(LEVEL_INFO, "Found Neutrino at\n%s\n", NEUTRINO_ELF_PATH);
   free(neutrinoVersion);
 
-  // Get Neutrino directory by trimming ELF file name from the path
-  char *neutrinoELFDir = calloc(sizeof(char), strlen(NEUTRINO_ELF_PATH) - sizeof(neutrinoELF) + 3);
-  strlcpy(neutrinoELFDir, NEUTRINO_ELF_PATH, strlen(NEUTRINO_ELF_PATH) - sizeof(neutrinoELF) + 2);
-  uiSplashLogString(LEVEL_INFO, "Loading external modules...\n");
-  // Load external modules from Neutrino path into EE memory
-  res = loadExternalModules(neutrinoELFDir);
-  free(neutrinoELFDir);
-  if (res) {
-    return -EIO;
-  }
-
-  // Init modules
-  if ((res = initModules()) != 0) {
-    return res;
-  }
-  // Init device map
-  if (initDevices() < 0) {
-    return -EIO;
-  }
-
-  // Reload options
-  initOptions(cwdPath);
-
   return 0;
 }
-#endif
 
 // Parses mode string into enum
 ModeType parseMode(const char *modeStr) {
@@ -289,7 +231,7 @@ int tryFile(char *filepath) {
 }
 
 // Loads NHDDL options from optionsFile
-void initOptions(char *cwdPath) {
+int initOptions(char *cwdPath) {
   LAUNCHER_OPTIONS.vmode = VMODE_NONE;
   LAUNCHER_OPTIONS.mode = MODE_ALL;
   LAUNCHER_OPTIONS.udpbdIp[0] = '\0';
@@ -346,7 +288,7 @@ void initOptions(char *cwdPath) {
 
   if (lineBuffer[0] == '\0') {
     printf("Can't load options file, will use defaults\n");
-    return;
+    return -ENOENT;
   }
 
 fileExists:
@@ -356,7 +298,7 @@ fileExists:
     // Else, fail
     printf("Can't load options file, will use defaults\n");
     freeArgumentList(options);
-    return;
+    return -ENOENT;
   }
 
   // Parse the list into Options
@@ -377,6 +319,8 @@ fileExists:
     arg = arg->next;
   }
   freeArgumentList(options);
+
+  return 0;
 }
 
 // Attempts to find neutrino.elf at current path or one of fallback paths
