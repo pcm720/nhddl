@@ -33,8 +33,6 @@ struct dirTOCEntry {
 
 static unsigned char iso_buf[SECTOR_SIZE];
 
-// Sets file offset to specified LBA while handling large LBAs
-static int longLseek(int fd, unsigned int lba);
 // Reads Primary Volume Descriptor from specified LBA and extracts root directory LBA
 static int getPVD(int fd, uint32_t *lba, int *length);
 // Retrieves SYSTEM.CNF TOC entry using specified root directory TOC
@@ -67,7 +65,7 @@ char *getTitleID(char *path) {
   }
 
   // Seek to SYSTEM.CNF location and read file contents
-  int res = longLseek(fd, tocEntry->fileLBA);
+  int64_t res = lseek64(fd, tocEntry->fileLBA * SECTOR_SIZE, SEEK_SET);
   if (res < 0) {
     printf("WARN: %s: Failed to seek to SYSTEM.CNF\n", path);
     close(fd);
@@ -109,35 +107,10 @@ char *getTitleID(char *path) {
   return titleID;
 }
 
-// Sets file offset to specified LBA while handling large LBAs
-static int longLseek(int fd, unsigned int lba) {
-  int res;
-  // If offset fits into INT_MAX, seek and return
-  if (lba <= INT_MAX / SECTOR_SIZE) {
-    res = lseek(fd, lba * SECTOR_SIZE, SEEK_SET);
-    return res;
-  }
-
-  // Else, seek while handling overflows
-  unsigned int remaining, toSeek;
-  res = lseek(fd, INT_MAX / SECTOR_SIZE * SECTOR_SIZE, SEEK_SET);
-  if (res < 0) {
-    return res;
-  }
-  remaining = lba - INT_MAX / SECTOR_SIZE;
-  while (remaining > 0) {
-    toSeek = remaining > INT_MAX / SECTOR_SIZE ? INT_MAX / SECTOR_SIZE : remaining;
-    lseek(fd, toSeek * SECTOR_SIZE, SEEK_CUR);
-    remaining -= toSeek;
-  }
-
-  return 0;
-}
-
 // Reads Primary Volume Descriptor from specified LBA and extracts root directory LBA
 static int getPVD(int fd, uint32_t *lba, int *length) {
   // Seek to PVD LBA
-  int res = longLseek(fd, TOC_LBA);
+  int64_t res = lseek64(fd, TOC_LBA * SECTOR_SIZE, SEEK_SET);
   if (res < 0) {
     return -EIO;
   }
@@ -160,10 +133,10 @@ static int getPVD(int fd, uint32_t *lba, int *length) {
 // Retrieves SYSTEM.CNF TOC entry using specified root directory TOC
 static struct dirTOCEntry *getTOCEntry(int fd, uint32_t tocLBA, int tocLength) {
   // Read TOC entries
-  int res = 0;
+  int64_t res = 0;
   while (tocLength > 0) {
     // Seek to next LBA
-    res = longLseek(fd, tocLBA);
+    res = lseek64(fd, tocLBA * SECTOR_SIZE, SEEK_SET);
     if (res < 0) {
       return NULL;
     }
