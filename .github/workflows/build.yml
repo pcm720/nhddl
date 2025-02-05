@@ -20,9 +20,6 @@ jobs:
       id: make
       run: |
         make
-        make cleanobj
-        make STANDALONE=1
-        make copy
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -32,7 +29,6 @@ jobs:
         path: |
           nhddl-*.elf
           !nhddl-*_unc.elf
-          modules/*.irx
           README.md
           examples/*.yaml
 
@@ -60,7 +56,6 @@ jobs:
       run: |
         cd artifacts
         mv nhddl-${{ env.GIT_VERSION }}.elf nhddl.elf
-        mv nhddl-${{ env.GIT_VERSION }}-standalone.elf nhddl-standalone.elf
         zip -r ../nhddl-${{ env.GIT_VERSION }}.zip ./*
 
     - uses: "marvinpinto/action-automatic-releases@latest"
