@@ -10,7 +10,7 @@ lists them and boots selected ISO via Neutrino.
 It displays visual Game ID to trigger per-title settings on the Pixel FX line of products and triggers per-title memory cards on SD2PSX and MemCard PRO2.
 
 Note that this not an attempt at making a Neutrino-based Open PS2 Loader replacement.  
-Since NHDDL only launches Neutrino, GSM, PADEMU, IGR, IGS, cheats and other features supported by OPL are _out-of-scope_ unless they are implemented in Neutrino.
+Since NHDDL only launches Neutrino, PADEMU, IGR, IGS, cheats and other features supported by OPL are _out-of-scope_ unless they are implemented in Neutrino.
 
 ## Usage
 
@@ -34,22 +34,14 @@ NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) install
 - `mcX:/NEUTRINO/neutrino.elf` (SAS-compliant path on memory cards, __case-sensitive__)
 
 By default, NHDDL tries to initialize all supported devices. You can override this behavior and reduce initialization times by setting specific mode in launcher configuration file.  
-See [this](#launcher-configuration-file) section for details on `nhddl.yml`.
+See [this](#launcher-configuration-file) section for details on `nhddl.yaml`.  
 
+Note that if your ELF loader resets IOP (e.g. `PS2BBL` and recent versions of `wLE_ISR`), NHDDL will try loading `nhddl.yaml` from memory cards and MMCE devices first to avoid
+loading modules for all devices.  
+If `nhddl.yaml` is not present on any of the memory cards or MMCE devices, NHDDL will initialize all modules first and then will attempt to search for `nhddl.yaml` again.
 
 **Do not plug in any BDM storage devices while running NHDDL!**  
 Doing so might crash NHDDL and/or possibly corrupt the files on your target device due to how BDM drivers work.
-
-## Versions
-
-NHDDL comes in two versions: _standalone_ and _non-standalone_.
-
-### Standalone version
-
-The standalone version of NHDDL doesn't require any Neutrino modules and will boot from any device.  
-It makes the `nhddl.elf` larger, but allows NHDDL to support ELF loaders that unload everything before launchining NHDDL from BDM devices.
-
-Note that Neutrino is still required for NHDDL to launch your ISOs.
 
 #### Manual installation
 
@@ -77,95 +69,41 @@ This will install NHDDL to your memory card along with the PS2 Browser icon.
  
 Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest version.
 
-### Non-standalone version
-
-The non-standalone version of NHDDL reuses Neutrino modules for BDM support and requires them
-to be present in Neutrino `modules` directory, which makes `nhddl.elf` significantly smaller.  
-These files should already be present in Neutrino release ZIP.  
-Use this version to save space on your memory card.
-
-- Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases/tag/latest)
-- Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
-- Unpack Neutrino release
-- Copy `nhddl.elf` to Neutrino folder next to `neutrino.elf`
-  For HDL support, copy `modules/ps2hdd.irx` and `modules/ps2fs.irx` from NHDDL release to Neutrino `modules` directory
-- _Additional step if you need only some of the available modes_:   
-  Modify `nhddl.yaml` [accordingly](#launcher-configuration-file) and copy it next to `nhddl.elf`
-- Copy Neutrino folder to your PS2 memory card or your storage device.
-
-Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest version.
-
-You can also install NHDDL from a PSU package (see [this section](#save-application-system-psu)), but you'll need to copy Neutrino installation manually using wLaunchELF or another PS2-based file manager.
-
-If you're getting `Failed to prepare external modules` error while trying to run NHDDL from the USB drive, MX4SIO, iLink or UDPBD, make sure your ELF launcher initializes BDM modules and doesn't reset the IOP before loading NHDDL.  
-If this is the case, you __must__ place Neutrino on the memory card, MMCE device or use standalone version instead.
-
 ### Supported modes
 
 #### ATA
-Make sure that Neutrino `modules` directory contains the following IRX files:
-- `bdm.irx` 
-- `bdmfs_fatfs.irx`
-- `dev9_ns.irx`
-- `ata_bd.irx`
 
 To skip all other devices, `mode: ata` must be present in `nhddl.yaml`.
 
 #### MX4SIO
-The following files are required for MX4SIO:
-- `bdm.irx` 
-- `bdmfs_fatfs.irx`
-- `mx4sio_bd_mini.irx`
 
 To skip all other devices, `mode: mx4sio` must be present in `nhddl.yaml`.
 
 #### USB
-The following files are required for USB:
-- `bdm.irx` 
-- `bdmfs_fatfs.irx`
-- `usbd_mini.irx`
-- `usbmass_bd_mini.irx`
 
 Using more than one USB mass storage device at the same time is not recommended.
 To skip all other devices, `mode: usb` must be present in `nhddl.yaml`.
 
 #### UDPBD
-The following files are required for UDPBD:
-- `bdm.irx` 
-- `bdmfs_fatfs.irx`
-- `dev9_ns.irx`
-- `smap_udpbd.irx`
 
 To skip all other devices, `mode: udpbd` must be present in `nhddl.yaml`.
 
 UDPBD module requires PS2 IP address to work.  
 NHDDL attempts to retrieve PS2 IP address from the following sources:
-- `udpbd_ip` flag in `nhddl.yml`
+- `udpbd_ip` flag in `nhddl.yaml`
 - `SYS-CONF/IPCONFIG.DAT` on the memory card (usually created by w/uLaunchELF)
 
 `udpbd_ip` flag takes priority over `IPCONFIG.DAT`.
 
 #### iLink
-The following files are required for iLink:
-- `bdm.irx` 
-- `bdmfs_fatfs.irx`
-- `iLinkman.irx`
-- `IEEE1394_bd_mini.irx`
 
 To skip all other devices, `mode: ilink` must be present in `nhddl.yaml`.
 
 #### MMCE (SD2PSX, MemCard PRO2)
-MMCE devices are supported with embedded module.  
+
 To skip all other devices, `mode: mmce` must be present in `nhddl.yaml`.
 
 #### HDL (APA-formatted HDD with HD Loader partitions)
-The following files are required for HDL backend:
-- `bdm.irx`
-- `dev9_ns.irx`
-- `ata_bd.irx`
-- `ps2hdd.irx`
-- `ps2fs.irx`
-The last two modules are a part of PS2SDK and included in NHDDL distribution.
 
 Note that HDL backend **does not support** VMCs and virtual HDDs.  
 Cover art and title options will be loaded from one of the following APA partitions:
