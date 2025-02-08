@@ -140,6 +140,7 @@ int _findISO(DIR *directory, TargetList *result, struct DeviceMapEntry *device) 
       // Process inner directory recursively
       _findISO(d, result, device);
       closedir(d);
+      break;
     default:
       if (entry->d_name[0] == '.') // Ignore .files (most likely macOS doubles)
         continue;
