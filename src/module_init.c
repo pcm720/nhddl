@@ -73,13 +73,13 @@ static ModuleListEntry moduleList[] = {
     //
     // Base modules
     //
-    INT_MODULE(iomanX, MODE_ALL, NULL, INIT_TYPE_PARTIAL),
-    INT_MODULE(fileXio, MODE_ALL, NULL, INIT_TYPE_PARTIAL),
-    INT_MODULE(sio2man, MODE_ALL, NULL, INIT_TYPE_PARTIAL),
-    INT_MODULE(mcman, MODE_ALL, NULL, INIT_TYPE_PARTIAL),
-    INT_MODULE(mcserv, MODE_ALL, NULL, INIT_TYPE_PARTIAL),
-    INT_MODULE(freepad, MODE_ALL, NULL, INIT_TYPE_PARTIAL),
-    INT_MODULE(mmceman, MODE_ALL, NULL, INIT_TYPE_PARTIAL), // MMCE driver
+    INT_MODULE(iomanX, MODE_ALL, NULL, INIT_TYPE_BASIC),
+    INT_MODULE(fileXio, MODE_ALL, NULL, INIT_TYPE_BASIC),
+    INT_MODULE(sio2man, MODE_ALL, NULL, INIT_TYPE_BASIC),
+    INT_MODULE(mcman, MODE_ALL, NULL, INIT_TYPE_BASIC),
+    INT_MODULE(mcserv, MODE_ALL, NULL, INIT_TYPE_BASIC),
+    INT_MODULE(freepad, MODE_ALL, NULL, INIT_TYPE_BASIC),
+    INT_MODULE(mmceman, MODE_ALL, NULL, INIT_TYPE_BASIC), // MMCE driver
     //
     // Backend modules
     //
@@ -141,7 +141,7 @@ int initModules(ModuleInitType initType) {
 
   // Load modules
   for (int i = 0; i < MODULE_COUNT; i++) {
-    if ((initType == INIT_TYPE_PARTIAL) && (moduleList[i].initType == INIT_TYPE_FULL))
+    if ((initType == INIT_TYPE_BASIC) && (moduleList[i].initType == INIT_TYPE_FULL))
       return 0; // Return if partial init is requested and current module is listed only for full init
 
     if (moduleList[i].loaded) // Ignore already loaded modules

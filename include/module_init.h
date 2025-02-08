@@ -3,13 +3,11 @@
 
 typedef enum {
   // Initialize only base modules
-  INIT_TYPE_PARTIAL,
+  INIT_TYPE_BASIC,
   // Initialize all modules excluding ones already loaded
   INIT_TYPE_FULL
 } ModuleInitType;
 
-// Loads external modules into memory
-int loadExternalModules(char *basePath);
 // Initializes IOP modules
 int initModules(ModuleInitType initType);
 
