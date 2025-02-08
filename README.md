@@ -151,7 +151,6 @@ Configuration file is loaded from one of the following paths:
 - `hdd0:/<OPL partition>/neutrino/neutrino.elf` (APA device, if HDL mode is enabled)  
   `OPL partition` must be one of the following, in order of priority: `+OPL`, `OPL` or `__common`
 - `mcX:/NHDDL/nhddl.yaml` (memory cards, __case-sensitive__)
-- `mcX:/NHDDL-CONF/nhddl.yaml` (memory cards, __case-sensitive__)
 
 This file is _completely optional_ and must be used only to force video mode in NHDDL UI or set NHDDL device mode.  
 By default, default video mode is used and all BDM devices are used to look for ISO files.

@@ -22,7 +22,6 @@ static const char optionsFile[] = "nhddl.yaml";
 // nhddl.yaml fallback paths
 static char *nhddlFallbackPaths[] = {
     "mcX:/NHDDL/nhddl.yaml",
-    "mcX:/NHDDL-CONF/nhddl.yaml",
 };
 static char nhddlStorageFallbackPath[] = "/nhddl/nhddl.yaml";
 // Neutrino ELF name relative to CWD
@@ -134,8 +133,18 @@ int initDevices() {
   return 0;
 }
 
+// Reads Neutrino version and displays Neutrino path and version on the splash screen
+void showNeutrinoSplash() {
+  // Get Neturino version
+  char *neutrinoVersion = getNeutrinoVersion();
+  uiSplashSetNeutrinoVersion(neutrinoVersion);
+  uiSplashLogString(LEVEL_INFO, "Found Neutrino at\n%s\n", NEUTRINO_ELF_PATH);
+  free(neutrinoVersion);
+}
+
 int init() {
   int optionsFileNotRead = -1;
+  int neutrinoNotFound = -1;
   int fd, res;
   char cwdPath[PATH_MAX + 1];
   // Get CWD and try to open it
@@ -157,10 +166,17 @@ int init() {
   // Initialize base modules first and try to load NHDDL config
   // from base devices (memory cards and MMCE) before proceeding
   if (optionsFileNotRead) {
-    if ((res = initModules(INIT_TYPE_PARTIAL)) != 0) {
+    if ((res = initModules(INIT_TYPE_BASIC)) != 0) {
       return res;
     }
     initOptions(cwdPath);
+
+    // Search for neutrino.elf on base devices
+    if (neutrinoNotFound) {
+      neutrinoNotFound = findNeutrinoELF(cwdPath);
+      if (!neutrinoNotFound)
+        showNeutrinoSplash();
+    }
   }
 
   // Init the rest of the modules
@@ -172,20 +188,18 @@ int init() {
     return -EIO;
   }
 
-  // Reload options
+  // Reload options if not read previously
   if (optionsFileNotRead)
     initOptions(cwdPath);
 
-  // Make sure neutrino ELF exists
-  if (findNeutrinoELF(cwdPath)) {
-    uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
-    return -ENOENT;
+  // Search for Neutrino if not found previously
+  if (neutrinoNotFound) {
+    if (findNeutrinoELF(cwdPath)) {
+      uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
+      return -ENOENT;
+    }
+    showNeutrinoSplash();
   }
-  // Get Neturino version
-  char *neutrinoVersion = getNeutrinoVersion();
-  uiSplashSetNeutrinoVersion(neutrinoVersion);
-  uiSplashLogString(LEVEL_INFO, "Found Neutrino at\n%s\n", NEUTRINO_ELF_PATH);
-  free(neutrinoVersion);
 
   return 0;
 }
