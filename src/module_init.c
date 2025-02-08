@@ -20,7 +20,7 @@
   extern uint32_t size_##mod##_irx
 
 // Defines moduleList entry for embedded module
-#define INT_MODULE(mod, mode, argFunc, initType) {#mod, mod##_irx, &size_##mod##_irx, 0, NULL, argFunc, mode, {NULL}, 0, initType}
+#define INT_MODULE(mod, mode, argFunc, initType) {#mod, mod##_irx, &size_##mod##_irx, 0, NULL, argFunc, mode, 0, initType}
 
 // Embedded IOP modules
 IRX_DEFINE(iomanX);
@@ -56,7 +56,6 @@ typedef struct ModuleListEntry {
   char *argStr;                   // Module arguments
   moduleArgFunc argumentFunction; // Function used to initialize module arguments
   ModeType mode;                  // Used to ignore modules not required for target mode
-  char *path[2];                  // Relative path to module (in case module is external)
   uint8_t loaded;
   ModuleInitType initType;
 } ModuleListEntry;
