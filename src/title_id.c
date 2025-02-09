@@ -65,7 +65,7 @@ char *getTitleID(char *path) {
   }
 
   // Seek to SYSTEM.CNF location and read file contents
-  int64_t res = lseek64(fd, tocEntry->fileLBA * SECTOR_SIZE, SEEK_SET);
+  int64_t res = lseek64(fd, (int64_t)tocEntry->fileLBA * SECTOR_SIZE, SEEK_SET);
   if (res < 0) {
     printf("WARN: %s: Failed to seek to SYSTEM.CNF\n", path);
     close(fd);
@@ -110,7 +110,7 @@ char *getTitleID(char *path) {
 // Reads Primary Volume Descriptor from specified LBA and extracts root directory LBA
 static int getPVD(int fd, uint32_t *lba, int *length) {
   // Seek to PVD LBA
-  int64_t res = lseek64(fd, TOC_LBA * SECTOR_SIZE, SEEK_SET);
+  int64_t res = lseek64(fd, (int64_t)TOC_LBA * SECTOR_SIZE, SEEK_SET);
   if (res < 0) {
     return -EIO;
   }
@@ -136,7 +136,7 @@ static struct dirTOCEntry *getTOCEntry(int fd, uint32_t tocLBA, int tocLength) {
   int64_t res = 0;
   while (tocLength > 0) {
     // Seek to next LBA
-    res = lseek64(fd, tocLBA * SECTOR_SIZE, SEEK_SET);
+    res = lseek64(fd, (int64_t)tocLBA * SECTOR_SIZE, SEEK_SET);
     if (res < 0) {
       return NULL;
     }
