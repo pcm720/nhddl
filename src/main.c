@@ -377,6 +377,7 @@ int findNeutrinoELF(char *cwdPath) {
       return 0;
 
     // Try memory card paths
+    NEUTRINO_ELF_PATH[0] = '\0';
     for (int j = 0; j < (sizeof(neutrinoMCFallbackPaths) / sizeof(char *)); j++) {
       neutrinoMCFallbackPaths[j][2] = i + '0';
       if (!tryFile(neutrinoMCFallbackPaths[j])) {
