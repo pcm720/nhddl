@@ -152,6 +152,10 @@ int initModules(ModuleInitType initType) {
         return ret;
       }
       moduleList[i].loaded = 1;
+
+      // Introduce delay to prevent ps2hdd module from hanging
+      if ((LAUNCHER_OPTIONS.mode & MODE_HDL) && !strcmp(moduleList[i].name, "ata_bd"))
+        sleep(1);
     }
     // Clean up arguments
     if (moduleList[i].argStr != NULL)
