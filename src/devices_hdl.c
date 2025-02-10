@@ -81,13 +81,13 @@ int initHDL(int deviceIdx) {
   deviceModeMap[deviceIdx].mode = MODE_NONE;
 
   // Wait for IOP to initialize device driver
-  for (int attempts = 0; attempts < 2; attempts++) {
-    delay(2);
+  for (int attempts = 0; attempts < 20; attempts++) {
     directory = opendir(mountpoint);
     if (directory != NULL) {
       closedir(directory);
       break;
     }
+    delay(5);
   }
   if (directory == NULL) {
     return -ENODEV;
