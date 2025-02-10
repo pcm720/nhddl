@@ -38,8 +38,8 @@ char *modeToString(ModeType mode) {
 // Returns the start index of relative file path without device mountpoint or -1 if path is not supported/invalid
 int getRelativePathIdx(char *path) {
   int idx = 0;
-  while (*path != 0) {
-    if (*path == ':') {
+  while (path[0] != 0) {
+    if (path[0] == ':' && (path[1] == '/' || path[1] == '\\')) {
       return idx + 1;
     }
     idx++;
