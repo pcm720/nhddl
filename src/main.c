@@ -148,35 +148,33 @@ int init() {
   int fd, res;
   char cwdPath[PATH_MAX + 1];
   // Get CWD and try to open it
-  if (getcwd(cwdPath, PATH_MAX + 1) && ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0)) {
-    close(fd);
-
+  if (getcwd(cwdPath, PATH_MAX + 1)) {
     if (cwdPath[strlen(cwdPath) - 1] != '/') // Add path separator if cwd doesn't have one
       strcat(cwdPath, "/");
 
-    // Try to load options from CWD
-    optionsFileNotRead = initOptions(cwdPath);
-  } else {
-    cwdPath[0] = '\0';                // CWD is not valid
-    LAUNCHER_OPTIONS.mode = MODE_ALL; // Force mode to ALL to load all modules
+    if ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0) {
+      close(fd);
+
+      // Try to load options from CWD
+      optionsFileNotRead = initOptions(cwdPath);
+    }
   }
 
   uiSplashLogString(LEVEL_INFO_NODELAY, "Loading modules...\n");
 
   // Initialize base modules first and try to load NHDDL config
-  // from base devices (memory cards and MMCE) before proceeding
-  if (optionsFileNotRead) {
+  // from CWD and base devices (memory cards and MMCE) before proceeding
+  if (optionsFileNotRead < 0) {
     if ((res = initModules(INIT_TYPE_BASIC)) != 0) {
       return res;
     }
-    initOptions(cwdPath);
+    // Try to init options from CWD and base devices
+    if ((optionsFileNotRead = initOptions(cwdPath)) < 0)
+      cwdPath[0] = '\0'; // Drop CWD if there was no options file
 
     // Search for neutrino.elf on base devices
-    if (neutrinoNotFound) {
-      neutrinoNotFound = findNeutrinoELF(cwdPath);
-      if (!neutrinoNotFound)
-        showNeutrinoSplash();
-    }
+    if (!(neutrinoNotFound = findNeutrinoELF(cwdPath)))
+      showNeutrinoSplash();
   }
 
   // Init the rest of the modules
@@ -189,11 +187,11 @@ int init() {
   }
 
   // Reload options if not read previously
-  if (optionsFileNotRead)
+  if (optionsFileNotRead < 0)
     initOptions(cwdPath);
 
   // Search for Neutrino if not found previously
-  if (neutrinoNotFound) {
+  if (neutrinoNotFound < 0) {
     if (findNeutrinoELF(cwdPath)) {
       uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
       return -ENOENT;
@@ -275,9 +273,8 @@ int initOptions(char *cwdPath) {
     if (device->mountpoint != NULL) {
       strcpy(lineBuffer, device->mountpoint);
       strcat(lineBuffer, nhddlStorageFallbackPath);
-      if (!tryFile(lineBuffer)) {
-        break;
-      }
+      if (!tryFile(lineBuffer))
+        goto fileExists;
     }
   }
 
