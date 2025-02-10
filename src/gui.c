@@ -595,8 +595,7 @@ void uiLaunchTitle(Target *target, ArgumentList *arguments) {
   gsKit_finish();
   gsKit_sync_flip(gsGlobal);
 
-  // Wait a litle bit, cleanup the UI and launch title
-  sleep(2);
+  // Cleanup the UI and launch title
   closePad();
   closeUI();
   launchTitle(target, arguments);
