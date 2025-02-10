@@ -45,16 +45,20 @@ void mmceMountVMC(char *titleID) {
   // Send GameID to both MMCE devices
   for (int i = '0'; i < '2'; i++) {
     mmceMountpoint[4] = i;
-    printf("Trying to mount VMC for %s on %s\n", titleID, mmceMountpoint);
-    if (fileXioDevctl(mmceMountpoint, 0x8, titleID, (strlen(titleID) + 1), NULL, 0) < 0) {
+    // Ping MMCE first to make sure the device is present
+    if (fileXioDevctl(mmceMountpoint, 0x1, NULL, 0, NULL, 0) < 0)
+      continue;
+
+    if ((fileXioDevctl(mmceMountpoint, 0x8, titleID, (strlen(titleID) + 1), NULL, 0)) < 0) {
+      // Skip polling if devctl call has failed
       continue;
     }
 
+    // Poll MMCE status until busy bit is clear
     for (int i = 0; i < 15; i++) {
       delay(2);
-      // Poll MMCE status until busy bit is clear
       if ((fileXioDevctl(mmceMountpoint, 0x2, NULL, 0, NULL, 0) & 1) == 0) {
-        printf("VMC mounted\n");
+        printf("Mounted VMC for %s on %s\n", titleID, mmceMountpoint);
         break;
       }
     }
