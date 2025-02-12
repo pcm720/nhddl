@@ -110,8 +110,9 @@ void launchTitle(Target *target, ArgumentList *arguments) {
   // Append bsd and ISO path
   appendArgument(arguments, newArgument(bsdArgument, bsdValue));
   appendArgument(arguments, newArgument(isoArgument, target->fullPath));
-  // Use quickboot to reduce load times
-  appendArgument(arguments, newArgument("qb", ""));
+  // Use quickboot to reduce load times (except for HDL mode because it requires hdlfs module)
+  if (target->device->mode != MODE_HDL)
+    appendArgument(arguments, newArgument("qb", ""));
 
   // Assemble argv
   char **argv = malloc(((arguments->total) + 1) * sizeof(char *));
