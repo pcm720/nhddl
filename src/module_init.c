@@ -14,6 +14,9 @@
 #include <string.h>
 #include <unistd.h>
 
+#define NEWLIB_PORT_AWARE
+#include <fileXio_rpc.h>
+
 // Macros for loading embedded IOP modules
 #define IRX_DEFINE(mod)                                                                                                                              \
   extern unsigned char mod##_irx[] __attribute__((aligned(16)));                                                                                     \
@@ -156,6 +159,10 @@ int initModules(ModuleInitType initType) {
       // Introduce delay to prevent ps2hdd module from hanging
       if ((LAUNCHER_OPTIONS.mode & MODE_HDL) && !strcmp(moduleList[i].name, "ata_bd"))
         sleep(1);
+
+      // Explicitly init fileXio
+      if (!strcmp(moduleList[i].name, "fileXio"))
+        fileXioInit();
     }
     // Clean up arguments
     if (moduleList[i].argStr != NULL)
