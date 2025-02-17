@@ -25,7 +25,7 @@ Since NHDDL only launches Neutrino, PADEMU, IGR, IGS, cheats and other features 
 
 NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) installation to be present at one of the following paths:
 - `<NHDDL launch directory>/neutrino.elf` (__might be case-sensitive__ depending on device)
-- `mmceX:/neutrino/neutrino.elf` (MMCE devices, will work even if MMCE mode is _not_ enabled)
+- `mmceX:/neutrino/neutrino.elf` (MMCE devices, will work even if MMCE mode is _not_ enabled unless MX4SIO mode is set)
 - `massX:/neutrino/neutrino.elf` (BDM devices, if any of BDM modes are enabled)
 - `hdd0:/<OPL partition>/neutrino/neutrino.elf` (APA device, if HDL mode is enabled)  
   `OPL partition` must be one of the following, in order of priority: `+OPL`, `OPL` or `__common`
@@ -48,7 +48,7 @@ Doing so might crash NHDDL and/or possibly corrupt the files on your target devi
 To use NHDDL:
 - Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
 - Copy `nhddl.elf` to your memory card or storage device wherever you want.
-- _Additional step if you need only some of the available modes_:  
+- _Additional step if you need only some of the available modes or MX4SIO support_:  
   Modify `nhddl.yaml` [accordingly](#launcher-configuration-file) and copy it next to `nhddl.elf`
 - Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases/tag/latest)
 - Copy Neutrino folder to the root of your PS2 memory card or your storage device. 
@@ -77,7 +77,10 @@ To skip all other devices, `mode: ata` must be present in `nhddl.yaml`.
 
 #### MX4SIO
 
-To skip all other devices, `mode: mx4sio` must be present in `nhddl.yaml`.
+MX4SIO support requires explicit configuration due to conflicts with memory cards and MMCE devices.  
+`mode: mx4sio` must be present in `nhddl.yaml` on __the memory card__ for MX4SIO to work.  
+
+Note that __MMCE devices will not be available__ when this mode is enabled.
 
 #### USB
 
@@ -146,7 +149,7 @@ Launcher configuration is read from the `nhddl.yaml` file.
 
 Configuration file is loaded from one of the following paths:
 - `<NHDDL launch directory>/nhddl.yaml` (__might be case-sensitive__ depending on device)
-- `mmceX:/nhddl/nhddl.yaml` (MMCE devices, if MMCE mode is enabled)
+- `mmceX:/nhddl/nhddl.yaml` (MMCE devices, will work even if MMCE mode is _not_ enabled unless MX4SIO mode is set)
 - `massX:/nhddl/nhddl.yaml` (BDM devices, if any of BDM modes are enabled)
 - `hdd0:/<OPL partition>/neutrino/neutrino.elf` (APA device, if HDL mode is enabled)  
   `OPL partition` must be one of the following, in order of priority: `+OPL`, `OPL` or `__common`
