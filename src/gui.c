@@ -189,11 +189,8 @@ int uiLoop(TargetList *titles) {
     while (curTarget != NULL) {
       // Compare paths without the mountpoint
       mountpointLen = getRelativePathIdx(curTarget->fullPath);
-      if (mountpointLen == -1) {
-        printf("WARN: Failed to get device mountpoint for %s\n", curTarget->name);
-        curTarget = curTarget->next;
-        continue;
-      }
+      if (mountpointLen == -1)
+        mountpointLen = 0;
 
       if (!strcmp(lastTitle, &curTarget->fullPath[mountpointLen])) {
         selectedTitleIdx = curTarget->idx;
@@ -790,7 +787,7 @@ void uiSplashSetNeutrinoVersion(const char *str) {
     return;
 
   strcpy(logBuffer.neutrinoVersion, "Neutrino");
-  strncat(logBuffer.neutrinoVersion, str, 100-10);
+  strncat(logBuffer.neutrinoVersion, str, 100 - 10);
 
   SignalSema(logBuffer.newStringSema);
   WaitSema(logBuffer.drawnSema);
