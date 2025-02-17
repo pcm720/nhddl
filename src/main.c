@@ -143,10 +143,13 @@ void showNeutrinoSplash() {
 }
 
 int init() {
+  // Set initial init type to basic
+  int initType = INIT_TYPE_BASIC;
   int optionsFileNotRead = -1;
   int neutrinoNotFound = -1;
   int fd, res;
   char cwdPath[PATH_MAX + 1];
+
   // Get CWD and try to open it
   if (getcwd(cwdPath, PATH_MAX + 1)) {
     if (cwdPath[strlen(cwdPath) - 1] != '/') // Add path separator if cwd doesn't have one
@@ -156,47 +159,43 @@ int init() {
       close(fd);
 
       // Try to load options from CWD
-      optionsFileNotRead = initOptions(cwdPath);
+      if ((optionsFileNotRead = initOptions(cwdPath)) >= 0)
+        initType = INIT_TYPE_FULL; // Set full level if options file was loaded
     }
   }
 
   uiSplashLogString(LEVEL_INFO_NODELAY, "Loading modules...\n");
 
-  // Initialize base modules first and try to load NHDDL config
-  // from CWD and base devices (memory cards and MMCE) before proceeding
-  if (optionsFileNotRead < 0) {
-    if ((res = initModules(INIT_TYPE_BASIC)) != 0) {
+  while (initType <= INIT_TYPE_FULL) {
+    if (LAUNCHER_OPTIONS.mode == MODE_ALL) // Exclude MX4SIO to avoid conflicts unless explicitly requested
+      LAUNCHER_OPTIONS.mode = MODE_ALL & ~MODE_MX4SIO;
+
+    // Load modules associated with target init type
+    if ((res = initModules(initType)) != 0)
       return res;
-    }
-    // Try to init options from CWD and base devices
+
+    // Initialize device map after full init
+    if ((initType == INIT_TYPE_FULL) && (initDevices() < 0))
+      return -EIO;
+
+    // Try to init options
     if ((optionsFileNotRead = initOptions(cwdPath)) < 0)
       cwdPath[0] = '\0'; // Drop CWD if there was no options file
 
-    // Search for neutrino.elf on base devices
-    if (!(neutrinoNotFound = findNeutrinoELF(cwdPath)))
+    // Search for neutrino.elf
+    if ((neutrinoNotFound < 0) && !(neutrinoNotFound = findNeutrinoELF(cwdPath)))
       showNeutrinoSplash();
+
+    // If options file was read, advance init level to full
+    if ((optionsFileNotRead >= 0) && (initType != INIT_TYPE_FULL))
+      initType = INIT_TYPE_FULL;
+    else
+      initType += 1;
   }
 
-  // Init the rest of the modules
-  if ((res = initModules(INIT_TYPE_FULL)) != 0) {
-    return res;
-  }
-  // Init device map
-  if (initDevices() < 0) {
-    return -EIO;
-  }
-
-  // Reload options if not read previously
-  if (optionsFileNotRead < 0)
-    initOptions(cwdPath);
-
-  // Search for Neutrino if not found previously
   if (neutrinoNotFound < 0) {
-    if (findNeutrinoELF(cwdPath)) {
-      uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
-      return -ENOENT;
-    }
-    showNeutrinoSplash();
+    uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
+    return -ENOENT;
   }
 
   return 0;
