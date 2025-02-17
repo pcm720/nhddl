@@ -58,7 +58,6 @@ int findISO(TargetList *result, struct DeviceMapEntry *device) {
 
   chdir(device->mountpoint);
   if (_findISO(directory, result, device)) {
-    freeTargetList(result);
     closedir(directory);
     return -ENOENT;
   }
