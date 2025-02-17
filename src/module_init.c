@@ -5,7 +5,6 @@
 #include <debug.h>
 #include <fcntl.h>
 #include <iopcontrol.h>
-#include <libmc.h>
 #include <loadfile.h>
 #include <sbv_patches.h>
 #include <sifrpc.h>
@@ -65,7 +64,7 @@ typedef struct ModuleListEntry {
 
 // Initializes SMAP arguments
 char *initSMAPArguments(uint32_t *argLength);
-// Initializes PS2HDD-BDM arguments
+// Initializes PS2HDD arguments
 char *initPS2HDDArguments(uint32_t *argLength);
 // Initializes PS2FS arguments
 char *initPS2FSArguments(uint32_t *argLength);
@@ -80,8 +79,8 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(sio2man, MODE_ALL, NULL, INIT_TYPE_BASIC),
     INT_MODULE(mcman, MODE_ALL, NULL, INIT_TYPE_BASIC),
     INT_MODULE(mcserv, MODE_ALL, NULL, INIT_TYPE_BASIC),
-    INT_MODULE(freepad, MODE_ALL, NULL, INIT_TYPE_BASIC),
-    INT_MODULE(mmceman, MODE_ALL, NULL, INIT_TYPE_BASIC), // MMCE driver
+    INT_MODULE(freepad, MODE_ALL, NULL, INIT_TYPE_EXTENDED),
+    INT_MODULE(mmceman, MODE_ALL, NULL, INIT_TYPE_EXTENDED), // MMCE driver
     //
     // Backend modules
     //
@@ -112,10 +111,6 @@ static ModuleListEntry moduleList[] = {
 };
 #define MODULE_COUNT sizeof(moduleList) / sizeof(ModuleListEntry)
 
-// Returns 0 if memory card in mc1 is not a formatted PS2 memory card
-// Used to avoid loading MX4SIO module and disabling mc1
-int getMC1Type();
-
 // Loads module, executing argument function if it's present
 int loadModule(ModuleListEntry *mod);
 
@@ -143,8 +138,11 @@ int initModules(ModuleInitType initType) {
 
   // Load modules
   for (int i = 0; i < MODULE_COUNT; i++) {
-    if ((initType == INIT_TYPE_BASIC) && (moduleList[i].initType == INIT_TYPE_FULL))
-      return 0; // Return if partial init is requested and current module is listed only for full init
+    if (moduleList[i].initType > initType)
+      return 0; // Return if partial init is requested and current module is listed only for later init
+
+    if ((LAUNCHER_OPTIONS.mode & MODE_MX4SIO) && !strcmp(moduleList[i].name, "mmceman"))
+      continue; // Do not load mmceman if MX4SIO mode is enabled to avoid conflicts
 
     if (moduleList[i].loaded) // Ignore already loaded modules
       continue;
@@ -174,11 +172,6 @@ int initModules(ModuleInitType initType) {
 // Loads module, executing argument function if it's present
 int loadModule(ModuleListEntry *mod) {
   int ret, iopret = 0;
-  if ((mod->mode == MODE_MX4SIO) && getMC1Type()) {
-    // If mc1 is a valid memory card, skip MX4SIO modules
-    uiSplashLogString(LEVEL_WARN, "Skipping %s\n(memory card is inserted in slot 2)\n", mod->name);
-    return 0;
-  }
 
   uiSplashLogString(LEVEL_INFO_NODELAY, "Loading %s\n", mod->name);
 
@@ -210,22 +203,6 @@ failCheck:
   }
 
   return ret;
-}
-
-// Returns 0 if memory card in mc1 is not a formatted PS2 memory card
-// Can be used to avoid loading MX4SIO module
-int getMC1Type() {
-  if (mcInit(MC_TYPE_XMC)) {
-    printf("ERROR: Failed to initialize libmc\n");
-    return -ENODEV;
-  }
-
-  int mc1Type = 0;
-  // Get memory card type for mc1
-  mcGetInfo(1, 0, &mc1Type, NULL, NULL);
-  mcSync(0, NULL, NULL);
-  mcReset();
-  return mc1Type;
 }
 
 // Tries to read SYS-CONF/IPCONFIG.DAT from memory card

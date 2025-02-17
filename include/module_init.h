@@ -4,6 +4,8 @@
 typedef enum {
   // Initialize only base modules
   INIT_TYPE_BASIC,
+  // Initialize extended init modules (e.g. freepad, mmceman)
+  INIT_TYPE_EXTENDED,
   // Initialize all modules excluding ones already loaded
   INIT_TYPE_FULL
 } ModuleInitType;
