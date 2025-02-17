@@ -128,11 +128,8 @@ int updateLastLaunchedTitle(struct DeviceMapEntry *device, char *titlePath) {
 
   // Write path without the mountpoint
   int mountpointLen = getRelativePathIdx(titlePath);
-  if (mountpointLen < 0) {
-    printf("ERROR: Failed to get mountpoint length\n");
-    close(fd);
-    return -EIO;
-  }
+  if (mountpointLen < 0)
+    mountpointLen = 0; // Write path as-is
 
   size_t writeLen = strlen(titlePath) + 1 - mountpointLen;
   if (write(fd, titlePath + mountpointLen, writeLen) != writeLen) {
