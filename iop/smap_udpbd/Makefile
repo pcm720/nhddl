@@ -1,9 +1,9 @@
-
 IOP_BIN := smap_udpbd.irx
+
 IOP_SRC_DIR := src/
 IOP_OBJS_DIR := obj/
 IOP_CFLAGS += -mno-check-zero-division
-IOP_INCS := -Isrc/include -I$(PS2SDK)/ports/include
+IOP_INCS := -Isrc/include
 IOP_OBJS = main.o smap.o xfer.o ministack.o udpbd.o udptty.o imports.o exports.o
 
 all:: $(IOP_BIN)

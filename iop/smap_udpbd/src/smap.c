@@ -21,7 +21,6 @@
 #include "xfer.h"
 #include "udpbd.h"
 #include "udptty.h"
-int udpbd_init(void);
 
 /*  There is a difference in how the transmissions are made,
     between this driver and the SONY original.
@@ -407,8 +406,10 @@ static void IntrHandlerThread(struct SmapDriverData *SmapDrivPrivData)
                 DelayThread(10000);
                 SmapDrivPrivData->SmapIsInitialized = 1;
 
-                udpbd_init();
                 udptty_init();
+#ifndef NO_BDM
+                udpbd_init();
+#endif
 
                 if (!SmapDrivPrivData->EnableLinkCheckTimer) {
                     USec2SysClock(1000000, &SmapDrivPrivData->LinkCheckTimer);

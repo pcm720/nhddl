@@ -62,6 +62,7 @@ static uint8_t *g_buffer_act = NULL;
 static unsigned int g_read_size;
 static int32_t g_errno = 0;
 static udp_socket_t *udpbd_socket = NULL;
+static int g_limit_dma_block_size = 0;
 
 
 static unsigned int _udpbd_timeout(void *arg)
@@ -146,13 +147,20 @@ static int _udpbd_read(struct block_device *bd, uint64_t sector, void *buffer, u
 static int udpbd_read(struct block_device *bd, uint64_t sector, void *buffer, uint16_t count)
 {
     int retries;
-    uint16_t count_left = count;
+    uint16_t count_left;
 
     //M_DEBUG("%s: sector=%d, count=%d\n", __func__, (uint32_t)sector, count);
 
     if (bdm_connected == 0)
         return -EIO;
 
+    if (sector >= bd->sectorCount)
+        return -EINVAL;
+
+    if ((sector + count) > bd->sectorCount)
+        count = bd->sectorCount - sector;
+
+    count_left = count;
     while (count_left > 0)
     {
         uint16_t count_block = count_left > UDPBD_MAX_SECTOR_READ ? UDPBD_MAX_SECTOR_READ : count_left;
@@ -185,6 +193,15 @@ static int udpbd_write(struct block_device *bd, uint64_t sector, const void *buf
     uint32_t EFBits;
 
     M_DEBUG("%s: sector=%d, count=%d\n", __func__, (uint32_t)sector, count);
+
+    if (bdm_connected == 0)
+        return -EIO;
+
+    if (sector >= bd->sectorCount)
+        return -EINVAL;
+
+    if ((sector + count) > bd->sectorCount)
+        count = bd->sectorCount - sector;
 
     g_cmdid = (g_cmdid + 1) & 0x7;
 
@@ -331,6 +348,14 @@ static inline void _cmd_read_rdma(struct SUDPBDv2_Header *hdr)
         return;
     }
 
+    // Workaround for older SPEED chips, limit block sizze to 128 bytes
+    if (g_limit_dma_block_size == 1) {
+        while (bt.block_shift > 5) {
+            bt.block_count *= 2;
+            bt.block_shift--;
+        }
+    }
+
     // Directly DMA the packet data into the user buffer
     dev9DmaTransfer(1, g_buffer_act, bt.block_count << 16 | (1U << bt.block_shift), DMAC_TO_MEM);
 
@@ -390,10 +415,18 @@ static int udpbd_isr(udp_socket_t *socket, uint16_t pointer, void *arg)
 //
 int udpbd_init(void)
 {
+    USE_SPD_REGS;
     udpbd_pkt_t pkt;
     iop_event_t EventFlagData;
 
-    M_DEBUG("%s\n", __func__);
+    //M_DEBUG("%s\n", __func__);
+    M_DEBUG("Starting UDPBD BDM driver by Maximus32\n");
+    M_DEBUG("SPEED revision is 0x%x\n", SPD_REG16(SPD_R_REV_1));
+
+    if (SPD_REG16(SPD_R_REV_1) <= 0x12) {
+        M_DEBUG("- fix: limit DMA block size to 128 bytes\n", SPD_REG16(SPD_R_REV_1));
+        g_limit_dma_block_size = 1;
+    }
 
     EventFlagData.attr   = 0;
     EventFlagData.option = 0;
