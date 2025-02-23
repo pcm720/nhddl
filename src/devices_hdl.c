@@ -125,7 +125,7 @@ struct DeviceMapEntry *mountPFS() {
   // Try to read OPL config and get a partition name
   char *oplPartition = readOPLConfig();
   if (oplPartition) {
-    if (fileXioMount(PFS_MOUNTPOINT, oplPartition, FIO_MT_RDONLY))
+    if (fileXioMount(PFS_MOUNTPOINT, oplPartition, FIO_MT_RDWR))
       printf("WARN: failed to mount %s, will try to use fallbacks\n", oplPartition);
     else {
       printf("Mounted %s as pfs0:\n", oplPartition);
@@ -138,7 +138,7 @@ struct DeviceMapEntry *mountPFS() {
 
   // Fallback to predefined partitions
   for (int i = 0; i < sizeof(pfsPartitions) / sizeof(char *); i++) {
-    if (fileXioMount(PFS_MOUNTPOINT, pfsPartitions[i], FIO_MT_RDONLY)) {
+    if (fileXioMount(PFS_MOUNTPOINT, pfsPartitions[i], FIO_MT_RDWR)) {
       continue;
     }
 
