@@ -11,6 +11,9 @@
 #include <fileXio_rpc.h>
 #include <io_common.h>
 
+#define OPL_CONF_PARTITION_ARG "hdd_partition"
+#define PFS_MOUNTPOINT "pfs0:"
+
 // Checks and returns 0 if hdd0 contains APA partition table
 int checkAPAHeader() {
   int result = -1;
@@ -40,29 +43,107 @@ int checkAPAHeader() {
   return result;
 }
 
+// Parses OPL configuraton file for OPL partition from
+// __common/OPL/conf_hdd.cfg and returns partition path for mounting.
+// Returns NULL if config is invalid or conf_hdd.cfg doesn't exist.
+char *readOPLConfig() {
+  if (fileXioMount(PFS_MOUNTPOINT, "hdd0:__common", FIO_MT_RDONLY))
+    return NULL;
+
+  char buf[PATH_MAX];
+  buf[0] = '\0';
+
+  FILE *fd = fopen("pfs0:OPL/conf_hdd.cfg", "rb");
+  if (!fd) {
+    fileXioUmount(PFS_MOUNTPOINT);
+    return NULL;
+  }
+
+  while (fgets(buf, sizeof(buf), fd) != NULL) {
+    if (!strncmp(buf, OPL_CONF_PARTITION_ARG, sizeof(OPL_CONF_PARTITION_ARG) - 1))
+      break;
+
+    buf[0] = '\0';
+  }
+  fclose(fd);
+  fileXioUmount(PFS_MOUNTPOINT);
+
+  if (buf[0] == '\0')
+    return NULL;
+
+  char *val = strchr(buf, '=');
+  if (!val)
+    return NULL;
+
+  val++; // Point to argument value
+
+  // Remove newline from value
+  char *newline = NULL;
+  if ((newline = strchr(val, '\r')) != NULL)
+    *newline = '\0';
+  else if ((newline = strchr(val, '\n')) != NULL)
+    *newline = '\0';
+
+  // Set partition name
+  char *partitionName = calloc(sizeof(char), strlen(val) + 6);
+  strcpy(partitionName, "hdd0:");
+  strcat(partitionName, val);
+
+  // Close the file after reading
+  return partitionName;
+}
+
+// Creates DeviceMapEntry for metadata device
+struct DeviceMapEntry *createMetadataEntry(char *partitionPath) {
+  struct DeviceMapEntry *dev = malloc(sizeof(struct DeviceMapEntry));
+  dev->scan = NULL;
+  dev->metadev = NULL;
+  dev->mode = MODE_HDL;
+  dev->index = 0;
+
+  if (!strcmp(partitionPath, "hdd0:__common")) {
+    // OPL uses /OPL subfolder on __common partition
+    dev->mountpoint = calloc(sizeof(char), sizeof(PFS_MOUNTPOINT) + 4);
+    strcpy(dev->mountpoint, PFS_MOUNTPOINT);
+    strcat(dev->mountpoint, "/OPL");
+  } else
+    dev->mountpoint = strdup(PFS_MOUNTPOINT);
+
+  printf("Using %s for HDL metadata\n", dev->mountpoint);
+
+  return dev;
+}
+
 // Attempts to mount PFS partition containing OPL files and returns DeviceModeEntry for mounted filesystem
 // Note: this device entry is not added to deviceModeMap and might leak memory if not freed properly
 struct DeviceMapEntry *mountPFS() {
-  char mountpoint[] = "pfs0:";
   static char *pfsPartitions[] = {
       "hdd0:+OPL",
-      "hdd0:OPL",
       "hdd0:__common",
   };
 
+  // Try to read OPL config and get a partition name
+  char *oplPartition = readOPLConfig();
+  if (oplPartition) {
+    if (fileXioMount(PFS_MOUNTPOINT, oplPartition, FIO_MT_RDONLY))
+      printf("WARN: failed to mount %s, will try to use fallbacks\n", oplPartition);
+    else {
+      printf("Mounted %s as pfs0:\n", oplPartition);
+      struct DeviceMapEntry *dev = createMetadataEntry(oplPartition);
+      free(oplPartition);
+      return dev;
+    }
+    free(oplPartition);
+  }
+
+  // Fallback to predefined partitions
   for (int i = 0; i < sizeof(pfsPartitions) / sizeof(char *); i++) {
-    if (fileXioMount(mountpoint, pfsPartitions[i], FIO_MT_RDWR)) {
+    if (fileXioMount(PFS_MOUNTPOINT, pfsPartitions[i], FIO_MT_RDONLY)) {
       continue;
     }
 
     printf("Mounted %s as pfs0:\n", pfsPartitions[i]);
-    struct DeviceMapEntry *dev = malloc(sizeof(struct DeviceMapEntry));
-    dev->scan = NULL;
-    dev->metadev = NULL;
-    dev->mode = MODE_HDL;
-    dev->mountpoint = strdup(mountpoint);
-    dev->index = 0;
-    return dev;
+    return createMetadataEntry(pfsPartitions[i]);
   }
 
   return NULL;
