@@ -98,6 +98,9 @@ NHDDL attempts to retrieve PS2 IP address from the following sources:
 
 `udpbd_ip` flag takes priority over `IPCONFIG.DAT`.
 
+Make sure to set the IP address in Neutrino config files (as of Neutrino 1.6.0, `config/bsd-udpbd.toml`).  
+Consult Neutrino documentation for more details.
+
 #### iLink
 
 To skip all other devices, `mode: ilink` must be present in `nhddl.yaml`.
