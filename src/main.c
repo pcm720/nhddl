@@ -21,7 +21,7 @@ char NEUTRINO_ELF_PATH[PATH_MAX + 1];
 static const char optionsFile[] = "nhddl.yaml";
 // nhddl.yaml fallback paths
 static char *nhddlFallbackPaths[] = {
-    "mcX:/NHDDL/nhddl.yaml",
+    "mcX:/APP_NHDDL/nhddl.yaml",
 };
 static char nhddlStorageFallbackPath[] = "/nhddl/nhddl.yaml";
 // Neutrino ELF name relative to CWD
