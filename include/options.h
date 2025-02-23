@@ -16,15 +16,15 @@ typedef struct Argument {
   int isDisabled;
   int isGlobal;
 
-  struct Argument *prev; // Previous target in the list
-  struct Argument *next; // Next target in the list
+  struct Argument *prev; // Previous argument in the list
+  struct Argument *next; // Next argument in the list
 } Argument;
 
 // A linked list of options from config file
 typedef struct {
   int total;       // Total number of arguments
-  Argument *first; // First target
-  Argument *last;  // Last target
+  Argument *first; // First argument
+  Argument *last;  // Last argument
 } ArgumentList;
 
 // Writes full path to targetFileName into targetPath.
