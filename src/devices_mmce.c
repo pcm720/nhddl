@@ -42,9 +42,18 @@ int initMMCEDevices(int newDeviceIdx) {
 
 // Uses MMCE devctl calls to switch memory card to given title ID
 void mmceMountVMC(char *titleID) {
+  char mcMountpoint[] = "mcX:";
   // Send GameID to both MMCE devices
   for (int i = '0'; i < '2'; i++) {
+    mcMountpoint[2] = i;
     mmceMountpoint[4] = i;
+
+    // Do not mount VMC if Neutrino is on the (virtual) memory card
+    if (!strncmp(mcMountpoint, NEUTRINO_ELF_PATH, 3)) {
+      printf("WARN: Refusing to mount VMC on %s\n", mmceMountpoint);
+      continue;
+    }
+
     // Ping MMCE first to make sure the device is present
     if (fileXioDevctl(mmceMountpoint, 0x1, NULL, 0, NULL, 0) < 0)
       continue;
