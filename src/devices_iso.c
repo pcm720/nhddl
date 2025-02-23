@@ -33,7 +33,7 @@ void freeTitleCache(TitleIDCache *cache);
 
 // Directories to skip when browsing for ISOs
 const char *ignoredDirs[] = {
-    "nhddl", "APPS", "ART", "CFG", "CHT", "LNG", "THM", "VMC", "XEBPLUS", "MemoryCards",
+    "nhddl", "neutrino", "APPS", "ART", "CFG", "CHT", "LNG", "THM", "VMC", "XEBPLUS", "MemoryCards", "bbnl",
 };
 
 // Used by _findISO to limit recursion depth
@@ -112,6 +112,11 @@ int _findISO(DIR *directory, TargetList *result, struct DeviceMapEntry *device) 
   while ((entry = readdir(directory)) != NULL) {
     // Reset titlePath by ending string on base path
     titlePath[cwdLen] = '\0';
+
+    // Ignore .files and directories
+    if (entry->d_name[0] == '.')
+      continue;
+
     // Check if the entry is a directory using d_type
     switch (entry->d_type) {
     case DT_DIR:
@@ -119,13 +124,13 @@ int _findISO(DIR *directory, TargetList *result, struct DeviceMapEntry *device) 
       if (curRecursionLevel == MAX_SCAN_DEPTH)
         continue;
 
-      // Ignore hidden, special and invalid directories (non-ASCII paths seem to return '?' and cause crashes when used with opendir)
-      if ((entry->d_name[0] == '.') || (entry->d_name[0] == '$') || (entry->d_name[0] == '?'))
+      // Ignore special and invalid directories (non-ASCII paths seem to return '?' and cause crashes when used with opendir)
+      if ((entry->d_name[0] == '$') || (entry->d_name[0] == '?'))
         continue;
 
       for (int i = 0; i < sizeof(ignoredDirs) / sizeof(char *); i++) {
         if (!strcmp(ignoredDirs[i], entry->d_name))
-          continue;
+          goto next;
       }
 
       // Generate full path, open dir and change cwd
@@ -139,11 +144,10 @@ int _findISO(DIR *directory, TargetList *result, struct DeviceMapEntry *device) 
       // Process inner directory recursively
       _findISO(d, result, device);
       closedir(d);
+
+    next:
       break;
     default:
-      if (entry->d_name[0] == '.') // Ignore .files (most likely macOS doubles)
-        continue;
-
       // Make sure file has .iso extension
       fileext = strrchr(entry->d_name, '.');
       if ((fileext != NULL) && (!strcmp(fileext, ".iso") || !strcmp(fileext, ".ISO"))) {
