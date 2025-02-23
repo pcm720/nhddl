@@ -25,10 +25,10 @@ Since NHDDL only launches Neutrino, PADEMU, IGR, IGS, cheats and other features 
 
 NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) installation to be present at one of the following paths:
 - `<NHDDL launch directory>/neutrino.elf` (__might be case-sensitive__ depending on device)
-- `mmceX:/neutrino/neutrino.elf` (MMCE devices, will work even if MMCE mode is _not_ enabled unless MX4SIO mode is set)
 - `massX:/neutrino/neutrino.elf` (BDM devices, if any of BDM modes are enabled)
 - `hdd0:/<OPL partition>/neutrino/neutrino.elf` (APA device, if HDL mode is enabled)  
-  `OPL partition` must be one of the following, in order of priority: `+OPL`, `OPL` or `__common`
+  `OPL partition` is read from `hdd0:__common/OPL/conf_hdd.cfg`, with `+OPL` or `__common/OPL` used as a fallback
+- `mmceX:/neutrino/neutrino.elf` (MMCE devices, will work even if MMCE mode is _not_ enabled unless MX4SIO mode is set)
 - `mcX:/APPS/neutrino/neutrino.elf` (memory cards, __case-sensitive__)
 - `mcX:/NEUTRINO/NEUTRINO.ELF` (SAS-compliant path on memory cards, __case-sensitive__)
 - `mcX:/NEUTRINO/neutrino.elf` (SAS-compliant path on memory cards, __case-sensitive__)
@@ -152,11 +152,11 @@ Launcher configuration is read from the `nhddl.yaml` file.
 
 Configuration file is loaded from one of the following paths:
 - `<NHDDL launch directory>/nhddl.yaml` (__might be case-sensitive__ depending on device)
-- `mmceX:/nhddl/nhddl.yaml` (MMCE devices, will work even if MMCE mode is _not_ enabled unless MX4SIO mode is set)
 - `massX:/nhddl/nhddl.yaml` (BDM devices, if any of BDM modes are enabled)
 - `hdd0:/<OPL partition>/neutrino/neutrino.elf` (APA device, if HDL mode is enabled)  
-  `OPL partition` must be one of the following, in order of priority: `+OPL`, `OPL` or `__common`
-- `mcX:/NHDDL/nhddl.yaml` (memory cards, __case-sensitive__)
+  `OPL partition` is read from `hdd0:__common/OPL/conf_hdd.cfg`, with `+OPL` or `__common/OPL` used as a fallback
+- `mmceX:/nhddl/nhddl.yaml` (MMCE devices, will work even if MMCE mode is _not_ enabled unless MX4SIO mode is set)
+- `mcX:/APP_NHDDL/nhddl.yaml` (memory cards, __case-sensitive__)
 
 This file is _completely optional_ and must be used only to force video mode in NHDDL UI or set NHDDL device mode.  
 By default, default video mode is used and all BDM devices are used to look for ISO files.
