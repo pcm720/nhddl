@@ -61,7 +61,7 @@ int getBDMDeviceDriver(char *mountpoint, struct DeviceMapEntry *entry) {
 
 // Initializes map entries for BDM devices
 int initBDMDevices(int deviceIdx) {
-  DIR *directory;
+  DIR *directory = NULL;
   char mountpoint[] = "massX:";
 
   int deviceCount = 0;
