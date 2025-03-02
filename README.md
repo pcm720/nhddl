@@ -101,6 +101,15 @@ NHDDL attempts to retrieve PS2 IP address from the following sources:
 Make sure to set the IP address in Neutrino config files (as of Neutrino 1.6.0, `config/bsd-udpbd.toml`).  
 Consult Neutrino documentation for more details.
 
+Recommended UDPBD server implementations:
+- [udpbd-server](https://gitlab.com/ps2max/udpbd-server) by Maximus32
+  - Supports serving physical disks or disk images
+  - Supports read and write operations
+  - Preferred server implementation for *nix systems
+- [udpbd-vexfat](https://github.com/awaken1ng/udpbd-vexfat) by Awaken1ng
+  - Creates virtual exFAT filesystem from directory contents
+  - Supports only read operations
+
 #### iLink
 
 To skip all other devices, `mode: ilink` must be present in `nhddl.yaml`.
