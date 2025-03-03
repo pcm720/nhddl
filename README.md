@@ -193,13 +193,16 @@ This file is also created automatically.
 These files store arbitrary arguments that are passed to Neutrino on title launch.  
 Arguments stored in those files __are passed to `neutrino.elf` as-is__.
 
+Ensure that paths are as short as possible as the combined length of all arguments cannot exceed approximately 255 characters. If this limit is exceeded, arguments will be truncated when passed to Neutrino, potentially causing unpredictable results such as returning to the PS2 menu or ignoring some arguments.  
+Note that NHDDL always adds `-bsd=<>`, `-dvd=<full path to ISO>`, and `-qb` arguments to load the title, which reduces the actual allowable length below 255 characters.
+
 _For a list of valid arguments, see Neutrino README._
 
 Example of a valid argument file:
 ```yaml
 # All flags are passed to neutrino as-is for future-proofing, comments are ignored
 gc: 2
-mc0: /memcard0.bin # all file paths must be relative to device root
+mc0: /memcard0.bin # all file paths must be relative to device root, the actual mountpoint will be added automatically
 $mc1: /VMC/memcard1.bin # this argument is disabled
 # Arguments that don't have a value
 # Empty values are treated as a simple flag
