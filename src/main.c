@@ -43,10 +43,14 @@ static char neutrinoStorageFallbackPath[] = "/neutrino/neutrino.elf";
 #define GIT_VERSION "v-0.0.0-unknown"
 #endif
 
+// Does a quick init for options given in argv
+int argInit(int argc, char *argv[]);
 // Initializes modules, NHDDL configuraton, Neutrino path and device map
 int init();
 // Loads NHDDL options from optionsFile
-int initOptions(char *cwdPath);
+int loadOptions(char *cwdPath);
+// Attempts to parse argv into LAUNCHER_OPTIONS
+void parseArgv(int argc, char *argv[]);
 // Attempts to find neutrino.elf at current path or one of fallback paths
 int findNeutrinoELF();
 // Reads version.txt from NEUTRINO_ELF_PATH; returns empty string if the file could not be read
@@ -72,7 +76,13 @@ int main(int argc, char *argv[]) {
     goto fail;
   }
 
-  if ((res = init()))
+  if ((argc > 0 && argv[0][0] == '-') || (argc > 1 && argv[1][0] == '-'))
+    // If argv contains arguments, use them for init
+    res = argInit(argc, argv);
+  else
+    res = init();
+
+  if (res)
     goto fail;
 
   uiSplashLogString(LEVEL_INFO_NODELAY, "Building target list...\n");
@@ -118,7 +128,7 @@ fail:
   return 1;
 }
 
-// Initialized device map while logging errors
+// Initializes device map while logging errors
 int initDevices() {
   uiSplashLogString(LEVEL_INFO, "Waiting for storage devices...\n");
   int res = initDeviceMap();
@@ -142,7 +152,38 @@ void showNeutrinoSplash() {
   free(neutrinoVersion);
 }
 
+// Does a quick init for options given in argv
+int argInit(int argc, char *argv[]) {
+  int res;
+  char cwdPath[PATH_MAX + 1];
+  // Parse arguments
+  parseArgv(argc, argv);
+
+  if ((res = initModules(INIT_TYPE_FULL)) != 0)
+    return res;
+
+  // Initialize device map
+  if (initDevices() < 0)
+    return -EIO;
+
+  // Search for neutrino.elf
+  getcwd(cwdPath, PATH_MAX + 1);
+  if (findNeutrinoELF(cwdPath)) {
+    uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
+    return -ENOENT;
+  }
+
+  showNeutrinoSplash();
+  return 0;
+}
+
+// Initializes modules, NHDDL configuraton, Neutrino path and device map
 int init() {
+  // Initialize launcher options
+  LAUNCHER_OPTIONS.vmode = VMODE_NONE;
+  LAUNCHER_OPTIONS.mode = MODE_ALL;
+  LAUNCHER_OPTIONS.udpbdIp[0] = '\0';
+
   // Set initial init type to basic
   int initType = INIT_TYPE_BASIC;
   int optionsFileNotRead = -1;
@@ -159,7 +200,7 @@ int init() {
       close(fd);
 
       // Try to load options from CWD
-      if ((optionsFileNotRead = initOptions(cwdPath)) >= 0)
+      if ((optionsFileNotRead = loadOptions(cwdPath)) >= 0)
         initType = INIT_TYPE_FULL; // Set full level if options file was loaded
     }
   }
@@ -179,7 +220,7 @@ int init() {
       return -EIO;
 
     // Try to init options
-    if ((optionsFileNotRead = initOptions(cwdPath)) < 0)
+    if ((optionsFileNotRead = loadOptions(cwdPath)) < 0)
       cwdPath[0] = '\0'; // Drop CWD if there was no options file
 
     // Search for neutrino.elf
@@ -231,6 +272,38 @@ VModeType parseVMode(const char *modeStr) {
   return VMODE_NONE;
 }
 
+// Attempts to parse argv into LAUNCHER_OPTIONS
+void parseArgv(int argc, char *argv[]) {
+  char *arg;
+  for (int i = 0; i < argc; i++) {
+    arg = argv[i];
+    if ((arg == NULL) || (arg[0] != '-'))
+      continue;
+
+    printf("arg: %s\n", arg);
+    // Find argument name
+    char *val = strchr(arg, '=');
+    if (!val)
+      continue;
+
+    // Terminate argument and advance pointers to point to value and argument
+    *val = '\0';
+    val++;
+    arg++;
+
+    if (!strcmp(OPTION_VMODE, arg)) {
+      printf("Using VMode %s\n", val);
+      LAUNCHER_OPTIONS.vmode = parseVMode(val);
+    } else if (!strcmp(OPTION_MODE, arg)) {
+      printf("Using mode %s\n", val);
+      LAUNCHER_OPTIONS.mode = parseMode(val);
+    } else if (!strcmp(OPTION_UDPBD_IP, arg)) {
+      printf("Using UDPBD IP %s\n", val);
+      strlcpy(LAUNCHER_OPTIONS.udpbdIp, val, sizeof(LAUNCHER_OPTIONS.udpbdIp));
+    }
+  }
+}
+
 // Tests if file exists by opening it
 int tryFile(char *filepath) {
   int fd = open(filepath, O_RDONLY);
@@ -242,11 +315,7 @@ int tryFile(char *filepath) {
 }
 
 // Loads NHDDL options from optionsFile
-int initOptions(char *cwdPath) {
-  LAUNCHER_OPTIONS.vmode = VMODE_NONE;
-  LAUNCHER_OPTIONS.mode = MODE_ALL;
-  LAUNCHER_OPTIONS.udpbdIp[0] = '\0';
-
+int loadOptions(char *cwdPath) {
   char lineBuffer[PATH_MAX + sizeof(optionsFile) + 1];
   if (cwdPath[0] != '\0') {
     // If path is valid, try it
