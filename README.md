@@ -151,6 +151,13 @@ NHDDL uses the same file naming convention and file format used by OPL.
 Just put **140x200 PNG** files named `<title ID>_COV.png` (e.g. `SLUS_200.02_COV.png`) into the `ART` directory on the root of your device.  
 If unsure where to get your cover art from, check out the latest version of [OPL Manager](https://oplmanager.com).
 
+### Passing arguments
+
+Similar to Neutrino, NHDDL supports receiving launcher options from `argv` in the `-<arg>=<value>` format.  
+Be aware that passing any argument will cause NHDDL to completely skip loading launcher configuration files from any device.  
+For example, to initialize NHDDL with UDPBD mode, you can run `nhddl.elf` with `-mode=udpbd -udpbd_ip=192.168.1.6`.  
+See [this file](examples/nhddl.yaml) for a list of all supported arguments and their possible values.
+
 ## Configuration files
 
 NHDDL uses YAML-_like_ files to load and store its configuration options.
@@ -172,7 +179,7 @@ By default, default video mode is used and all BDM devices are used to look for 
 
 To disable a flag, you can just comment it out with `#`.
 
-See [this file](examples/nhddl.yaml) for an example of a valid `nhddl.yaml` file.
+See [this file](examples/nhddl.yaml) for an example of a valid `nhddl.yaml` file and a list of all supported arguments and possible values.
 
 ### Additional configuration files on storage device
 
