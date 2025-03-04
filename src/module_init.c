@@ -87,9 +87,9 @@ static ModuleListEntry moduleList[] = {
     // DEV9
     INT_MODULE(ps2dev9, MODE_UDPBD | MODE_ATA | MODE_HDL, NULL, INIT_TYPE_FULL),
     // BDM
-    INT_MODULE(bdm, MODE_ALL, NULL, INIT_TYPE_FULL),
+    INT_MODULE(bdm, MODE_BDM, NULL, INIT_TYPE_FULL),
     // FAT/exFAT
-    INT_MODULE(bdmfs_fatfs, MODE_ALL, NULL, INIT_TYPE_FULL),
+    INT_MODULE(bdmfs_fatfs, MODE_BDM, NULL, INIT_TYPE_FULL),
     // SMAP driver. Actually includes small IP stack and UDPTTY
     INT_MODULE(smap_udpbd, MODE_UDPBD, &initSMAPArguments, INIT_TYPE_FULL),
     // ATA
