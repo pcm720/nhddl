@@ -280,7 +280,6 @@ void parseArgv(int argc, char *argv[]) {
     if ((arg == NULL) || (arg[0] != '-'))
       continue;
 
-    printf("arg: %s\n", arg);
     // Find argument name
     char *val = strchr(arg, '=');
     if (!val)
