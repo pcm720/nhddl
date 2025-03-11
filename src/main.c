@@ -295,7 +295,7 @@ void parseArgv(int argc, char *argv[]) {
       LAUNCHER_OPTIONS.vmode = parseVMode(val);
     } else if (!strcmp(OPTION_MODE, arg)) {
       printf("Using mode %s\n", val);
-      LAUNCHER_OPTIONS.mode = parseMode(val);
+      LAUNCHER_OPTIONS.mode |= parseMode(val);
     } else if (!strcmp(OPTION_UDPBD_IP, arg)) {
       printf("Using UDPBD IP %s\n", val);
       strlcpy(LAUNCHER_OPTIONS.udpbdIp, val, sizeof(LAUNCHER_OPTIONS.udpbdIp));
