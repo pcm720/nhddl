@@ -50,7 +50,7 @@ To use NHDDL:
 - Copy `nhddl.elf` to your memory card or storage device wherever you want.
 - _Additional step if you need only some of the available modes or MX4SIO support_:  
   Modify `nhddl.yaml` [accordingly](#launcher-configuration-file) and copy it next to `nhddl.elf`
-- Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases/tag/latest)
+- Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases)
 - Copy Neutrino folder to the root of your PS2 memory card or your storage device. 
 
 #### Save Application System PSU
@@ -62,7 +62,7 @@ To install it:
 - Choose your USB device and copy `nhddl.psu`
 - Go back and open your memory card (`mc0` or `mc1`)
 - Open file menu and select `psuPaste`
-- Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases/tag/latest)
+- Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases)
 - Copy Neutrino folder to the root of your PS2 memory card or your storage device. 
 
 This will install NHDDL to your memory card along with the PS2 Browser icon.
