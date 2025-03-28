@@ -49,7 +49,9 @@ To use NHDDL:
 - Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
 - Copy `nhddl.elf` to your memory card or storage device wherever you want.
 - _Additional step if you need only some of the available modes or MX4SIO support_:  
-  Modify `nhddl.yaml` [accordingly](#launcher-configuration-file) and copy it next to `nhddl.elf`
+  Modify `nhddl.yaml` [accordingly](#launcher-configuration-file) and copy it next to `nhddl.elf`.  
+  If loading NHDDL from BDM or APA, `nhddl.yaml` must be placed to one of the predefined locations.  
+  See notes on [the configuration file](#launcher-configuration-file) for more information.
 - Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases)
 - Copy Neutrino folder to the root of your PS2 memory card or your storage device. 
 
@@ -118,15 +120,14 @@ To skip all other devices, `mode: ilink` must be present in `nhddl.yaml`.
 
 To skip all other devices, `mode: mmce` must be present in `nhddl.yaml`.
 
-#### HDL (APA-formatted HDD with HD Loader partitions)
+#### HD Loader (APA-formatted HDD with HDL partitions)
 
 Note that HDL backend **does not support** VMCs and virtual HDDs.  
-Cover art and title options will be loaded from one of the following APA partitions:
-- `+OPL`
-- `OPL`
-- `__common`
+Cover art, `nhddl.yaml` title options will be loaded from the OPL partition set in
+`hdd0:__common/OPL/conf_hdd.cfg`, with `+OPL` or `__common/OPL` used as a fallback.
 
 To skip all other devices, `mode: hdl` must be present in `nhddl.yaml`.
+However, due to how device modules are initialized, this will not improve the initialization times.
 
 ### Storing ISO (MMCE, BDM backends)
 
@@ -169,7 +170,7 @@ Launcher configuration is read from the `nhddl.yaml` file.
 Configuration file is loaded from one of the following paths:
 - `<NHDDL launch directory>/nhddl.yaml` (__might be case-sensitive__ depending on device)
 - `massX:/nhddl/nhddl.yaml` (BDM devices, if any of BDM modes are enabled)
-- `hdd0:/<OPL partition>/neutrino/neutrino.elf` (APA device, if HDL mode is enabled)  
+- `hdd0:/<OPL partition>/nhddl/nhddl.yaml` (APA device, if HDL mode is enabled)  
   `OPL partition` is read from `hdd0:__common/OPL/conf_hdd.cfg`, with `+OPL` or `__common/OPL` used as a fallback
 - `mmceX:/nhddl/nhddl.yaml` (MMCE devices, will work even if MMCE mode is _not_ enabled unless MX4SIO mode is set)
 - `mcX:/APP_NHDDL/nhddl.yaml` (memory cards, __case-sensitive__)
