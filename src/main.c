@@ -48,11 +48,13 @@ int argInit(int argc, char *argv[]);
 // Initializes modules, NHDDL configuraton, Neutrino path and device map
 int init();
 // Loads NHDDL options from optionsFile
-int loadOptions(char *cwdPath);
+int loadOptions(char *cwdPath, ModuleInitType initType);
 // Attempts to parse argv into LAUNCHER_OPTIONS
 void parseArgv(int argc, char *argv[]);
+// Parses argv[0] for mode postfix
+ModeType parseFilename(const char *path);
 // Attempts to find neutrino.elf at current path or one of fallback paths
-int findNeutrinoELF();
+int findNeutrinoELF(char *cwdPath, ModuleInitType initType);
 // Reads version.txt from NEUTRINO_ELF_PATH; returns empty string if the file could not be read
 char *getNeutrinoVersion();
 // Tries to load IPCONFIG.DAT from memory card
@@ -79,6 +81,9 @@ int main(int argc, char *argv[]) {
   if ((argc > 0 && argv[0][0] == '-') || (argc > 1 && argv[1][0] == '-'))
     // If argv contains arguments, use them for init
     res = argInit(argc, argv);
+
+  if (argv && argv[0])
+    res = init(parseFilename(argv[0]));
   else
     res = init();
 
@@ -168,7 +173,7 @@ int argInit(int argc, char *argv[]) {
 
   // Search for neutrino.elf
   getcwd(cwdPath, PATH_MAX + 1);
-  if (findNeutrinoELF(cwdPath)) {
+  if (findNeutrinoELF(cwdPath, INIT_TYPE_FULL)) {
     uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
     return -ENOENT;
   }
@@ -178,30 +183,39 @@ int argInit(int argc, char *argv[]) {
 }
 
 // Initializes modules, NHDDL configuraton, Neutrino path and device map
-int init() {
+int init(ModeType mode) {
   // Initialize launcher options
   LAUNCHER_OPTIONS.vmode = VMODE_NONE;
-  LAUNCHER_OPTIONS.mode = MODE_ALL;
+  LAUNCHER_OPTIONS.mode = mode;
   LAUNCHER_OPTIONS.udpbdIp[0] = '\0';
 
-  // Set initial init type to basic
   int initType = INIT_TYPE_BASIC;
   int optionsFileNotRead = -1;
   int neutrinoNotFound = -1;
-  int fd, res;
+  int res;
   char cwdPath[PATH_MAX + 1];
+  if (LAUNCHER_OPTIONS.mode != MODE_NONE) {
+    // If specific mode is requested, skip CWD handling
+    initType = INIT_TYPE_FULL;
+    cwdPath[0] = '\0';
+  } else {
+    // Set initial init type to basic
+    initType = INIT_TYPE_BASIC;
+    LAUNCHER_OPTIONS.mode = MODE_ALL;
+    int fd;
 
-  // Get CWD and try to open it
-  if (getcwd(cwdPath, PATH_MAX + 1)) {
-    if (cwdPath[strlen(cwdPath) - 1] != '/') // Add path separator if cwd doesn't have one
-      strcat(cwdPath, "/");
+    // Get CWD and try to open it
+    if (getcwd(cwdPath, PATH_MAX + 1)) {
+      if (cwdPath[strlen(cwdPath) - 1] != '/') // Add path separator if cwd doesn't have one
+        strcat(cwdPath, "/");
 
-    if ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0) {
-      close(fd);
+      if ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0) {
+        close(fd);
 
-      // Try to load options from CWD
-      if ((optionsFileNotRead = loadOptions(cwdPath)) >= 0)
-        initType = INIT_TYPE_FULL; // Set full level if options file was loaded
+        // Try to load options from CWD
+        if ((optionsFileNotRead = loadOptions(cwdPath, INIT_TYPE_FULL)) >= 0)
+          initType = INIT_TYPE_FULL; // Set full level if options file was loaded
+      }
     }
   }
 
@@ -220,11 +234,11 @@ int init() {
       return -EIO;
 
     // Try to init options
-    if ((optionsFileNotRead = loadOptions(cwdPath)) < 0)
+    if ((optionsFileNotRead = loadOptions(cwdPath, initType)) < 0)
       cwdPath[0] = '\0'; // Drop CWD if there was no options file
 
     // Search for neutrino.elf
-    if ((neutrinoNotFound < 0) && !(neutrinoNotFound = findNeutrinoELF(cwdPath)))
+    if ((neutrinoNotFound < 0) && !(neutrinoNotFound = findNeutrinoELF(cwdPath, initType)))
       showNeutrinoSplash();
 
     // If options file was read, advance init level to full
@@ -259,6 +273,32 @@ ModeType parseMode(const char *modeStr) {
   if (!strcmp(modeStr, "hdl"))
     return MODE_HDL;
   return MODE_ALL;
+}
+
+// Parses argv[0] for mode postfix
+ModeType parseFilename(const char *path) {
+  char *modeStr = strrchr(path, '-');
+  if (!modeStr)
+    return MODE_NONE;
+
+  modeStr++;
+
+  if (!strncmp(modeStr, "ata", 3))
+    return MODE_ATA;
+  if (!strncmp(modeStr, "m4s", 3))
+    return MODE_MX4SIO;
+  if (!strncmp(modeStr, "udpbd", 5))
+    return MODE_UDPBD;
+  if (!strncmp(modeStr, "usb", 3))
+    return MODE_USB;
+  if (!strncmp(modeStr, "ilink", 5))
+    return MODE_ILINK;
+  if (!strncmp(modeStr, "mmce", 4))
+    return MODE_MMCE;
+  if (!strncmp(modeStr, "hdl", 3))
+    return MODE_HDL;
+
+  return MODE_NONE;
 }
 
 // Parses video mode string into enum
@@ -314,7 +354,7 @@ int tryFile(char *filepath) {
 }
 
 // Loads NHDDL options from optionsFile
-int loadOptions(char *cwdPath) {
+int loadOptions(char *cwdPath, ModuleInitType initType) {
   char lineBuffer[PATH_MAX + sizeof(optionsFile) + 1];
   if (cwdPath[0] != '\0') {
     // If path is valid, try it
@@ -325,23 +365,25 @@ int loadOptions(char *cwdPath) {
       goto fileExists;
   }
 
-  // If config file doesn't exist in CWD, try fallback paths
-  struct DeviceMapEntry *device;
-  for (int i = 0; i < MAX_DEVICES; i++) {
-    lineBuffer[0] = '\0';
-    if (deviceModeMap[i].mode == MODE_NONE)
-      break;
+  if (initType == INIT_TYPE_FULL) {
+    // If config file doesn't exist in CWD and all modules are loaded, try fallback paths
+    struct DeviceMapEntry *device;
+    for (int i = 0; i < MAX_DEVICES; i++) {
+      lineBuffer[0] = '\0';
+      if (deviceModeMap[i].mode == MODE_NONE)
+        break;
 
-    if (deviceModeMap[i].metadev)
-      device = deviceModeMap[i].metadev;
-    else
-      device = &deviceModeMap[i];
+      if (deviceModeMap[i].metadev)
+        device = deviceModeMap[i].metadev;
+      else
+        device = &deviceModeMap[i];
 
-    if (device->mountpoint != NULL) {
-      strcpy(lineBuffer, device->mountpoint);
-      strcat(lineBuffer, nhddlStorageFallbackPath);
-      if (!tryFile(lineBuffer))
-        goto fileExists;
+      if (device->mountpoint != NULL) {
+        strcpy(lineBuffer, device->mountpoint);
+        strcat(lineBuffer, nhddlStorageFallbackPath);
+        if (!tryFile(lineBuffer))
+          goto fileExists;
+      }
     }
   }
 
@@ -349,10 +391,12 @@ int loadOptions(char *cwdPath) {
   for (int i = 0; i < 2; i++) {
     lineBuffer[0] = '\0';
 
-    // Try MMCE first
-    sprintf(lineBuffer, "mmce%d:%s", i, nhddlStorageFallbackPath);
-    if (!tryFile(lineBuffer))
-      break;
+    // Try MMCE if init type is EXTENDED or FULL
+    if (initType > INIT_TYPE_BASIC) {
+      sprintf(lineBuffer, "mmce%d:%s", i, nhddlStorageFallbackPath);
+      if (!tryFile(lineBuffer))
+        break;
+    }
 
     // Try memory card paths
     for (int j = 0; j < (sizeof(nhddlFallbackPaths) / sizeof(char *)); j++) {
@@ -402,7 +446,7 @@ fileExists:
 }
 
 // Attempts to find neutrino.elf at current path or one of fallback paths
-int findNeutrinoELF(char *cwdPath) {
+int findNeutrinoELF(char *cwdPath, ModuleInitType initType) {
   if (cwdPath[0] != '\0') {
     // If path is valid, try it
     strcpy(NEUTRINO_ELF_PATH, cwdPath);
@@ -411,23 +455,25 @@ int findNeutrinoELF(char *cwdPath) {
       return 0;
   }
 
-  // If neutrino.elf doesn't exist in CWD, try fallback paths on storage devices
-  struct DeviceMapEntry *device;
-  for (int i = 0; i < MAX_DEVICES; i++) {
-    NEUTRINO_ELF_PATH[0] = '\0';
-    if (deviceModeMap[i].mode == MODE_NONE)
-      break;
+  if (initType == INIT_TYPE_FULL) {
+    // If neutrino.elf doesn't exist in CWD and all modules are loaded, try fallback paths on storage devices
+    struct DeviceMapEntry *device;
+    for (int i = 0; i < MAX_DEVICES; i++) {
+      NEUTRINO_ELF_PATH[0] = '\0';
+      if (deviceModeMap[i].mode == MODE_NONE)
+        break;
 
-    if (deviceModeMap[i].metadev)
-      device = deviceModeMap[i].metadev;
-    else
-      device = &deviceModeMap[i];
+      if (deviceModeMap[i].metadev)
+        device = deviceModeMap[i].metadev;
+      else
+        device = &deviceModeMap[i];
 
-    if (device->mountpoint != NULL) {
-      strcpy(NEUTRINO_ELF_PATH, device->mountpoint);
-      strcat(NEUTRINO_ELF_PATH, neutrinoStorageFallbackPath);
-      if (!tryFile(NEUTRINO_ELF_PATH))
-        return 0;
+      if (device->mountpoint != NULL) {
+        strcpy(NEUTRINO_ELF_PATH, device->mountpoint);
+        strcat(NEUTRINO_ELF_PATH, neutrinoStorageFallbackPath);
+        if (!tryFile(NEUTRINO_ELF_PATH))
+          return 0;
+      }
     }
   }
 
@@ -435,10 +481,12 @@ int findNeutrinoELF(char *cwdPath) {
   for (int i = 0; i < 2; i++) {
     NEUTRINO_ELF_PATH[0] = '\0';
 
-    // Try MMCE first
-    sprintf(NEUTRINO_ELF_PATH, "mmce%d:%s", i, neutrinoStorageFallbackPath);
-    if (!tryFile(NEUTRINO_ELF_PATH))
-      return 0;
+    // Try MMCE if init type is EXTENDED or FULL
+    if (initType > INIT_TYPE_BASIC) {
+      sprintf(NEUTRINO_ELF_PATH, "mmce%d:%s", i, neutrinoStorageFallbackPath);
+      if (!tryFile(NEUTRINO_ELF_PATH))
+        return 0;
+    }
 
     // Try memory card paths
     NEUTRINO_ELF_PATH[0] = '\0';

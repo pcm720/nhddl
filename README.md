@@ -49,9 +49,10 @@ To use NHDDL:
 - Get the [latest `nhddl.elf`](https://github.com/pcm720/nhddl/releases)
 - Copy `nhddl.elf` to your memory card or storage device wherever you want.
 - _Additional step if you need only some of the available modes or MX4SIO support_:  
-  Modify `nhddl.yaml` [accordingly](#launcher-configuration-file) and copy it next to `nhddl.elf`.  
-  If loading NHDDL from BDM or APA, `nhddl.yaml` must be placed to one of the predefined locations.  
-  See notes on [the configuration file](#launcher-configuration-file) for more information.
+  1. Modify `nhddl.yaml` [accordingly](#launcher-configuration-file) and copy it next to `nhddl.elf`.  
+  See notes on [the configuration file](#launcher-configuration-file) for more information
+  2. When loading NHDDL from APA or BDM, there is no reliable way to get modes from `nhddl.yaml`.  
+  You can [rename the ELF](#forcing-a-specific-mode-via-the-nhddl-elf-file-name) to force a specific mode
 - Get the [latest Neutrino release](https://github.com/rickgaiser/neutrino/releases)
 - Copy Neutrino folder to the root of your PS2 memory card or your storage device. 
 
@@ -96,7 +97,7 @@ To skip all other devices, `mode: udpbd` must be present in `nhddl.yaml`.
 UDPBD module requires PS2 IP address to work.  
 NHDDL attempts to retrieve PS2 IP address from the following sources:
 - `udpbd_ip` flag in `nhddl.yaml`
-- `SYS-CONF/IPCONFIG.DAT` on the memory card (usually created by w/uLaunchELF)
+- `SYS-CONF/IPCONFIG.DAT` on the memory card (usually created by w/uLaunchELF via `MISC/Configure/Network Settings...`)
 
 `udpbd_ip` flag takes priority over `IPCONFIG.DAT`.
 
@@ -158,6 +159,21 @@ Similar to Neutrino, NHDDL supports receiving launcher options from `argv` in th
 Be aware that passing any argument will cause NHDDL to completely skip loading launcher configuration files from any device.  
 For example, to initialize NHDDL with UDPBD mode, you can run `nhddl.elf` with `-mode=udpbd -udpbd_ip=192.168.1.6`.  
 See [this file](examples/nhddl.yaml) for a list of all supported arguments and their possible values.
+
+### Forcing a specific mode via the NHDDL ELF file name
+
+When loading NHDDL from APA or BDM, there is no reliable way to get modes from `nhddl.yaml` other than passing arguments. However, not a lot of launchers support this.  
+To work around this, you can add a postfix to `nhddl.elf` to force a specific mode:
+- `nhddl-ata.elf` — force ATA mode
+- `nhddl-mmce.elf` — force MMCE mode
+- `nhddl-hdl.elf` — force HDL mode
+- `nhddl-udpbd.elf` — force UDPBD mode
+- `nhddl-usb.elf` — force USB mode
+- `nhddl-ilink.elf` — force iLink mode
+- `nhddl-m4s.elf` — force MX4SIO mode
+
+NHDDL will only initialize the mode specified in the file name and respect all other options from `nhddl.yaml` on the storage device.
+When forcing UDPBD mode, make sure you've configured `SYS-CONF/IPCONFIG.DAT` on your memory card.
 
 ## Configuration files
 
