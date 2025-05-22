@@ -170,7 +170,7 @@ int uiLoop(TargetList *titles) {
   }
 
   int res = 0;
-  if ((gsGlobal == NULL) && (res = uiInit(0))) {
+  if ((gsGlobal == NULL) && (res = uiInit())) {
     printf("ERROR: Failed to init UI: %d\n", res);
     goto exit;
   }

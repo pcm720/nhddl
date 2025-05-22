@@ -46,7 +46,7 @@ static char neutrinoStorageFallbackPath[] = "/neutrino/neutrino.elf";
 // Does a quick init for options given in argv
 int argInit(int argc, char *argv[]);
 // Initializes modules, NHDDL configuraton, Neutrino path and device map
-int init();
+int init(ModeType mode);
 // Loads NHDDL options from optionsFile
 int loadOptions(char *cwdPath, ModuleInitType initType);
 // Attempts to parse argv into LAUNCHER_OPTIONS
@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
   if (argv && argv[0])
     res = init(parseFilename(argv[0]));
   else
-    res = init();
+    res = init(MODE_NONE);
 
   if (res)
     goto fail;

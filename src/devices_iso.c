@@ -380,12 +380,9 @@ int loadTitleIDCache(TitleIDCache *cache, struct DeviceMapEntry *device) {
 
   // Open cache file for reading
   char cachePath[PATH_MAX];
-
-  FILE *file;
-  // Load the first found cache file
   buildConfigFilePath(cachePath, device->mountpoint, titleIDCacheFile);
 
-  file = fopen(cachePath, "rb");
+  FILE *file = fopen(cachePath, "rb");
   if (file == NULL)
     return -ENOENT;
 

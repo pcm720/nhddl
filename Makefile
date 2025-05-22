@@ -19,7 +19,7 @@ IRX_FILES += ps2hdd.irx ps2fs.irx
 # Embedded ELF files
 ELF_FILES += loader.elf
 
-EE_LIBS = -ldebug -lfileXio -lpatches -lgskit -ldmakit -lgskit_toolkit -lpng -lz -ltiff -lpad
+EE_LIBS = -ldebug -lfileXio -lpatches -lgskit_toolkit -lgskit -ldmakit -lpng -lz -ltiff -lpad
 EE_CFLAGS += -mno-gpopt -G0 -DGIT_VERSION="\"${GIT_VERSION}\""
 
 EE_OBJS_DIR = obj/
