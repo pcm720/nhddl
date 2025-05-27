@@ -81,8 +81,7 @@ int main(int argc, char *argv[]) {
   if ((argc > 0 && argv[0][0] == '-') || (argc > 1 && argv[1][0] == '-'))
     // If argv contains arguments, use them for init
     res = argInit(argc, argv);
-
-  if (argv && argv[0])
+  else if (argv && argv[0])
     res = init(parseFilename(argv[0]));
   else
     res = init(MODE_NONE);
@@ -314,6 +313,7 @@ VModeType parseVMode(const char *modeStr) {
 
 // Attempts to parse argv into LAUNCHER_OPTIONS
 void parseArgv(int argc, char *argv[]) {
+  LAUNCHER_OPTIONS.mode = MODE_NONE;
   char *arg;
   for (int i = 0; i < argc; i++) {
     arg = argv[i];
@@ -341,6 +341,9 @@ void parseArgv(int argc, char *argv[]) {
       strlcpy(LAUNCHER_OPTIONS.udpbdIp, val, sizeof(LAUNCHER_OPTIONS.udpbdIp));
     }
   }
+
+  if (LAUNCHER_OPTIONS.mode == MODE_NONE)
+    LAUNCHER_OPTIONS.mode = MODE_ALL;
 }
 
 // Tests if file exists by opening it
