@@ -74,7 +74,7 @@ Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest versi
 
 ### Supported modes
 
-#### ATA
+#### ATA (MBR/GPT-formatted HDD with exFAT partition)
 
 To skip all other devices, `mode: ata` must be present in `nhddl.yaml`.
 
@@ -157,7 +157,7 @@ If unsure where to get your cover art from, check out the latest version of [OPL
 
 Similar to Neutrino, NHDDL supports receiving launcher options from `argv` in the `-<arg>=<value>` format.  
 Be aware that passing any argument will cause NHDDL to completely skip loading launcher configuration files from any device.  
-For example, to initialize NHDDL with UDPBD mode, you can run `nhddl.elf` with `-mode=udpbd -udpbd_ip=192.168.1.6`.  
+For example, to initialize NHDDL with UDPBD mode, you can run `nhddl.elf` with `-mode=udpbd` and `-udpbd_ip=192.168.1.6`.  
 See [this file](examples/nhddl.yaml) for a list of all supported arguments and their possible values.
 
 ### Forcing a specific mode via the NHDDL ELF file name
