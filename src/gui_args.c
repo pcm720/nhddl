@@ -20,11 +20,13 @@ ActionType gsmInput(NeutrinoArgument *arg, int input);
 void gsmMarshal(NeutrinoArgument *arg, ArgumentList *list);
 void gsmParse(NeutrinoArgument *arg, ArgumentList *list);
 
-// PS2 Logo handlers
-int ps2LogoDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int maxWidth, int maxHeight);
-ActionType ps2LogoInput(NeutrinoArgument *arg, int input);
-void ps2LogoMarshal(NeutrinoArgument *arg, ArgumentList *list);
-void ps2LogoParse(NeutrinoArgument *arg, ArgumentList *list);
+// Generic handlers
+//
+// A simple one-value toggle
+int toggleDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int maxWidth, int maxHeight);
+ActionType toggleInput(NeutrinoArgument *arg, int input);
+void toggleMarshal(NeutrinoArgument *arg, ArgumentList *list);
+void toggleParse(NeutrinoArgument *arg, ArgumentList *list);
 
 NeutrinoArgument uiArguments[] = {
     {.name = "Compatibility modes",
@@ -47,10 +49,18 @@ NeutrinoArgument uiArguments[] = {
      .arg = "logo",
      .activeElementIdx = 0,
      .state = 0,
-     .draw = ps2LogoDraw,
-     .handleInput = ps2LogoInput,
-     .parse = ps2LogoParse,
-     .marshal = ps2LogoMarshal},
+     .draw = toggleDraw,
+     .handleInput = toggleInput,
+     .parse = toggleParse,
+     .marshal = toggleMarshal},
+    {.name = "Enable debug colors",
+     .arg = "dbc",
+     .activeElementIdx = 0,
+     .state = 0,
+     .draw = toggleDraw,
+     .handleInput = toggleInput,
+     .parse = toggleParse,
+     .marshal = toggleMarshal},
 };
 int uiArgumentsTotal = sizeof(uiArguments) / sizeof(NeutrinoArgument);
 
@@ -397,16 +407,16 @@ fail:
 }
 
 //
-// PS2 Logo
+// Generic toggle
 //
-int ps2LogoDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int maxWidth, int maxHeight) {
+int toggleDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int maxWidth, int maxHeight) {
   // Draw argument
   if (arg->state)
     drawIconWindow(x, y, 20, y + getFontLineHeight(), 0, FontMainColor, ALIGN_CENTER, ICON_ENABLED);
   return drawText(x + getIconWidth(ICON_ENABLED), y, 0, 0, 0, ((isActive) ? ColorSelected : FontMainColor), arg->name);
 }
 
-ActionType ps2LogoInput(NeutrinoArgument *arg, int input) {
+ActionType toggleInput(NeutrinoArgument *arg, int input) {
   if (input & (PAD_CROSS | PAD_CIRCLE)) {
     arg->state ^= 1;
     return ACTION_CHANGED;
@@ -418,7 +428,7 @@ ActionType ps2LogoInput(NeutrinoArgument *arg, int input) {
   return ACTION_NONE;
 }
 
-void ps2LogoMarshal(NeutrinoArgument *arg, ArgumentList *list) {
+void toggleMarshal(NeutrinoArgument *arg, ArgumentList *list) {
   Argument *larg = getArgument(list, arg->arg);
   if (!larg) {
     if (!arg->state)
@@ -436,7 +446,7 @@ void ps2LogoMarshal(NeutrinoArgument *arg, ArgumentList *list) {
   larg->isDisabled = 1;
 }
 
-void ps2LogoParse(NeutrinoArgument *arg, ArgumentList *list) {
+void toggleParse(NeutrinoArgument *arg, ArgumentList *list) {
   arg->state = 0;
   Argument *larg = getArgument(list, arg->arg);
   if (!larg)

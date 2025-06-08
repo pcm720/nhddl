@@ -431,7 +431,7 @@ int uiTitleOptionsLoop(Target *target) {
     int startY = headerHeight + 1.5 * getFontLineHeight();
     for (i = 0; i < uiArgumentsTotal; i++) {
       startY =
-          getFontLineHeight() + uiArguments[i].draw(&uiArguments[i], (i == activeArgumentIdx) ? 1 : 0, baseX, startY, 0, gsGlobal->Width - baseX, 0);
+          getFontLineHeight()/2 + uiArguments[i].draw(&uiArguments[i], (i == activeArgumentIdx) ? 1 : 0, baseX, startY, 0, gsGlobal->Width - baseX, 0);
     }
 
     // Draw footer
