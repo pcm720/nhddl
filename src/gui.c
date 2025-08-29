@@ -545,6 +545,23 @@ int uiArgumentListLoop(Target *target, ArgumentList *titleArguments) {
 
     // Process user inputs
     input = waitForInput(-1);
+    if (input & (PAD_L1 | PAD_R1)) {
+      return 0;
+    } else if (input & PAD_SQUARE) {
+      // Launch title without saving arguments
+      uiLaunchTitle(target, titleArguments);
+      return -1; // If this was somehow reached, something went terribly wrong
+    } else if (input & PAD_START) {
+      updateTitleLaunchArguments(target, titleArguments);
+      return 1;
+    } else if (input & PAD_TRIANGLE) {
+      return 1;
+    }
+    
+    // Ignore inputs when the argument is not initialized
+    if (!curArgument)
+      continue;
+
     if (input & (PAD_CROSS | PAD_CIRCLE)) {
       // Toggle argument
       curArgument->isDisabled = !curArgument->isDisabled;
@@ -559,17 +576,6 @@ int uiArgumentListLoop(Target *target, ArgumentList *titleArguments) {
       // Advance to the next argument
       selectedArgIdx = (selectedArgIdx + 1) % titleArguments->total;
       curArgument = (curArgument->next) ? curArgument->next : titleArguments->first;
-    } else if (input & (PAD_L1 | PAD_R1)) {
-      return 0;
-    } else if (input & PAD_SQUARE) {
-      // Launch title without saving arguments
-      uiLaunchTitle(target, titleArguments);
-      return -1; // If this was somehow reached, something went terribly wrong
-    } else if (input & PAD_START) {
-      updateTitleLaunchArguments(target, titleArguments);
-      return 1;
-    } else if (input & PAD_TRIANGLE) {
-      return 1;
     }
   }
 }
