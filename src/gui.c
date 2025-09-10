@@ -671,21 +671,13 @@ static uint8_t threadStack[THREAD_STACK_SIZE] __attribute__((aligned(16)));
 int startSplashScreen() {
   printf("Starting UI splash thread\n");
   // Initialize splash semaphores
-  ee_sema_t drawnSema;
-  drawnSema.init_count = 0;
-  drawnSema.max_count = 1;
-  drawnSema.option = 0;
-  logBuffer.drawnSema = CreateSema(&drawnSema);
-  ee_sema_t newStringSema;
-  newStringSema.init_count = 0;
-  newStringSema.max_count = 1;
-  newStringSema.option = 0;
-  logBuffer.newStringSema = CreateSema(&newStringSema);
-  ee_sema_t readySema;
-  readySema.init_count = 0;
-  readySema.max_count = 1;
-  readySema.option = 0;
-  logBuffer.doneSema = CreateSema(&readySema);
+  ee_sema_t semaphore;
+  semaphore.init_count = 0;
+  semaphore.max_count = 1;
+  semaphore.option = 0;
+  logBuffer.drawnSema = CreateSema(&semaphore);
+  logBuffer.newStringSema = CreateSema(&semaphore);
+  logBuffer.doneSema = CreateSema(&semaphore);
 
   // Initialize thread
   ee_thread_t thread;
@@ -718,6 +710,8 @@ void uiSplashThread() {
   drawTextWindow(0, (gsGlobal->Height / 4 + getLogoHeight() + 10), gsGlobal->Width, 0, 0, GS_SETREG_RGBA(0x40, 0x40, 0x40, 0x80), ALIGN_HCENTER,
                  GIT_VERSION);
   gsKit_mode_switch(gsGlobal, GS_ONESHOT);
+
+  drawGameID("NHDDL");
 
   uint64_t color = HeaderTextColor;
   int logStartY = gsGlobal->Height - footerHeight - getFontLineHeight() * 3;
