@@ -430,8 +430,8 @@ int uiTitleOptionsLoop(Target *target) {
 
     int startY = headerHeight + 1.5 * getFontLineHeight();
     for (i = 0; i < uiArgumentsTotal; i++) {
-      startY =
-          getFontLineHeight()/2 + uiArguments[i].draw(&uiArguments[i], (i == activeArgumentIdx) ? 1 : 0, baseX, startY, 0, gsGlobal->Width - baseX, 0);
+      startY = getFontLineHeight() / 2 +
+               uiArguments[i].draw(&uiArguments[i], (i == activeArgumentIdx) ? 1 : 0, baseX, startY, 0, gsGlobal->Width - baseX, 0);
     }
 
     // Draw footer
@@ -557,7 +557,7 @@ int uiArgumentListLoop(Target *target, ArgumentList *titleArguments) {
     } else if (input & PAD_TRIANGLE) {
       return 1;
     }
-    
+
     // Ignore inputs when the argument is not initialized
     if (!curArgument)
       continue;
@@ -763,10 +763,14 @@ void uiSplashLogString(UILogLevelType level, const char *str, ...) {
 
   logBuffer.level = level;
   vsnprintf(logBuffer.buf, 255, str, args);
+  va_end(args);
   printf(logBuffer.buf);
+
+  if (!gsGlobal)
+    return;
+
   SignalSema(logBuffer.newStringSema);
   WaitSema(logBuffer.drawnSema);
-  va_end(args);
 
   switch (level) {
   case LEVEL_INFO_NODELAY:
@@ -783,6 +787,9 @@ void uiSplashLogString(UILogLevelType level, const char *str, ...) {
 
 // Sets Neutrino version on the splash screen
 void uiSplashSetNeutrinoVersion(const char *str) {
+  if (!gsGlobal)
+    return;
+
   if (str[0] == '\0')
     return;
 

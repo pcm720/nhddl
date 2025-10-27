@@ -31,9 +31,9 @@ void delay(int count);
 
 // List of modules to load
 static SupportedBackends backends[] = {
-    {.name = "MMCE", .initFunction = (void*)initMMCEDevices, .targetModes = MODE_MMCE},
-    {.name = "BDM", .initFunction = (void*)initBDMDevices, .targetModes = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK},
-    {.name = "HDL", .initFunction = (void*)initHDL, .targetModes = MODE_HDL},
+    {.name = "MMCE", .initFunction = (void *)initMMCEDevices, .targetModes = MODE_MMCE},
+    {.name = "BDM", .initFunction = (void *)initBDMDevices, .targetModes = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK},
+    {.name = "HDL", .initFunction = (void *)initHDL, .targetModes = MODE_HDL},
 };
 
 // Contains all available devices.

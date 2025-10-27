@@ -5,6 +5,7 @@
 #include "module_init.h"
 #include "options.h"
 #include "target.h"
+#include "title_id.h"
 #include <ctype.h>
 #include <debug.h>
 #include <fcntl.h>
@@ -38,13 +39,14 @@ static char neutrinoStorageFallbackPath[] = "/neutrino/neutrino.elf";
 #define OPTION_VMODE "video"
 #define OPTION_MODE "mode"
 #define OPTION_UDPBD_IP "udpbd_ip"
+#define OPTION_IMAGE "dvd"
 
 #ifndef GIT_VERSION
 #define GIT_VERSION "v-0.0.0-unknown"
 #endif
 
 // Does a quick init for options given in argv
-int argInit(int argc, char *argv[]);
+int argInit();
 // Initializes modules, NHDDL configuraton, Neutrino path and device map
 int init(ModeType mode);
 // Loads NHDDL options from optionsFile
@@ -59,11 +61,27 @@ int findNeutrinoELF(char *cwdPath, ModuleInitType initType);
 char *getNeutrinoVersion();
 // Tries to load IPCONFIG.DAT from memory card
 void parseIPConfig();
+// Forwards the image to Neutrino without loading the UI
+int forwardBoot();
 
 int main(int argc, char *argv[]) {
   printf("*************\nNHDDL %s\nA Neutrino launcher by pcm720\n*************\n", GIT_VERSION);
 
+  for (int i = 0; i < argc; i++)
+    printf("argv[%d] = %s\n", i, argv[i]);
+
+  // Parse arguments
+  if ((argc > 0 && argv[0][0] == '-') || (argc > 1 && argv[1][0] == '-'))
+    parseArgv(argc, argv);
+
   int res;
+  if (LAUNCHER_OPTIONS.image && ((LAUNCHER_OPTIONS.mode != MODE_NONE) || LAUNCHER_OPTIONS.mode != MODE_HDL)) {
+    res = forwardBoot();
+    init_scr();
+    logString("\n\nERROR: Failed to forward to Neutrino: %d\n", res);
+    goto fail;
+  }
+
   printf("Initializing UI\n");
   if ((res = uiInit())) {
     init_scr();
@@ -80,7 +98,7 @@ int main(int argc, char *argv[]) {
 
   if ((argc > 0 && argv[0][0] == '-') || (argc > 1 && argv[1][0] == '-'))
     // If argv contains arguments, use them for init
-    res = argInit(argc, argv);
+    res = argInit();
   else if (argv && argv[0])
     res = init(parseFilename(argv[0]));
   else
@@ -157,11 +175,9 @@ void showNeutrinoSplash() {
 }
 
 // Does a quick init for options given in argv
-int argInit(int argc, char *argv[]) {
+int argInit() {
   int res;
   char cwdPath[PATH_MAX + 1];
-  // Parse arguments
-  parseArgv(argc, argv);
 
   if ((res = initModules(INIT_TYPE_FULL)) != 0)
     return res;
@@ -339,6 +355,9 @@ void parseArgv(int argc, char *argv[]) {
     } else if (!strcmp(OPTION_UDPBD_IP, arg)) {
       printf("Using UDPBD IP %s\n", val);
       strlcpy(LAUNCHER_OPTIONS.udpbdIp, val, sizeof(LAUNCHER_OPTIONS.udpbdIp));
+    } else if (!strcmp(OPTION_IMAGE, arg)) {
+      printf("Using image %s\n", val);
+      LAUNCHER_OPTIONS.image = strdup(val);
     }
   }
 
@@ -450,7 +469,7 @@ fileExists:
 
 // Attempts to find neutrino.elf at current path or one of fallback paths
 int findNeutrinoELF(char *cwdPath, ModuleInitType initType) {
-  if (cwdPath[0] != '\0') {
+  if (cwdPath && cwdPath[0] != '\0') {
     // If path is valid, try it
     strcpy(NEUTRINO_ELF_PATH, cwdPath);
     strcat(NEUTRINO_ELF_PATH, neutrinoELF);
@@ -545,4 +564,59 @@ char *getNeutrinoVersion() {
   }
 
   return strdup(versionFilePath);
+}
+
+// Quickly forwards the image to Neutrino without loading the UI
+int forwardBoot() {
+  int res;
+  // Forward to Neutrino without loading the UI
+  if ((res = initModules(INIT_TYPE_FULL)) != 0) {
+    printf("Failed to init modules: %d\n", res);
+    return res;
+  }
+
+  int deviceCount = initDeviceMap();
+  if (deviceCount <= 0) {
+    printf("Failed to init devices: %d\n", deviceCount);
+    return -ENODEV;
+  }
+
+  if (tryFile(LAUNCHER_OPTIONS.image) < 0){
+    printf("Target image not found\n");
+    return -ENOENT;
+  }
+
+  if (findNeutrinoELF(NULL, INIT_TYPE_FULL)) {
+    printf("Failed to find Neutrino\n");
+    return -ENOENT;
+  }
+
+  Target target = {
+      .idx = 0,
+      .id = getTitleID(LAUNCHER_OPTIONS.image),
+      .fullPath = LAUNCHER_OPTIONS.image,
+  };
+
+  char *fileext = strrchr(LAUNCHER_OPTIONS.image, '.');
+  if ((fileext != NULL) && (!strcmp(fileext, ".iso") || !strcmp(fileext, ".ISO"))) {
+    // Get file name without the extension
+    int nameLength = (int)(fileext - LAUNCHER_OPTIONS.image);
+    target.name = calloc(sizeof(char), nameLength + 1);
+    strncpy(target.name, LAUNCHER_OPTIONS.image, nameLength);
+  }
+
+  for (int i = 0; i < deviceCount; i++)
+    if (strstr(LAUNCHER_OPTIONS.image, deviceModeMap[i].mountpoint)) {
+      target.device = &deviceModeMap[i];
+      break;
+    }
+
+  if (!target.device) {
+    printf("Target device not found\n");
+    return -ENODEV;
+  }
+
+  // Run the image
+  launchTitle(&target, loadLaunchArgumentLists(&target));
+  return -ENOENT;
 }
