@@ -40,6 +40,7 @@ static char neutrinoStorageFallbackPath[] = "/neutrino/neutrino.elf";
 #define OPTION_MODE "mode"
 #define OPTION_UDPBD_IP "udpbd_ip"
 #define OPTION_IMAGE "dvd"
+#define OPTION_NO_INIT "noinit"
 
 #ifndef GIT_VERSION
 #define GIT_VERSION "v-0.0.0-unknown"
@@ -338,26 +339,28 @@ void parseArgv(int argc, char *argv[]) {
 
     // Find argument name
     char *val = strchr(arg, '=');
-    if (!val)
-      continue;
-
-    // Terminate argument and advance pointers to point to value and argument
-    *val = '\0';
-    val++;
+    if (val) {
+      // Terminate argument and advance pointers to point to value and argument
+      *val = '\0';
+      val++;
+    }
     arg++;
 
-    if (!strcmp(OPTION_VMODE, arg)) {
+    if (val && !strcmp(OPTION_VMODE, arg)) {
       printf("Using VMode %s\n", val);
       LAUNCHER_OPTIONS.vmode = parseVMode(val);
-    } else if (!strcmp(OPTION_MODE, arg)) {
+    } else if (val && !strcmp(OPTION_MODE, arg)) {
       printf("Using mode %s\n", val);
       LAUNCHER_OPTIONS.mode |= parseMode(val);
-    } else if (!strcmp(OPTION_UDPBD_IP, arg)) {
+    } else if (val && !strcmp(OPTION_UDPBD_IP, arg)) {
       printf("Using UDPBD IP %s\n", val);
       strlcpy(LAUNCHER_OPTIONS.udpbdIp, val, sizeof(LAUNCHER_OPTIONS.udpbdIp));
-    } else if (!strcmp(OPTION_IMAGE, arg)) {
+    } else if (val && !strcmp(OPTION_IMAGE, arg)) {
       printf("Using image %s\n", val);
       LAUNCHER_OPTIONS.image = strdup(val);
+    } else if (!strcmp(OPTION_NO_INIT, arg)) {
+      printf("Skipping IOP init\n");
+      LAUNCHER_OPTIONS.noInit = 1;
     }
   }
 
@@ -570,7 +573,7 @@ char *getNeutrinoVersion() {
 int forwardBoot() {
   int res;
   // Forward to Neutrino without loading the UI
-  if ((res = initModules(INIT_TYPE_FULL)) != 0) {
+  if (!LAUNCHER_OPTIONS.noInit && (res = initModules(INIT_TYPE_FULL)) != 0) {
     printf("Failed to init modules: %d\n", res);
     return res;
   }
@@ -581,7 +584,7 @@ int forwardBoot() {
     return -ENODEV;
   }
 
-  if (tryFile(LAUNCHER_OPTIONS.image) < 0){
+  if (tryFile(LAUNCHER_OPTIONS.image) < 0) {
     printf("Target image not found\n");
     return -ENOENT;
   }

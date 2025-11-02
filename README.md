@@ -157,8 +157,12 @@ If unsure where to get your cover art from, check out the latest version of [OPL
 
 Similar to Neutrino, NHDDL supports receiving launcher options from `argv` in the `-<arg>=<value>` format.  
 Be aware that passing any argument will cause NHDDL to completely skip loading launcher configuration files from any device.  
+
 For example, to initialize NHDDL with UDPBD mode, you can run `nhddl.elf` with `-mode=udpbd` and `-udpbd_ip=192.168.1.6`.  
-If NHDDL receives `-mode` and `-dvd=<path to the image file>`, it will skip UI initialization and directly launch Neutrino while respecting all arguments specified in argument files.
+
+If NHDDL receives `-mode` and `-dvd=<path to the image file>`, it will skip UI initialization and directly launch Neutrino while respecting all arguments specified in argument files.  
+Add `-noinit` argument to skip IOP initialization (make sure all required modules are already loaded).  
+
 See [this file](examples/nhddl.yaml) for a list of all supported arguments and their possible values.
 
 ### Forcing a specific mode via the NHDDL ELF file name

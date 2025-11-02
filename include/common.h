@@ -32,6 +32,7 @@ typedef struct {
   ModeType mode;
   char udpbdIp[16];
   char *image; // Used along with the mode argument to turn NHDDL into a simple Neutrino forwarder
+  int noInit;
 } LauncherOptions;
 
 // Path to Neutrino ELF. Initialized in main() during init.
