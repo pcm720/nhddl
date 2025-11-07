@@ -7,7 +7,9 @@ typedef enum {
   // Initialize extended init modules (e.g. freepad, mmceman)
   INIT_TYPE_EXTENDED,
   // Initialize all modules excluding ones already loaded
-  INIT_TYPE_FULL
+  INIT_TYPE_FULL,
+  // Initialize only SIF RPC and fileXio
+  INIT_TYPE_NOINIT,
 } ModuleInitType;
 
 // Initializes IOP modules

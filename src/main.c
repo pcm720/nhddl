@@ -573,7 +573,11 @@ char *getNeutrinoVersion() {
 int forwardBoot() {
   int res;
   // Forward to Neutrino without loading the UI
-  if (!LAUNCHER_OPTIONS.noInit && (res = initModules(INIT_TYPE_FULL)) != 0) {
+  if (!LAUNCHER_OPTIONS.noInit)
+    res = initModules(INIT_TYPE_FULL);
+  else
+    res = initModules(INIT_TYPE_NOINIT);
+  if (res) {
     printf("Failed to init modules: %d\n", res);
     return res;
   }
@@ -584,8 +588,8 @@ int forwardBoot() {
     return -ENODEV;
   }
 
-  if (tryFile(LAUNCHER_OPTIONS.image) < 0) {
-    printf("Target image not found\n");
+  if ((res = tryFile(LAUNCHER_OPTIONS.image)) < 0) {
+    printf("Target image not found: %d\n", res);
     return -ENOENT;
   }
 

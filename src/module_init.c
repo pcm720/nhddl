@@ -116,6 +116,11 @@ int loadModule(ModuleListEntry *mod);
 
 // Initializes IOP modules
 int initModules(ModuleInitType initType) {
+  if (initType == INIT_TYPE_NOINIT) {
+    sceSifInitRpc(0);
+    fileXioInit();
+    return 0;
+  }
   int ret = 0;
 
   // Skip rebooting IOP if modules were loaded previously
@@ -127,11 +132,12 @@ int initModules(ModuleInitType initType) {
     };
 
     // Initialize the RPC manager
-    SifInitRpc(0);
+    sceSifInitRpc(0);
 
     // Apply patches required to load modules from EE RAM
     sbv_patch_enable_lmb();
     sbv_patch_disable_prefix_check();
+    sbv_patch_fileio();
   }
 
   // Load modules
