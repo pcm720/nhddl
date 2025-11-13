@@ -1,6 +1,6 @@
 // Implements support for BDM devices
-#include "devices.h"
 #include "common.h"
+#include "devices.h"
 #include "gui.h"
 #include <errno.h>
 #include <kernel.h>
@@ -63,13 +63,42 @@ int getBDMDeviceDriver(char *mountpoint, struct DeviceMapEntry *entry) {
 int initBDMDevices(int deviceIdx) {
   DIR *directory = NULL;
   char mountpoint[] = "massX:";
-
   int deviceCount = 0;
   int delayAttempts = 2;
-  if (LAUNCHER_OPTIONS.mode & MODE_UDPBD) {
+
+  if (LAUNCHER_OPTIONS.image) {
+    // Only try the image mountpoint
+    char *sep = strchr(LAUNCHER_OPTIONS.image, ':');
+    if (!sep)
+      return -EINVAL;
+
+    sep++;
+    char temp = *sep;
+    *sep = '\0';
+
+    printf("Noinit flag set, trying the image mountpoint %s\n", LAUNCHER_OPTIONS.image);
+    directory = opendir(LAUNCHER_OPTIONS.image);
+    if (directory != NULL)
+      closedir(directory);
+
+    if (getBDMDeviceDriver(LAUNCHER_OPTIONS.image, &deviceModeMap[deviceIdx]) < 0) {
+      printf("ERROR: failed to get driver for device %s\n", LAUNCHER_OPTIONS.image);
+      *sep = temp;
+      return -EIO;
+    }
+
+    // Set device mountpoint
+    deviceModeMap[deviceIdx].mountpoint = strdup(LAUNCHER_OPTIONS.image);
+    *sep = temp;
+    // Set scan function
+    deviceModeMap[deviceIdx].scan = &findISO;
+    return 1;
+  }
+
+  if (LAUNCHER_OPTIONS.mode & MODE_UDPBD)
     // UDPBD needs considerably more time to init
     delayAttempts = 10;
-  }
+
   for (int i = 0; i < 10; i++) {
     deviceModeMap[deviceIdx].mode = MODE_NONE;
     mountpoint[4] = i + '0';
