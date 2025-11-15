@@ -4,7 +4,7 @@ IOP_SRC_DIR := src/
 IOP_OBJS_DIR := obj/
 IOP_CFLAGS += -mno-check-zero-division
 IOP_INCS := -Isrc/include
-IOP_OBJS = main.o smap.o xfer.o ministack.o udpbd.o udptty.o imports.o exports.o
+IOP_OBJS =  main.o smap.o xfer.o ministack_eth.o ministack_arp.o ministack_ip.o ministack_udp.o udpbd.o udptty.o imports.o exports.o
 
 all:: $(IOP_BIN)
 

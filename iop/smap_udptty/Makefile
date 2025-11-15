@@ -1,10 +1,11 @@
 IOP_BIN := smap_udptty.irx
 
-IOP_OBJS_DIR := obj/
-IOP_SRC_DIR := ../smap_udpbd/src/
-IOP_CFLAGS += -mno-check-zero-division -DNO_BDM
-IOP_INCS := -I../smap_udpbd/src/include
-IOP_OBJS = main.o smap.o xfer.o ministack.o udptty.o imports.o exports.o
+IOP_SRC_DIR ?= ../smap_udpbd/src/
+
+IOP_CFLAGS += -mno-check-zero-division
+IOP_CFLAGS += -DNO_BDM
+IOP_CFLAGS += -I../smap_udpbd/include
+IOP_OBJS = main.o smap.o xfer.o ministack_eth.o ministack_arp.o ministack_ip.o ministack_udp.o udptty.o imports.o exports.o
 
 all:: $(IOP_BIN)
 
