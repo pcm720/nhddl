@@ -1,4 +1,6 @@
+TODO
 obj/
+neutrino/
 .vscode/settings.json
 *.elf
 *.o

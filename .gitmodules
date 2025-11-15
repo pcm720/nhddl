@@ -1,0 +1,3 @@
+[submodule "iop/mmceman"]
+	path = iop/mmceman
+	url = https://github.com/ps2-mmce/mmceman.git
