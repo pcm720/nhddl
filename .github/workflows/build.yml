@@ -29,8 +29,8 @@ jobs:
       with:
         name: artifacts
         path: |
-          nhddl-*.elf
-          !nhddl-*_unc.elf
+          nhddl.elf
+          !nhddl_unc.elf
           README.md
           examples/*.yaml
 
@@ -57,7 +57,6 @@ jobs:
     - name: Prepare release archive
       run: |
         cd artifacts
-        mv nhddl-${{ env.GIT_VERSION }}.elf nhddl.elf
         zip -r ../nhddl-${{ env.GIT_VERSION }}.zip ./*
 
     - uses: "marvinpinto/action-automatic-releases@latest"

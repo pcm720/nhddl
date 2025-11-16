@@ -4,10 +4,8 @@ ENABLE_PRINTF ?= 0
 #.SILENT:
 GIT_VERSION := $(shell git describe --always --dirty --tags --exclude nightly)
 
-ELF_BASE_NAME := nhddl-$(GIT_VERSION)
-
-EE_BIN = $(ELF_BASE_NAME)_unc.elf
-EE_BIN_PKD = $(ELF_BASE_NAME).elf
+EE_BIN = nhddl_unc.elf
+EE_BIN_PKD = nhddl.elf
 
 EE_OBJS = main.o module_init.o common.o options.o launcher.o title_id.o target.o
 EE_OBJS += gui.o gui_graphics.o gui_args.o pad.o
