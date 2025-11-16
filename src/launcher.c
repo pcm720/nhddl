@@ -137,6 +137,14 @@ int launchELF(int argc, char *argv[]) {
 
   t_ExecData elfdata = {0};
 
+  // Wipe Neutrino ELF memory regions
+  for (int i = 0x1000000; i < GetMemorySize(); i += 64) {
+    asm volatile("\tsq $0, 0(%0) \n"
+                 "\tsq $0, 16(%0) \n"
+                 "\tsq $0, 32(%0) \n"
+                 "\tsq $0, 48(%0) \n" ::"r"(i));
+  }
+
   // Writeback data cache before loading ELF.
   FlushCache(WRITEBACK_DCACHE);
 
@@ -173,6 +181,6 @@ int launchELF(int argc, char *argv[]) {
   FlushCache(INVALIDATE_ICACHE);
   TerminateLibrary();
   _ExecPS2((void *)elfdata.epc, (void *)elfdata.gp, argc, largv);
-  Exit(-1);
+  KExit(-1);
   __builtin_trap();
 }
