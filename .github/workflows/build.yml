@@ -10,6 +10,8 @@ jobs:
     container: ghcr.io/ps2homebrew/ps2homebrew:main
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
     - name: Fetch full clone
       run: |
