@@ -1,5 +1,6 @@
 #include "common.h"
 #include "devices.h"
+#include "dprintf.h"
 #include "options.h"
 #include <debug.h>
 #include <kernel.h>
@@ -90,20 +91,20 @@ void launchTitle(Target *target, ArgumentList *arguments) {
     appendArgument(arguments, newArgument(bsdfsArgument, BSDFS_HDL));
     break;
   default:
-    printf("ERROR: Unsupported mode\n");
+    DPRINTF("ERROR: Unsupported mode\n");
     return;
   }
 
-  printf("Updating last launched title\n");
+  DPRINTF("Updating last launched title\n");
   if (updateLastLaunchedTitle(target->device, target->fullPath)) {
-    printf("ERROR: Failed to update last launched title\n");
+    DPRINTF("ERROR: Failed to update last launched title\n");
   }
 
   // Sync storage device before loading Neutrino
   if (target->device->sync)
     target->device->sync();
 
-  printf("Mounting VMC on MMCE devices\n");
+  DPRINTF("Mounting VMC on MMCE devices\n");
   mmceMountVMC(target->id);
 
   // Append bsd and ISO path
@@ -117,12 +118,12 @@ void launchTitle(Target *target, ArgumentList *arguments) {
   char **argv = malloc(((arguments->total) + 1) * sizeof(char *));
   int argCount = assembleArgv(arguments, argv);
 
-  printf("Launching %s (%s) with arguments:\n", target->name, target->id);
+  DPRINTF("Launching %s (%s) with arguments:\n", target->name, target->id);
   for (int i = 0; i < argCount; i++) {
-    printf("%d: %s\n", i + 1, argv[i]);
+    DPRINTF("%d: %s\n", i + 1, argv[i]);
   }
 
-  printf("ERROR: failed to load %s: %d\n", NEUTRINO_ELF_PATH, launchELF(argCount, argv));
+  launchELF(argCount, argv);
 }
 
 __attribute__((section("._launch_args"))) // Place launchArgs in the _launch_args memory section

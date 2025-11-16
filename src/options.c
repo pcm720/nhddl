@@ -1,6 +1,7 @@
 #include "options.h"
 #include "common.h"
 #include "devices.h"
+#include "dprintf.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -38,7 +39,7 @@ void buildConfigFilePath(char *targetPath, const char *targetMountpoint, const c
 // Gets last launched title path into titlePath
 // Searches for the latest file across all mounted BDM devices
 int getLastLaunchedTitle(char *titlePath) {
-  printf("Reading last launched title\n");
+  DPRINTF("Reading last launched title\n");
   char targetPath[PATH_MAX];
   targetPath[0] = '\0';
 
@@ -58,13 +59,13 @@ int getLastLaunchedTitle(char *titlePath) {
     // Open last launched title file and read it
     int fd = open(targetPath, O_RDONLY);
     if (fd < 0) {
-      printf("WARN: Failed to open last launched title file on device %s: %d\n", deviceModeMap[i].mountpoint, fd);
+      DPRINTF("WARN: Failed to open last launched title file on device %s: %d\n", deviceModeMap[i].mountpoint, fd);
       continue;
     }
 
     // Read file timestamp (first 4 bytes)
     if (read(fd, &timestamp, sizeof(timestamp)) != sizeof(timestamp)) {
-      printf("WARN: Failed to read last launched title file on device %s\n", deviceModeMap[i].mountpoint);
+      DPRINTF("WARN: Failed to read last launched title file on device %s\n", deviceModeMap[i].mountpoint);
       close(fd);
       continue;
     }
@@ -81,7 +82,7 @@ int getLastLaunchedTitle(char *titlePath) {
     // Read file contents into titlePath
     if (read(fd, titlePath, fsize) <= 0) {
       close(fd);
-      printf("WARN: Failed to read last launched title\n");
+      DPRINTF("WARN: Failed to read last launched title\n");
       continue;
     }
     close(fd);
@@ -97,14 +98,14 @@ int updateLastLaunchedTitle(struct DeviceMapEntry *device, char *titlePath) {
     device = device->metadev;
   }
 
-  printf("Writing last launched title as %s\n", titlePath);
+  DPRINTF("Writing last launched title as %s\n", titlePath);
   char targetPath[PATH_MAX];
   buildConfigFilePath(targetPath, device->mountpoint, NULL);
 
   // Make sure config directory exists
   struct stat st;
   if (stat(targetPath, &st) == -1) {
-    printf("Creating config directory: %s\n", targetPath);
+    DPRINTF("Creating config directory: %s\n", targetPath);
     mkdir(targetPath, 0777);
   }
 
@@ -114,14 +115,14 @@ int updateLastLaunchedTitle(struct DeviceMapEntry *device, char *titlePath) {
   // Open last launched title file and write the full title path into it
   int fd = open(targetPath, O_WRONLY | O_CREAT | O_TRUNC);
   if (fd < 0) {
-    printf("ERROR: Failed to open last launched title file: %d\n", fd);
+    DPRINTF("ERROR: Failed to open last launched title file: %d\n", fd);
     return -ENOENT;
   }
 
   // Write timestamp
   uint32_t timestamp = getTimestamp();
   if (write(fd, &timestamp, sizeof(timestamp)) != sizeof(timestamp)) {
-    printf("ERROR: Failed to write last launched title timestamp\n");
+    DPRINTF("ERROR: Failed to write last launched title timestamp\n");
     close(fd);
     return -EIO;
   }
@@ -133,7 +134,7 @@ int updateLastLaunchedTitle(struct DeviceMapEntry *device, char *titlePath) {
 
   size_t writeLen = strlen(titlePath) + 1 - mountpointLen;
   if (write(fd, titlePath + mountpointLen, writeLen) != writeLen) {
-    printf("ERROR: Failed to write last launched title\n");
+    DPRINTF("ERROR: Failed to write last launched title\n");
     close(fd);
     return -EIO;
   }
@@ -165,13 +166,13 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
     device = device->metadev;
   }
 
-  printf("Looking for title-specific config for %s (%s)\n", target->name, target->id);
+  DPRINTF("Looking for title-specific config for %s (%s)\n", target->name, target->id);
   char targetPath[PATH_MAX + 1];
   buildConfigFilePath(targetPath, device->mountpoint, NULL);
   // Determine actual title options file from config directory contents
   DIR *directory = opendir(targetPath);
   if (directory == NULL) {
-    printf("ERROR: Can't open %s\n", targetPath);
+    DPRINTF("ERROR: Can't open %s\n", targetPath);
     return -ENOENT;
   }
   targetPath[0] = '\0';
@@ -190,15 +191,15 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
   closedir(directory);
 
   if (targetPath[0] == '\0') {
-    printf("Title-specific config not found\n");
+    DPRINTF("Title-specific config not found\n");
     return 0;
   }
 
   // Load arguments
-  printf("Loading title-specific config from %s\n", targetPath);
+  DPRINTF("Loading title-specific config from %s\n", targetPath);
   int ret = loadArgumentList(result, device, targetPath);
   if (ret) {
-    printf("ERROR: Failed to load argument list: %d\n", ret);
+    DPRINTF("ERROR: Failed to load argument list: %d\n", ret);
   }
 
   return 0;
@@ -217,12 +218,12 @@ int updateTitleLaunchArguments(Target *target, ArgumentList *options) {
   char lineBuffer[PATH_MAX + 1];
   buildConfigFilePath(lineBuffer, device->mountpoint, target->name);
   strcat(lineBuffer, ".yaml");
-  printf("Saving title-specific config to %s\n", lineBuffer);
+  DPRINTF("Saving title-specific config to %s\n", lineBuffer);
 
   // Open file, truncating it
   int fd = open(lineBuffer, O_WRONLY | O_CREAT | O_TRUNC);
   if (fd < 0) {
-    printf("ERROR: Failed to open file\n");
+    DPRINTF("ERROR: Failed to open file\n");
     return fd;
   }
 
@@ -247,7 +248,7 @@ int updateTitleLaunchArguments(Target *target, ArgumentList *options) {
     }
     if (len > 0) {
       if ((ret = write(fd, lineBuffer, len)) != len) {
-        printf("ERROR: Failed to write to file\n");
+        DPRINTF("ERROR: Failed to write to file\n");
         goto out;
       }
     }
@@ -263,7 +264,7 @@ int loadArgumentList(ArgumentList *options, struct DeviceMapEntry *device, char 
   // Open options file
   FILE *file = fopen(filePath, "r");
   if (file == NULL) {
-    printf("ERROR: Failed to open %s\n", filePath);
+    DPRINTF("ERROR: Failed to open %s\n", filePath);
     return -ENOENT;
   }
 
@@ -388,7 +389,7 @@ int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *de
   next:
   }
   if (ferror(file) || !feof(file)) {
-    printf("ERROR: Failed to read config file\n");
+    DPRINTF("ERROR: Failed to read config file\n");
     return -EIO;
   }
 
@@ -547,12 +548,12 @@ ArgumentList *loadLaunchArgumentLists(Target *target) {
   // Initialize global argument list
   ArgumentList *globalArguments = calloc(sizeof(ArgumentList), 1);
   if ((res = getGlobalLaunchArguments(globalArguments, target->device))) {
-    printf("WARN: Failed to load global launch arguments: %d\n", res);
+    DPRINTF("WARN: Failed to load global launch arguments: %d\n", res);
   }
   // Initialize title list and merge global into it
   ArgumentList *titleArguments = calloc(sizeof(ArgumentList), 1);
   if ((res = getTitleLaunchArguments(titleArguments, target))) {
-    printf("WARN: Failed to load title arguments: %d\n", res);
+    DPRINTF("WARN: Failed to load title arguments: %d\n", res);
   }
 
   if (titleArguments->total != 0) {

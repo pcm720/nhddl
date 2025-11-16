@@ -1,5 +1,6 @@
 #include "common.h"
 #include "devices.h"
+#include "dprintf.h"
 #include "gui.h"
 #include "launcher.h"
 #include "module_init.h"
@@ -66,10 +67,10 @@ void parseIPConfig();
 int forwardBoot();
 
 int main(int argc, char *argv[]) {
-  printf("*************\nNHDDL %s\nA Neutrino launcher by pcm720\n*************\n", GIT_VERSION);
+  DPRINTF("*************\nNHDDL %s\nA Neutrino launcher by pcm720\n*************\n", GIT_VERSION);
 
   for (int i = 0; i < argc; i++)
-    printf("argv[%d] = %s\n", i, argv[i]);
+    DPRINTF("argv[%d] = %s\n", i, argv[i]);
 
   // Parse arguments
   if ((argc > 0 && argv[0][0] == '-') || (argc > 1 && argv[1][0] == '-'))
@@ -83,7 +84,7 @@ int main(int argc, char *argv[]) {
     goto fail;
   }
 
-  printf("Initializing UI\n");
+  DPRINTF("Initializing UI\n");
   if ((res = uiInit())) {
     init_scr();
     logString("\n\nERROR: Failed to init UI: %d\n", res);
@@ -126,7 +127,7 @@ int main(int argc, char *argv[]) {
 
     res = deviceModeMap[i].scan(titles, &deviceModeMap[i]);
     if (res != 0) {
-      printf("WARN: failed to scan %s: %d\n", deviceModeMap[i].mountpoint, res);
+      DPRINTF("WARN: failed to scan %s: %d\n", deviceModeMap[i].mountpoint, res);
     }
   }
 
@@ -142,7 +143,7 @@ int main(int argc, char *argv[]) {
     logString("\n\nERROR: UI loop failed: %d\n", res);
     goto fail;
   }
-  printf("UI loop done, exiting\n");
+  DPRINTF("UI loop done, exiting\n");
   freeTargetList(titles);
   return 0;
 
@@ -347,19 +348,19 @@ void parseArgv(int argc, char *argv[]) {
     arg++;
 
     if (val && !strcmp(OPTION_VMODE, arg)) {
-      printf("Using VMode %s\n", val);
+      DPRINTF("Using VMode %s\n", val);
       LAUNCHER_OPTIONS.vmode = parseVMode(val);
     } else if (val && !strcmp(OPTION_MODE, arg)) {
-      printf("Using mode %s\n", val);
+      DPRINTF("Using mode %s\n", val);
       LAUNCHER_OPTIONS.mode |= parseMode(val);
     } else if (val && !strcmp(OPTION_UDPBD_IP, arg)) {
-      printf("Using UDPBD IP %s\n", val);
+      DPRINTF("Using UDPBD IP %s\n", val);
       strlcpy(LAUNCHER_OPTIONS.udpbdIp, val, sizeof(LAUNCHER_OPTIONS.udpbdIp));
     } else if (val && !strcmp(OPTION_IMAGE, arg)) {
-      printf("Using image %s\n", val);
+      DPRINTF("Using image %s\n", val);
       LAUNCHER_OPTIONS.image = strdup(val);
     } else if (!strcmp(OPTION_NO_INIT, arg)) {
-      printf("Skipping IOP init\n");
+      DPRINTF("Skipping IOP init\n");
       LAUNCHER_OPTIONS.noInit = 1;
     }
   }
@@ -434,7 +435,7 @@ int loadOptions(char *cwdPath, ModuleInitType initType) {
   }
 
   if (lineBuffer[0] == '\0') {
-    printf("Can't load options file, will use defaults\n");
+    DPRINTF("Can't load options file, will use defaults\n");
     return -ENOENT;
   }
 
@@ -443,7 +444,7 @@ fileExists:
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, NULL, lineBuffer)) {
     // Else, fail
-    printf("Can't load options file, will use defaults\n");
+    DPRINTF("Can't load options file, will use defaults\n");
     freeArgumentList(options);
     return -ENOENT;
   }
@@ -578,23 +579,23 @@ int forwardBoot() {
   else
     res = initModules(INIT_TYPE_NOINIT);
   if (res) {
-    printf("Failed to init modules: %d\n", res);
+    DPRINTF("Failed to init modules: %d\n", res);
     return res;
   }
 
   int deviceCount = initDeviceMap();
   if (deviceCount <= 0) {
-    printf("Failed to init devices: %d\n", deviceCount);
+    DPRINTF("Failed to init devices: %d\n", deviceCount);
     return -ENODEV;
   }
 
   if ((res = tryFile(LAUNCHER_OPTIONS.image)) < 0) {
-    printf("Target image not found: %d\n", res);
+    DPRINTF("Target image not found: %d\n", res);
     return -ENOENT;
   }
 
   if (findNeutrinoELF(NULL, INIT_TYPE_FULL)) {
-    printf("Failed to find Neutrino\n");
+    DPRINTF("Failed to find Neutrino\n");
     return -ENOENT;
   }
 
@@ -619,7 +620,7 @@ int forwardBoot() {
     }
 
   if (!target.device) {
-    printf("Target device not found\n");
+    DPRINTF("Target device not found\n");
     return -ENODEV;
   }
 

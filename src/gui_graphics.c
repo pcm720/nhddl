@@ -1,4 +1,5 @@
 #include "gui_graphics.h"
+#include "dprintf.h"
 #include "gui_dejavu_sans.h"
 #include "gui_icons.h"
 #include <dmaKit.h>
@@ -23,7 +24,7 @@ const struct BMFont font = BMFONT_DEJAVU_SANS;
 // Initializes and uploads graphics resources to GS VRAM
 int initGraphics() {
   if (font.pageCount == 0) {
-    printf("ERROR: Invalid number of font pages\n");
+    DPRINTF("ERROR: Invalid number of font pages\n");
     return -1;
   }
   fontPages = calloc(sizeof(GSTEXTURE *), font.pageCount);
@@ -32,7 +33,7 @@ int initGraphics() {
   for (int i = 0; i < font.pageCount; i++) {
     fontPages[i] = calloc(sizeof(GSTEXTURE), 1);
     if (gsKit_texture_png_mem(gsGlobal, fontPages[i], font.pages[i].data, font.pages[i].size)) {
-      printf("ERROR: Failed to load page %d\n", i);
+      DPRINTF("ERROR: Failed to load page %d\n", i);
       return -1;
     }
   }
@@ -40,14 +41,14 @@ int initGraphics() {
   // Upload icons texture to GS
   icons = calloc(sizeof(GSTEXTURE), 1);
   if (gsKit_texture_png_mem(gsGlobal, icons, ICONS_PNG, SIZE_ICONS_PNG)) {
-    printf("ERROR: Failed to load icons texture\n");
+    DPRINTF("ERROR: Failed to load icons texture\n");
     return -1;
   }
 
   // Upload logo texture to GS
   logo = calloc(sizeof(GSTEXTURE), 1);
   if (gsKit_texture_png_mem(gsGlobal, logo, LOGO_PNG, SIZE_LOGO_PNG)) {
-    printf("ERROR: Failed to load logo texture\n");
+    DPRINTF("ERROR: Failed to load logo texture\n");
     return -1;
   }
   logo->Filter = GS_FILTER_LINEAR; // Enable bilinear filtering
@@ -349,7 +350,7 @@ int drawTextWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_
 int gsKit_texture_png_mem(GSGLOBAL *gsGlobal, GSTEXTURE *texture, void *buf, size_t size) {
   FILE *file = fmemopen(buf, size, "rb");
   if (file == NULL) {
-    printf("ERROR: Failed to load PNG file\n");
+    DPRINTF("ERROR: Failed to load PNG file\n");
     return -1;
   }
 
@@ -364,7 +365,7 @@ int gsKit_texture_png_mem(GSGLOBAL *gsGlobal, GSTEXTURE *texture, void *buf, siz
   png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, (png_voidp)NULL, NULL, NULL);
 
   if (!png_ptr) {
-    printf("ERROR: Failed to init libpng read struct\n");
+    DPRINTF("ERROR: Failed to init libpng read struct\n");
     fclose(file);
     return -1;
   }
@@ -372,14 +373,14 @@ int gsKit_texture_png_mem(GSGLOBAL *gsGlobal, GSTEXTURE *texture, void *buf, siz
   info_ptr = png_create_info_struct(png_ptr);
 
   if (!info_ptr) {
-    printf("ERROR: Failed to init libpng info struct\n");
+    DPRINTF("ERROR: Failed to init libpng info struct\n");
     fclose(file);
     png_destroy_read_struct(&png_ptr, (png_infopp)NULL, (png_infopp)NULL);
     return -1;
   }
 
   if (setjmp(png_jmpbuf(png_ptr))) {
-    printf("ERROR: Failed to setup libpng long jump\n");
+    DPRINTF("ERROR: Failed to setup libpng long jump\n");
     png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
     fclose(file);
     return -1;
@@ -391,7 +392,7 @@ int gsKit_texture_png_mem(GSGLOBAL *gsGlobal, GSTEXTURE *texture, void *buf, siz
   png_get_IHDR(png_ptr, info_ptr, &width, &height, &bit_depth, &color_type, &interlace_type, NULL, NULL);
 
   if (color_type != PNG_COLOR_TYPE_RGB_ALPHA) {
-    printf("ERROR: Only 32-bit RGBA textures are supported\n");
+    DPRINTF("ERROR: Only 32-bit RGBA textures are supported\n");
     png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
     fclose(file);
     return -1;

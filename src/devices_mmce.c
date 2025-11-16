@@ -1,6 +1,7 @@
 // Implements support for MMCE devices
 #include "common.h"
 #include "devices.h"
+#include "dprintf.h"
 #include "gui.h"
 #include <errno.h>
 #include <kernel.h>
@@ -50,7 +51,7 @@ void mmceMountVMC(char *titleID) {
 
     // Do not mount VMC if Neutrino is on the (virtual) memory card
     if (!strncmp(mcMountpoint, NEUTRINO_ELF_PATH, 3)) {
-      printf("WARN: Refusing to mount VMC on %s\n", mmceMountpoint);
+      DPRINTF("WARN: Refusing to mount VMC on %s\n", mmceMountpoint);
       continue;
     }
 
@@ -67,7 +68,7 @@ void mmceMountVMC(char *titleID) {
     for (int i = 0; i < 15; i++) {
       delay(2);
       if ((fileXioDevctl(mmceMountpoint, 0x2, NULL, 0, NULL, 0) & 1) == 0) {
-        printf("Mounted VMC for %s on %s\n", titleID, mmceMountpoint);
+        DPRINTF("Mounted VMC for %s on %s\n", titleID, mmceMountpoint);
         break;
       }
     }

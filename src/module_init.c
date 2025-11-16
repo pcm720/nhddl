@@ -1,5 +1,6 @@
 #include "module_init.h"
 #include "common.h"
+#include "dprintf.h"
 #include "gui.h"
 #include <ctype.h>
 #include <debug.h>
@@ -125,7 +126,7 @@ int initModules(ModuleInitType initType) {
 
   // Skip rebooting IOP if modules were loaded previously
   if (!moduleList[0].loaded) {
-    printf("Rebooting IOP\n");
+    DPRINTF("Rebooting IOP\n");
     while (!SifIopReset("", 0)) {
     };
     while (!SifIopSync()) {

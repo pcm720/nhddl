@@ -1,5 +1,6 @@
 #include "devices.h"
 #include "common.h"
+#include "dprintf.h"
 #include "gui.h"
 #include <errno.h>
 #include <kernel.h>
@@ -52,7 +53,7 @@ int initDeviceMap() {
 
     uiSplashLogString(LEVEL_INFO_NODELAY, "Initializing %s backend\n", backends[i].name);
     if ((res = backends[i].initFunction(deviceCount)) < 0) {
-      printf("ERROR: Failed to initialize %s backend: %d\n", backends[i].name, res);
+      DPRINTF("ERROR: Failed to initialize %s backend: %d\n", backends[i].name, res);
       continue;
     }
     deviceCount += res;

@@ -1,6 +1,7 @@
 // Implements titleScanFunc for file-based devices (MMCE, BDM)
 #include "common.h"
 #include "devices.h"
+#include "dprintf.h"
 #include "gui.h"
 #include "options.h"
 #include "title_id.h"
@@ -107,7 +108,7 @@ int _findISO(DIR *directory, TargetList *result, struct DeviceMapEntry *device) 
 
   curRecursionLevel++;
   if (curRecursionLevel == MAX_SCAN_DEPTH)
-    printf("Max recursion limit reached, all directories in %s will be ignored\n", titlePath);
+    DPRINTF("Max recursion limit reached, all directories in %s will be ignored\n", titlePath);
 
   while ((entry = readdir(directory)) != NULL) {
     // Reset titlePath by ending string on base path
@@ -137,7 +138,7 @@ int _findISO(DIR *directory, TargetList *result, struct DeviceMapEntry *device) 
       strcat(titlePath, entry->d_name);
       DIR *d = opendir(titlePath);
       if (d == NULL) {
-        printf("Failed to open %s for scanning\n", entry->d_name);
+        DPRINTF("Failed to open %s for scanning\n", entry->d_name);
         continue;
       }
       chdir(titlePath);
@@ -222,7 +223,7 @@ void processTitleID(TargetList *result, struct DeviceMapEntry *device) {
       curTarget->id = strdup(titleID);
     } else { // Get title ID from ISO
       cacheMisses++;
-      printf("Cache miss for %s\n", curTarget->fullPath);
+      DPRINTF("Cache miss for %s\n", curTarget->fullPath);
       curTarget->id = getTitleID(curTarget->fullPath);
       if (curTarget->id == NULL) {
         uiSplashLogString(LEVEL_WARN, "Failed to scan\n%s\n", curTarget->fullPath);
@@ -281,7 +282,7 @@ int storeTitleIDCache(TargetList *list, struct DeviceMapEntry *device) {
     curTitle = curTitle->next;
   }
   if (total == 0) {
-    printf("WARN: No valid cache entries found\n");
+    DPRINTF("WARN: No valid cache entries found\n");
     return 0;
   }
 
@@ -301,9 +302,9 @@ int storeTitleIDCache(TargetList *list, struct DeviceMapEntry *device) {
   // Get path to config directory and make sure it exists
   struct stat st;
   if (stat(dirPath, &st) == -1) {
-    printf("Creating config directory: %s\n", dirPath);
+    DPRINTF("Creating config directory: %s\n", dirPath);
     if (mkdir(dirPath, 0777)) {
-      printf("ERROR: Failed to create directory\n");
+      DPRINTF("ERROR: Failed to create directory\n");
       return -EIO;
     }
   }
@@ -311,7 +312,7 @@ int storeTitleIDCache(TargetList *list, struct DeviceMapEntry *device) {
   // Open cache file for writing
   FILE *file = fopen(cachePath, "wb");
   if (file == NULL) {
-    printf("ERROR: Failed to open cache file for writing\n");
+    DPRINTF("ERROR: Failed to open cache file for writing\n");
     return -EIO;
   }
 
@@ -319,7 +320,7 @@ int storeTitleIDCache(TargetList *list, struct DeviceMapEntry *device) {
   // Write cache file header
   result = fwrite(&meta, sizeof(CacheMetadata), 1, file);
   if (!result) {
-    printf("ERROR: Failed to write metadata: %d\n", errno);
+    DPRINTF("ERROR: Failed to write metadata: %d\n", errno);
     fclose(file);
     remove(cachePath);
     return result;
@@ -338,7 +339,7 @@ int storeTitleIDCache(TargetList *list, struct DeviceMapEntry *device) {
     // Compare paths without the mountpoint
     mountpointLen = getRelativePathIdx(curTitle->fullPath);
     if (mountpointLen == -1) {
-      printf("WARN: Failed to get device mountpoint for %s\n", curTitle->name);
+      DPRINTF("WARN: Failed to get device mountpoint for %s\n", curTitle->name);
       curTitle = curTitle->next;
       continue;
     }
@@ -349,7 +350,7 @@ int storeTitleIDCache(TargetList *list, struct DeviceMapEntry *device) {
     header.pathLength = strlen(curTitle->fullPath) - mountpointLen + 1;
     result = fwrite(&header, sizeof(CacheEntryHeader), 1, file);
     if (!result) {
-      printf("ERROR: %s: Failed to write header: %d\n", curTitle->name, errno);
+      DPRINTF("ERROR: %s: Failed to write header: %d\n", curTitle->name, errno);
       fclose(file);
       remove(cachePath);
       return result;
@@ -357,7 +358,7 @@ int storeTitleIDCache(TargetList *list, struct DeviceMapEntry *device) {
     // Write full ISO path without the mountpoint
     result = fwrite(curTitle->fullPath + mountpointLen, header.pathLength, 1, file);
     if (!result) {
-      printf("ERROR: %s: Failed to write full path: %d\n", curTitle->name, errno);
+      DPRINTF("ERROR: %s: Failed to write full path: %d\n", curTitle->name, errno);
       fclose(file);
       remove(cachePath);
       return result;
@@ -392,19 +393,19 @@ int loadTitleIDCache(TitleIDCache *cache, struct DeviceMapEntry *device) {
   CacheMetadata meta;
   result = fread(&meta, sizeof(CacheMetadata), 1, file);
   if (!result) {
-    printf("ERROR: Failed to read cache metadata\n");
+    DPRINTF("ERROR: Failed to read cache metadata\n");
     fclose(file);
     return result;
   }
 
   // Make sure header is valid
   if (!strcmp(meta.magic, CACHE_MAGIC)) {
-    printf("ERROR: Cache magic doesn't match, refusing to load\n");
+    DPRINTF("ERROR: Cache magic doesn't match, refusing to load\n");
     fclose(file);
     return -EINVAL;
   }
   if (meta.version != CACHE_VERSION) {
-    printf("ERROR: Unsupported cache version %d\n", meta.version);
+    DPRINTF("ERROR: Unsupported cache version %d\n", meta.version);
     fclose(file);
     return -EINVAL;
   }
@@ -413,7 +414,7 @@ int loadTitleIDCache(TitleIDCache *cache, struct DeviceMapEntry *device) {
   int readIndex = 0;
   cache->entries = malloc((sizeof(CacheEntry) * meta.total));
   if (cache->entries == NULL) {
-    printf("ERROR: Can't allocate enough memory\n");
+    DPRINTF("ERROR: Can't allocate enough memory\n");
     fclose(file);
     return -ENOMEM;
   }
@@ -427,13 +428,13 @@ int loadTitleIDCache(TitleIDCache *cache, struct DeviceMapEntry *device) {
     result = fread(&header, sizeof(CacheEntryHeader), 1, file);
     if (result != 1) {
       if (!feof(file))
-        printf("WARN: Read less than expected, title ID cache might be incomplete\n");
+        DPRINTF("WARN: Read less than expected, title ID cache might be incomplete\n");
       break;
     }
     // Read ISO path
     result = fread(&pathBuf, header.pathLength, 1, file);
     if (result != 1) {
-      printf("WARN: Read less than expected, title ID cache might be incomplete\n");
+      DPRINTF("WARN: Read less than expected, title ID cache might be incomplete\n");
       break;
     }
     pathBuf[header.pathLength] = '\0';
@@ -463,7 +464,7 @@ char *getCachedTitleID(char *fullPath, TitleIDCache *cache) {
   // that have already been matched to a title ID, improving lookup speeds for very large lists.
   int mountpointLen = getRelativePathIdx(fullPath);
   if (mountpointLen == -1) {
-    printf("WARN: Failed to get device mountpoint for %s\n", fullPath);
+    DPRINTF("WARN: Failed to get device mountpoint for %s\n", fullPath);
     return NULL;
   }
 

@@ -1,5 +1,6 @@
 #include "gui.h"
 #include "common.h"
+#include "dprintf.h"
 #include "gui_args.h"
 #include "gui_graphics.h"
 #include "launcher.h"
@@ -54,7 +55,7 @@ static const int footerHeight = 40 + keepoutArea;
 void initVMode(GSGLOBAL *gsGlobal) {
   switch (LAUNCHER_OPTIONS.vmode) {
   case GS_MODE_NTSC:
-    printf("Forcing NTSC mode\n");
+    DPRINTF("Forcing NTSC mode\n");
     gsGlobal->Mode = GS_MODE_NTSC;
     gsGlobal->Interlace = GS_INTERLACED;
     gsGlobal->Field = GS_FIELD;
@@ -62,7 +63,7 @@ void initVMode(GSGLOBAL *gsGlobal) {
     gsGlobal->Height = 448;
     break;
   case GS_MODE_PAL:
-    printf("Forcing PAL mode\n");
+    DPRINTF("Forcing PAL mode\n");
     gsGlobal->Mode = GS_MODE_PAL;
     gsGlobal->Interlace = GS_INTERLACED;
     gsGlobal->Field = GS_FIELD;
@@ -70,7 +71,7 @@ void initVMode(GSGLOBAL *gsGlobal) {
     gsGlobal->Height = 512;
     break;
   case GS_MODE_DTV_480P:
-    printf("Forcing 480p mode\n");
+    DPRINTF("Forcing 480p mode\n");
     gsGlobal->Mode = GS_MODE_DTV_480P;
     gsGlobal->Interlace = GS_NONINTERLACED;
     gsGlobal->Field = GS_FRAME;
@@ -83,7 +84,7 @@ void initVMode(GSGLOBAL *gsGlobal) {
 
 int uiInit() {
   if (gsGlobal != NULL) {
-    printf("Reinitializing UI\n");
+    DPRINTF("Reinitializing UI\n");
     closeUI();
   }
   gsGlobal = gsKit_init_global();
@@ -102,7 +103,7 @@ int uiInit() {
   // Initialize the DMAC
   int res;
   if ((res = dmaKit_chan_init(DMA_CHANNEL_GIF))) {
-    printf("ERROR: Failed to initlize DMAC: %d\n", res);
+    DPRINTF("ERROR: Failed to initlize DMAC: %d\n", res);
     return res;
   }
 
@@ -119,7 +120,7 @@ int uiInit() {
 
   // Initialize resources
   if (initGraphics()) {
-    printf("ERROR: Failed to initialize font\n");
+    DPRINTF("ERROR: Failed to initialize font\n");
     return -1;
   };
 
@@ -171,7 +172,7 @@ int uiLoop(TargetList *titles) {
 
   int res = 0;
   if ((gsGlobal == NULL) && (res = uiInit())) {
-    printf("ERROR: Failed to init UI: %d\n", res);
+    DPRINTF("ERROR: Failed to init UI: %d\n", res);
     goto exit;
   }
   // Init gamepad inputs
@@ -669,7 +670,7 @@ static uint8_t threadStack[THREAD_STACK_SIZE] __attribute__((aligned(16)));
 
 // Initializes and starts UI splash thread
 int startSplashScreen() {
-  printf("Starting UI splash thread\n");
+  DPRINTF("Starting UI splash thread\n");
   // Initialize splash semaphores
   ee_sema_t semaphore;
   semaphore.init_count = 0;
@@ -764,7 +765,7 @@ void uiSplashLogString(UILogLevelType level, const char *str, ...) {
   logBuffer.level = level;
   vsnprintf(logBuffer.buf, 255, str, args);
   va_end(args);
-  printf(logBuffer.buf);
+  DPRINTF(logBuffer.buf);
 
   if (!gsGlobal)
     return;

@@ -1,6 +1,7 @@
 // Implements support for BDM devices
 #include "common.h"
 #include "devices.h"
+#include "dprintf.h"
 #include "gui.h"
 #include <errno.h>
 #include <kernel.h>
@@ -76,13 +77,13 @@ int initBDMDevices(int deviceIdx) {
     char temp = *sep;
     *sep = '\0';
 
-    printf("Noinit flag set, trying the image mountpoint %s\n", LAUNCHER_OPTIONS.image);
+    DPRINTF("Noinit flag set, trying the image mountpoint %s\n", LAUNCHER_OPTIONS.image);
     directory = opendir(LAUNCHER_OPTIONS.image);
     if (directory != NULL)
       closedir(directory);
 
     if (getBDMDeviceDriver(LAUNCHER_OPTIONS.image, &deviceModeMap[deviceIdx]) < 0) {
-      printf("ERROR: failed to get driver for device %s\n", LAUNCHER_OPTIONS.image);
+      DPRINTF("ERROR: failed to get driver for device %s\n", LAUNCHER_OPTIONS.image);
       *sep = temp;
       return -EIO;
     }
@@ -119,7 +120,7 @@ int initBDMDevices(int deviceIdx) {
     }
 
     if (getBDMDeviceDriver(mountpoint, &deviceModeMap[deviceIdx]) < 0) {
-      printf("ERROR: failed to get driver for device %s\n", mountpoint);
+      DPRINTF("ERROR: failed to get driver for device %s\n", mountpoint);
       return -EIO;
     }
 

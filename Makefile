@@ -1,3 +1,6 @@
+# If enabled, will print additional debug text to stdout
+ENABLE_PRINTF ?= 0
+
 #.SILENT:
 GIT_VERSION := $(shell git describe --always --dirty --tags --exclude nightly)
 
@@ -27,6 +30,10 @@ EE_SRC_DIR = src/
 
 EE_OBJS += $(IRX_FILES:.irx=_irx.o)
 EE_OBJS := $(EE_OBJS:%=$(EE_OBJS_DIR)%)
+
+ifeq ($(ENABLE_PRINTF), 1)
+ EE_CFLAGS += -DENABLE_PRINTF
+endif
 
 EE_INCS := -Iinclude -I$(PS2DEV)/gsKit/include -I$(PS2SDK)/ports/include
 
