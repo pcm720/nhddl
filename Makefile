@@ -16,18 +16,16 @@ IRX_FILES += ps2dev9.irx bdm.irx bdmfs_fatfs.irx ata_bd.irx usbd_mini.irx smap_u
 IRX_FILES += usbmass_bd_mini.irx mx4sio_bd_mini.irx iLinkman.irx IEEE1394_bd_mini.irx
 # HDL modules
 IRX_FILES += ps2hdd.irx ps2fs.irx
-# Embedded ELF files
-ELF_FILES += loader.elf
 
 EE_LIBS = -ldebug -lfileXio -lpatches -lgskit_toolkit -lgskit -ldmakit -lpng -lz -ltiff -lpad
 EE_CFLAGS += -mno-gpopt -G0 -DGIT_VERSION="\"${GIT_VERSION}\""
+EE_LINKFILE ?= linkfile
 
 EE_OBJS_DIR = obj/
 EE_ASM_DIR = asm/
 EE_SRC_DIR = src/
 
 EE_OBJS += $(IRX_FILES:.irx=_irx.o)
-EE_OBJS += $(ELF_FILES:.elf=_elf.o)
 EE_OBJS := $(EE_OBJS:%=$(EE_OBJS_DIR)%)
 
 EE_INCS := -Iinclude -I$(PS2DEV)/gsKit/include -I$(PS2SDK)/ports/include
@@ -44,16 +42,9 @@ $(EE_BIN_PKD): $(EE_BIN)
 	ps2-packer $< $@
 
 clean:
-	$(MAKE) -C loader clean
 	$(MAKE) -C iop/smap_udpbd clean
+	$(MAKE) -C iop/mmceman clean
 	rm -rf $(EE_BIN) $(EE_BIN_PKD) $(EE_ASM_DIR) $(EE_OBJS_DIR)
-
-# ELF loader
-loader/loader.elf: loader
-	$(MAKE) -C $<
-
-%loader_elf.c: loader/loader.elf
-	$(BIN2C) $(*:$(EE_SRC_DIR)%=loader/%)loader.elf $@ $(*:$(EE_SRC_DIR)%=%)loader_elf
 
 # smap_udpbd.irx
 iop/smap_udpbd/smap_udpbd.irx: iop/smap_udpbd

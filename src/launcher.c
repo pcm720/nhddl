@@ -1,7 +1,9 @@
 #include "common.h"
 #include "devices.h"
 #include "options.h"
+#include <debug.h>
 #include <kernel.h>
+#include <loadfile.h>
 #include <sifrpc.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -9,9 +11,6 @@
 #include <string.h>
 #include <unistd.h>
 
-// Loader ELF variables
-extern uint8_t loader_elf[];
-extern int size_loader_elf;
 // Arguments
 static char isoArgument[] = "dvd";
 static char bsdArgument[] = "bsd";
@@ -28,7 +27,7 @@ static char bsdfsArgument[] = "bsdfs";
 // Neutrino bsdfs values
 #define BSDFS_HDL "hdl"
 
-int LoadELFFromFile(int argc, char *argv[]);
+int launchELF(int argc, char *argv[]);
 
 // Assembles argument lists into argv for loader.elf.
 // Expects argv to be initialized with at least (arguments->total) elements.
@@ -123,74 +122,57 @@ void launchTitle(Target *target, ArgumentList *arguments) {
     printf("%d: %s\n", i + 1, argv[i]);
   }
 
-  printf("ERROR: failed to load %s: %d\n", NEUTRINO_ELF_PATH, LoadELFFromFile(argCount, argv));
+  printf("ERROR: failed to load %s: %d\n", NEUTRINO_ELF_PATH, launchELF(argCount, argv));
 }
 
-//
-// All the following code is modified version of elf.c from PS2SDK with unneeded bits removed
-//
+__attribute__((section("._launch_args"))) // Place launchArgs in the _launch_args memory section
+__attribute__((aligned(16)))              // Align the pointer
+static void *launchArgs = NULL;           // Used to mark the start of argv copy used to start Neutrino
 
-typedef struct {
-  uint8_t ident[16]; // struct definition for ELF object header
-  uint16_t type;
-  uint16_t machine;
-  uint32_t version;
-  uint32_t entry;
-  uint32_t phoff;
-  uint32_t shoff;
-  uint32_t flags;
-  uint16_t ehsize;
-  uint16_t phentsize;
-  uint16_t phnum;
-  uint16_t shentsize;
-  uint16_t shnum;
-  uint16_t shstrndx;
-} elf_header_t;
+__attribute__((section("._launch_elf"))) // Place launchELF in the _launch_elf memory section
+__attribute__((noreturn))                // Mark as noreturn
+int launchELF(int argc, char *argv[]) {
+  // Set the stack pointer location to point to the end of the unused kernel region to use as a stack
+  asm volatile("move $sp, %0\n" : : "r"(0xffff0) : "memory");
 
-typedef struct {
-  uint32_t type; // struct definition for ELF program section header
-  uint32_t offset;
-  void *vaddr;
-  uint32_t paddr;
-  uint32_t filesz;
-  uint32_t memsz;
-  uint32_t flags;
-  uint32_t align;
-} elf_pheader_t;
+  t_ExecData elfdata = {0};
 
-// ELF-loading stuff
-#define ELF_MAGIC 0x464c457f
-#define ELF_PT_LOAD 1
+  // Writeback data cache before loading ELF.
+  FlushCache(WRITEBACK_DCACHE);
 
-int LoadELFFromFile(int argc, char *argv[]) {
-  uint8_t *boot_elf;
-  elf_header_t *eh;
-  elf_pheader_t *eph;
-  void *pdata;
-  int i;
-
-  // Wipe memory region where the ELF loader is going to be loaded (see loader/linkfile)
-  memset((void *)0x00084000, 0, 0x00100000 - 0x00084000);
-
-  boot_elf = (uint8_t *)loader_elf;
-  eh = (elf_header_t *)boot_elf;
-  if (_lw((uint32_t)&eh->ident) != ELF_MAGIC)
+  // Load Neutrino ELF into memory
+  SifLoadFileInit();
+  int ret = SifLoadElf(argv[0], &elfdata);
+  SifLoadFileExit();
+  if (!(ret == 0 && elfdata.epc != 0)) {
+    init_scr();
+    scr_clear();
+    scr_printf(".\n\n\n\tFailed to load neutrino.elf: %d\n", ret);
     __builtin_trap();
-
-  eph = (elf_pheader_t *)(boot_elf + eh->phoff);
-
-  // Scan through the ELF's program headers and copy them into RAM
-  for (i = 0; i < eh->phnum; i++) {
-    if (eph[i].type != ELF_PT_LOAD)
-      continue;
-
-    pdata = (void *)(boot_elf + eph[i].offset);
-    memcpy(eph[i].vaddr, pdata, eph[i].filesz);
   }
 
-  SifExitRpc();
-  FlushCache(0);
-  FlushCache(2);
+  // Copy launch arguments from user memory into kernel memory
+  char **largv = (char **)&launchArgs;
+  char *argStart = (char *)&launchArgs + (argc * 0x4);
+  for (int i = 0; i < argc; i++) {
+    strcpy(argStart, argv[i]);
+    largv[i] = argStart;
+    argStart += strlen(largv[i]) + 1;
+  }
 
-  return ExecPS2((void *)eh->entry, NULL, argc, argv);
+  // The rest of the code doesn't use libc functions
+  // Wipe NHDDL memory
+  for (int i = 0x100000; i < 0x1000000; i += 64) {
+    asm volatile("\tsq $0, 0(%0) \n"
+                 "\tsq $0, 16(%0) \n"
+                 "\tsq $0, 32(%0) \n"
+                 "\tsq $0, 48(%0) \n" ::"r"(i));
+  }
+
+  FlushCache(WRITEBACK_DCACHE);
+  FlushCache(INVALIDATE_ICACHE);
+  TerminateLibrary();
+  _ExecPS2((void *)elfdata.epc, (void *)elfdata.gp, argc, largv);
+  Exit(-1);
+  __builtin_trap();
 }
