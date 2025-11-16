@@ -290,103 +290,68 @@ int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *de
   // Our lines will mostly consist of file paths, which aren't likely to exceed 300 characters due to 255 character limit in exFAT path component
   char lineBuffer[PATH_MAX + 1];
   lineBuffer[0] = '\0';
-  int startIdx;
-  int substrIdx;
-  int argEndIdx;
   int isDisabled = 0;
+  char *valuePtr = NULL;
+  char *argPtr = NULL;
 
   while (fgets(lineBuffer, PATH_MAX, file)) { // fgets reutrns NULL if EOF or an error occurs
-    startIdx = 0;
-    isDisabled = 0;
-    argEndIdx = 0;
+    argPtr = lineBuffer;
+    while (isspace((int)*argPtr))
+      argPtr++; // Advance argument until the first non-whitespace character
 
-    //
-    // Parse argument
-    //
-    while (isspace((unsigned char)lineBuffer[startIdx])) {
-      startIdx++; // Advance line index until we read a non-whitespace character
-    }
-    // Ignore comment lines
-    if (lineBuffer[startIdx] == '#')
+    if (argPtr[0] == '#') // Ignore commented lines
       continue;
 
-    // Try to find ':' until line ends
-    substrIdx = startIdx;
-    while (lineBuffer[substrIdx] != ':' && lineBuffer[substrIdx] != '\0') {
-      if (lineBuffer[substrIdx] == '$') {
-        // Handle disabled argument
-        isDisabled = 1;
-        startIdx = substrIdx + 1;
-      } else if (isspace((unsigned char)lineBuffer[startIdx])) {
-        // Ignore whitespace by advancing start index to ignore this character
-        startIdx = substrIdx + 1;
-      }
-      substrIdx++;
+    // Find the start of the value
+    valuePtr = strchr(lineBuffer, ':');
+    if (!valuePtr)
+      continue;
+
+    // Terminate the string argPtr points to at the argument name
+    *valuePtr = '\0';
+
+    // Trim whitespace and terminate the value
+    do {
+      valuePtr++;
+    } while (isspace((int)*valuePtr));
+    valuePtr[strcspn(valuePtr, "#\r\n")] = '\0'; // Terminate the value at the line end or comment token
+
+    // Trim whitespace at the end of argument and value strings
+    char *tempPtr = argPtr + strlen(argPtr) - 1;
+    while (isspace((int)*tempPtr)) {
+      *tempPtr = '\0';
+      tempPtr--;
+    }
+    tempPtr = valuePtr + strlen(valuePtr);
+    while (isspace((int)*tempPtr)) {
+      *tempPtr = '\0';
+      tempPtr--;
     }
 
-    // If EOL is reached without finding ':', skip to the next line
-    if (lineBuffer[substrIdx] == '\0') {
-      goto next;
-    }
-
-    // Mark the end of argument name before removing trailing whitespace
-    argEndIdx = substrIdx;
-
-    // Remove trailing whitespace
-    while (isspace((unsigned char)lineBuffer[substrIdx - 1])) {
-      substrIdx--;
-    }
-
-    // Copy argument to argName
-    char *argName = calloc(sizeof(char), substrIdx - startIdx + 1);
-    strncpy(argName, &lineBuffer[startIdx], substrIdx - startIdx);
-    substrIdx = argEndIdx;
-
-    //
-    // Parse value
-    //
-    startIdx = substrIdx + 1;
-    // Advance line index until we read a non-whitespace character or return at EOL
-    while (isspace((unsigned char)lineBuffer[startIdx])) {
-      if (lineBuffer[startIdx] == '\0') {
-        free(argName);
-        goto next;
-      }
-      startIdx++;
-    }
-
-    // Try to read value until we reach a comment, a new line, or the end of string
-    substrIdx = startIdx;
-    while (lineBuffer[substrIdx] != '#' && lineBuffer[substrIdx] != '\r' && lineBuffer[substrIdx] != '\n' && lineBuffer[substrIdx] != '\0') {
-      substrIdx++;
-    }
-
-    // Remove trailing whitespace
-    while ((substrIdx > startIdx) && isspace((unsigned char)lineBuffer[substrIdx - 1])) {
-      substrIdx--;
-    }
-
-    Argument *arg = newArgument(argName, "");
-    free(argName);
-    arg->isDisabled = isDisabled;
-
-    // Allocate memory for the argument value
-    size_t valueLength = substrIdx - startIdx;
-    if ((device != NULL) && ((lineBuffer[startIdx] == '/') || (lineBuffer[startIdx] == '\\'))) {
+    char *newValue = NULL;
+    if (!device && (valuePtr[0] == '/' || valuePtr[0] == '\\')) {
       // Add device mountpoint to argument value if path starts with \ or /
-      arg->value = calloc(sizeof(char), valueLength + 1 + strlen(device->mountpoint));
+      char *newValue = calloc(sizeof(char), strlen(valuePtr) + 1 + strlen(device->mountpoint));
       // Replace current mountpoint with device number.
-      strcpy(arg->value, device->mountpoint);
-      arg->value[getDeviceNumberIdx(arg->value)] = device->index + '0';
-    } else {
-      arg->value = calloc(sizeof(char), valueLength + 1);
+      strcpy(newValue, device->mountpoint);
+      strcat(newValue, valuePtr);
     }
 
-    // Copy the value and add argument to the list
-    strncat(arg->value, &lineBuffer[startIdx], valueLength);
-    appendArgument(result, arg);
+    if (argPtr[0] == '$') {
+      argPtr++;
+      isDisabled = 1;
+    } else
+      isDisabled = 0;
 
-  next:
+    Argument *arg = NULL;
+    if (newValue) {
+      arg = newArgument(argPtr, newValue);
+      free(newValue);
+    } else
+      arg = newArgument(argPtr, valuePtr);
+
+    arg->isDisabled = isDisabled;
+    appendArgument(result, arg);
   }
   if (ferror(file) || !feof(file)) {
     DPRINTF("ERROR: Failed to read config file\n");
