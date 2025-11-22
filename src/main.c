@@ -607,9 +607,15 @@ int forwardBoot() {
   char *fileext = strrchr(LAUNCHER_OPTIONS.image, '.');
   if ((fileext != NULL) && (!strcmp(fileext, ".iso") || !strcmp(fileext, ".ISO"))) {
     // Get file name without the extension
-    int nameLength = (int)(fileext - LAUNCHER_OPTIONS.image);
+    char *isoName = strrchr(LAUNCHER_OPTIONS.image, '/');
+    if (!isoName)
+      isoName = LAUNCHER_OPTIONS.image;
+    else
+      isoName++;
+
+    int nameLength = (int)(fileext - isoName);
     target.name = calloc(sizeof(char), nameLength + 1);
-    strncpy(target.name, LAUNCHER_OPTIONS.image, nameLength);
+    strncpy(target.name, isoName, nameLength);
   }
 
   for (int i = 0; i < deviceCount; i++)
