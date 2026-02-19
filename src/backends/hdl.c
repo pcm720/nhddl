@@ -1,6 +1,6 @@
 // Implements support for APA-formatted HDD with HDL partitions
 #include "common.h"
-#include "devices/devices.h"
+#include "backends/backends.h"
 #include "dprintf.h"
 #include "ui/ui.h"
 #include <hdd-ioctl.h>

@@ -15,21 +15,19 @@
 #include <fileXio_rpc.h>
 #include <io_common.h>
 
-// Maps driver name to ModeType
-ModeType mapBDMDriverName(char *driverName) {
+// Maps driver name to DeviceType
+DeviceType mapBDMDriverName(char *driverName) {
   if (!strncmp(driverName, "ata", 3))
-    return MODE_ATA;
+    return Device_HDD;
   else if (!strncmp(driverName, "sdc", 3))
-    return MODE_MX4SIO;
+    return Device_MX4SIO;
   else if (!strncmp(driverName, "usb", 3))
-    return MODE_USB;
+    return Device_USB;
   else if (!strncmp(driverName, "sd", 2))
-    return MODE_ILINK;
+    return Device_iLink;
   else if (!strncmp(driverName, "udp", 3))
-    return MODE_UDPBD;
-  else if (!strncmp(driverName, "hdlfs", 3))
-    return MODE_HDL;
-  return MODE_NONE;
+    return Device_UDPBD;
+  return Device_None;
 }
 
 //

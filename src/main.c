@@ -1,7 +1,7 @@
 #include "common.h"
+#include "backends/backends.h"
 #include "devices/devices.h"
-#include "devices/init.h"
-#include "devices/title_id.h"
+#include "backends/title_id.h"
 #include "dprintf.h"
 #include "forwarder.h"
 #include "neutrino.h"
@@ -40,13 +40,13 @@ static char nhddlStorageFallbackPath[] = "/nhddl/nhddl.yaml";
 // Does a quick init for options given in argv
 int argInit();
 // Initializes modules, NHDDL configuraton, Neutrino path and device map
-int init(ModeType mode);
+int init(DeviceType mode);
 // Loads NHDDL options from optionsFile
 int loadOptions(char *cwdPath, ModuleInitType initType);
 // Attempts to parse argv into LAUNCHER_OPTIONS
 void parseArgv(int argc, char *argv[]);
 // Parses argv[0] for mode postfix
-ModeType parseFilename(const char *path);
+DeviceType parseFilename(const char *path);
 // Tries to load IPCONFIG.DAT from memory card
 void parseIPConfig();
 
@@ -184,9 +184,9 @@ int argInit() {
 }
 
 // Initializes modules, NHDDL configuraton, Neutrino path and device map
-int init(ModeType mode) {
+int init(DeviceType mode) {
   // Initialize launcher options
-  LAUNCHER_OPTIONS.vmode = VMODE_NONE;
+  LAUNCHER_OPTIONS.vmode = VMode_NONE;
   LAUNCHER_OPTIONS.mode = mode;
   LAUNCHER_OPTIONS.udpbdIp[0] = '\0';
 
@@ -258,7 +258,7 @@ int init(ModeType mode) {
 }
 
 // Parses mode string into enum
-ModeType parseMode(const char *modeStr) {
+DeviceType parseMode(const char *modeStr) {
   if (!strcmp(modeStr, "ata"))
     return MODE_ATA;
   if (!strcmp(modeStr, "mx4sio"))
@@ -277,7 +277,7 @@ ModeType parseMode(const char *modeStr) {
 }
 
 // Parses argv[0] for mode postfix
-ModeType parseFilename(const char *path) {
+DeviceType parseFilename(const char *path) {
   char *modeStr = strrchr(path, '-');
   if (!modeStr)
     return MODE_NONE;
@@ -305,12 +305,12 @@ ModeType parseFilename(const char *path) {
 // Parses video mode string into enum
 VModeType parseVMode(const char *modeStr) {
   if (!strcmp(modeStr, "ntsc"))
-    return VMODE_NTSC;
+    return VMode_NTSC;
   if (!strcmp(modeStr, "pal"))
-    return VMODE_PAL;
+    return VMode_PAL;
   if (!strcmp(modeStr, "480p"))
-    return VMODE_480P;
-  return VMODE_NONE;
+    return VMode_480p;
+  return VMode_NONE;
 }
 
 // Attempts to parse argv into LAUNCHER_OPTIONS
@@ -443,4 +443,63 @@ fileExists:
   freeArgumentList(options);
 
   return 0;
+}
+
+// Attempts to detect root device and load device drivers required for accessing CWD
+// Returns root path to device ELF
+char *resolveRootDevice(char *argv0) {
+  char *result = argv0;
+  // Load device drivers for boot path
+  printf("argv[0] is %s, guessing device type\n", argv0);
+  uint32_t device = devices_guess_device_type(argv0);
+  if (device & Device_MMCE) {
+    printf("main: loading MMCE drivers\n");
+    device_init_load_modules("mmce");
+    return result;
+  } else if (device & Device_HDD) {
+    printf("main: loading HDD drivers\n");
+    device_init_load_modules("hdd");
+    devices_probe(argv0, 10);
+    return result;
+  } else if (device & Device_BDM) {
+    printf("main: loading BDM drivers\n");
+    device_init_load_modules("usb");
+    // probe cwd
+    device_init_load_modules("hdd");
+    // probe cwd
+    device_init_load_modules("mx4sio");
+    // probe cwd
+    // We do not support loading NHDDL from UDPBD and iLink
+  } else
+    return result;
+
+  // Find current working directory for BDM
+  if (device & Device_BDM) {
+    printf("main: probing root path for BDM device\n");
+    if (argv0[4] == ':' || argv0[6] != '/') {
+      // argv[0] is "mass:" or doesn't have a trailing slash, fix it to "mass?:/"
+      int arglen = strlen(argv0) + 3;
+      result = (char *)malloc(arglen);
+      int startPos = ((argv0[5] == '/') || (argv0[5] == ':')) ? 6 : 5;
+      snprintf(result, arglen, "mass?:/%s", &argv0[startPos]);
+    }
+
+    int fd = 0;
+    int attempts = 0;
+    for (int i = 0; i < 8; i++) {
+      result[4] = '0' + i;
+      printf("main: probing %s\n", result);
+      if (devices_probe(result, 2)) {
+        printf("main: failed to probe\n");
+        return argv0; // No BDM devices were found
+      }
+      fd = open(result, O_RDONLY);
+      if (fd >= 0) {
+        printf("main: found root path\n");
+        close(fd);
+        return result;
+      }
+    }
+  }
+  return argv0;
 }

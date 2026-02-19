@@ -22,16 +22,20 @@ set(SOURCES
     src/ui/gui.c
     src/ui/graphics.c
     src/ui/args.c
-    src/ui/pad.c
 
     # Devices
-    src/devices/init.c
     src/devices/devices.c
-    src/devices/mmce.c
-    src/devices/bdm.c
-    src/devices/iso.c
-    src/devices/hdl.c
-    src/devices/title_id.c
+    src/devices/utils.c
+    src/devices/list.c
+    src/devices/pad.c
+
+    # Backends
+    src/backends/backends.c
+    src/backends/mmce.c
+    src/backends/bdm.c
+    src/backends/iso.c
+    src/backends/hdl.c
+    src/backends/title_id.c
 )
 include(irx.cmake)
 

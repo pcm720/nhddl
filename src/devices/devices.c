@@ -1,75 +1,305 @@
 #include "devices/devices.h"
+#include "devices/pad.h"
 #include "common.h"
 #include "dprintf.h"
 #include "ui/ui.h"
-#include <errno.h>
-#include <kernel.h>
+#include <ctype.h>
+#include <debug.h>
+#include <fcntl.h>
+#include <iopcontrol.h>
+#include <loadfile.h>
+#include <sbv_patches.h>
+#include <sifrpc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <usbhdfsd-common.h>
+#include <unistd.h>
 
-// Used to get BDM driver name and make devctl calls
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
-#include <io_common.h>
 
-// Function used to initialize device map entry.
-// Must initialize DeviceMapEntries in deviceModeMap and return number of found devices or negative error number.
-// newDeviceIdx is the first free index in deviceModeMap array
-typedef int (*backendInitFunc)(int newDeviceIdx);
+// Macros for loading embedded IOP modules
+#define IRX_DEFINE(mod)                                                                                                                              \
+  extern unsigned char mod##_irx[] __attribute__((aligned(16)));                                                                                     \
+  extern uint32_t size_##mod##_irx
 
-typedef struct {
-  char *name;
-  ModeType targetModes;
-  backendInitFunc initFunction;
-} SupportedBackends;
+// Defines moduleList entry for embedded module
+#define INT_MODULE(mod, device, argFunc) {#mod, mod##_irx, &size_##mod##_irx, 0, NULL, argFunc, device, 0}
 
-int initBDMDevices();
-int initMMCEDevices();
-int initHDL();
-void delay(int count);
+// Embedded IOP modules
+IRX_DEFINE(iomanX);
+IRX_DEFINE(fileXio);
+IRX_DEFINE(sio2man);
+IRX_DEFINE(mcman);
+IRX_DEFINE(mcserv);
+IRX_DEFINE(freepad);
+IRX_DEFINE(mmceman);
+IRX_DEFINE(ps2dev9);
+IRX_DEFINE(bdm);
+IRX_DEFINE(bdmfs_fatfs);
+IRX_DEFINE(ata_bd);
+IRX_DEFINE(usbd_mini);
+IRX_DEFINE(usbmass_bd_mini);
+IRX_DEFINE(mx4sio_bd_mini);
+IRX_DEFINE(iLinkman);
+IRX_DEFINE(IEEE1394_bd_mini);
+IRX_DEFINE(smap_udpbd);
+IRX_DEFINE(ps2hdd_bdm);
+IRX_DEFINE(ps2fs);
+
+// Function used to initialize module arguments.
+// Must set argLength and return non-null pointer to a argument string if successful.
+// Returned pointer must point to dynamically allocated memory
+typedef char *(*moduleArgFunc)(uint32_t *argLength);
+
+typedef struct ModuleListEntry {
+  char *name;                     // Module name
+  unsigned char *irx;             // Pointer to IRX module
+  uint32_t *size;                 // IRX size. Uses pointer to avoid compilation issues with internal modules
+  uint32_t argLength;             // Total length of argument string
+  char *argStr;                   // Module arguments
+  moduleArgFunc argumentFunction; // Function used to initialize module arguments
+  DeviceType type;                // Device type
+} ModuleListEntry;
+
+// Used to keep track of loaded devices and modules
+uint32_t loadedModules = -1;
+uint32_t loadedDevices = 0;
+
+// Initializes SMAP arguments
+char *initSMAPArguments(uint32_t *argLength);
+// Initializes PS2HDD arguments
+char *initPS2HDDArguments(uint32_t *argLength);
+// Initializes PS2FS arguments
+char *initPS2FSArguments(uint32_t *argLength);
 
 // List of modules to load
-static SupportedBackends backends[] = {
-    {.name = "MMCE", .initFunction = (void *)initMMCEDevices, .targetModes = MODE_MMCE},
-    {.name = "BDM", .initFunction = (void *)initBDMDevices, .targetModes = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK},
-    {.name = "HDL", .initFunction = (void *)initHDL, .targetModes = MODE_HDL},
+static ModuleListEntry moduleList[] = {
+    //
+    // Base modules
+    //
+    INT_MODULE(iomanX, Device_Basic, NULL),
+    INT_MODULE(fileXio, Device_Basic, NULL),
+    INT_MODULE(sio2man, Device_Basic, NULL),
+    INT_MODULE(mcman, Device_Basic, NULL),
+    INT_MODULE(mcserv, Device_Basic, NULL),
+    INT_MODULE(freepad, Device_Basic, NULL),
+    INT_MODULE(mmceman, Device_MMCE, NULL), // MMCE driver
+    //
+    // Backend modules
+    //
+    // DEV9
+    INT_MODULE(ps2dev9, Device_HDD | Device_UDPBD | Device_iLink, NULL),
+    // BDM
+    INT_MODULE(bdm, Device_HDD | Device_UDPBD | Device_USB | Device_MX4SIO | Device_iLink, NULL),
+    // FAT/exFAT
+    INT_MODULE(bdmfs_fatfs, Device_HDD | Device_UDPBD | Device_USB | Device_MX4SIO | Device_iLink, NULL),
+    // SMAP UDPBD driver, includes small IP stack and UDPTTY
+    INT_MODULE(smap_udpbd, Device_UDPBD, &initSMAPArguments),
+    // ATA
+    INT_MODULE(ata_bd, Device_HDD, NULL),
+    // USBD
+    INT_MODULE(usbd_mini, Device_USB, NULL),
+    // USB Mass Storage
+    INT_MODULE(usbmass_bd_mini, Device_USB, NULL),
+    // MX4SIO
+    INT_MODULE(mx4sio_bd_mini, Device_MX4SIO, NULL),
+    // iLink
+    INT_MODULE(iLinkman, Device_iLink, NULL),
+    // iLink Mass Storage
+    INT_MODULE(IEEE1394_bd_mini, Device_iLink, NULL),
+    // PS2HDD driver
+    INT_MODULE(ps2hdd_bdm, Device_HDD, &initPS2HDDArguments),
+    // PFS driver
+    INT_MODULE(ps2fs, Device_HDD, &initPS2FSArguments),
 };
+#define MODULE_COUNT sizeof(moduleList) / sizeof(ModuleListEntry)
 
-// Contains all available devices.
-// Device must be ignored if mode is MODE_ALL or MODE_NONE
-struct DeviceMapEntry deviceModeMap[MAX_DEVICES] = {};
+// Loads module, executing argument function if it's present
+int loadModule(ModuleListEntry *mod);
 
-// Initializes device mode map and returns device count
-int initDeviceMap() {
-  int deviceCount = 0;
-  int res = 0;
-  for (int i = 0; i < sizeof(backends) / sizeof(SupportedBackends); i++) {
-    if (!(backends[i].targetModes & LAUNCHER_OPTIONS.mode)) {
-      // Skip initializing unneeded backends
-      continue;
-    }
+// Reboots IOP and initializes basic devices
+int rebootIOP() {
+  DPRINTF("Rebooting IOP\n");
+  fileXioExit();
+  while (!SifIopReset("", 0)) {
+  };
+  while (!SifIopSync()) {
+  };
 
-    uiSplashLogString(LEVEL_INFO_NODELAY, "Initializing %s backend\n", backends[i].name);
-    if ((res = backends[i].initFunction(deviceCount)) < 0) {
-      DPRINTF("ERROR: Failed to initialize %s backend: %d\n", backends[i].name, res);
-      continue;
-    }
-    deviceCount += res;
-  }
-  return deviceCount;
+  // Initialize the RPC manager
+  sceSifInitRpc(0);
+
+  // Apply patches required to load modules from EE RAM
+  sbv_patch_enable_lmb();
+  sbv_patch_disable_prefix_check();
+  sbv_patch_fileio();
+
+  loadedModules = 0;
+  loadedDevices = 0;
+  loadDeviceModule(Device_Basic);
+  // Initialize pad library
+  initPad();
 }
 
-//
-// The following functions are based on code by AKuHAK
-//
+// Loads device modules
+int loadDeviceModules(DeviceType dtype) {
+  if (loadedModules == -1)
+    rebootIOP();
 
-void delay(int count) {
-  int ret;
-  for (int i = 0; i < count; i++) {
-    ret = 0x01000000;
-    while (ret--)
-      asm("nop\nnop\nnop\nnop");
+  if (loadedDevices & dtype)
+    return 0;
+
+  uint32_t targetDevice = dtype;
+  if (((dtype & Device_MX4SIO) && (loadedDevices && Device_MMCE)) || ((dtype & Device_MMCE) && (loadedDevices && Device_MX4SIO))) {
+    // MX4SIO and MMCE are incompatible
+    targetDevice |= (loadedDevices & ~(Device_MMCE & Device_MX4SIO));
+    rebootIOP();
   }
+
+  for (int i = 0; i < MODULE_COUNT; i++) {
+    if (loadedModules & (1 << moduleList[i]))
+      continue; // Ignore already loaded modules
+
+    if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL) && (moduleList[i].type & LAUNCHER_OPTIONS.mode)) {
+      if ((ret = loadModule(&moduleList[i]))) {
+        uiSplashLogString(LEVEL_ERROR, "Failed to initialize module %s: %d\n", moduleList[i].name, ret);
+        return ret;
+      }
+      loadedModules |= (1 << moduleList[i]);
+
+      // Introduce delay to prevent ps2hdd module from hanging
+      if (!strcmp(moduleList[i].name, "ata_bd"))
+        sleep(1);
+
+      // Explicitly init fileXio
+      if (!strcmp(moduleList[i].name, "fileXio"))
+        fileXioInit();
+    }
+    // Clean up arguments
+    if (moduleList[i].argStr != NULL)
+      free(moduleList[i].argStr);
+  }
+  loadedDevices |= targetDevice;
+  return 0;
+}
+
+// Loads module, executing argument function if it's present
+int loadModule(ModuleListEntry *mod) {
+  int ret, iopret = 0;
+
+  uiSplashLogString(LEVEL_INFO_NODELAY, "Loading %s\n", mod->name);
+
+  // If module has an arugment function, execute it
+  if (mod->argumentFunction != NULL) {
+    mod->argStr = mod->argumentFunction(&mod->argLength);
+    if (mod->argStr == NULL) {
+      // Ignore errors if module can fail
+      ret = -EINVAL;
+      goto failCheck;
+    }
+  }
+
+  ret = SifExecModuleBuffer(mod->irx, *mod->size, mod->argLength, mod->argStr, &iopret);
+  if (ret >= 0)
+    ret = 0;
+  if (iopret == 1)
+    ret = iopret;
+
+failCheck:
+  if ((ret != 0) &&                                                 // If module failed to initialize
+      (mod->mode != MODE_ALL) &&                                    // Module is not required
+      ((mod->mode & LAUNCHER_OPTIONS.mode) ^ LAUNCHER_OPTIONS.mode) // Module mode is not the only one enabled
+  ) {
+    // Exclude mode from target modes
+    uiSplashLogString(LEVEL_WARN, "Failed to load module %s\n", mod->name);
+    LAUNCHER_OPTIONS.mode ^= mod->mode;
+    return 0;
+  }
+
+  return ret;
+}
+
+// Tries to read SYS-CONF/IPCONFIG.DAT from memory card
+int parseIPConfig() {
+  // The 'X' in "mcX" will be replaced with memory card number
+  static char ipconfigPath[] = "mcX:/SYS-CONF/IPCONFIG.DAT";
+
+  int ipconfigFd, count;
+  char ipAddr[16]; // IP address will not be longer than 15 characters
+  for (char i = '0'; i < '2'; i++) {
+    ipconfigPath[2] = i;
+    // Attempt to open IPCONFIG.DAT
+    ipconfigFd = open(ipconfigPath, O_RDONLY);
+    if (ipconfigFd >= 0) {
+      count = read(ipconfigFd, ipAddr, sizeof(ipAddr) - 1);
+      close(ipconfigFd);
+      break;
+    }
+  }
+
+  if ((ipconfigFd < 0) || (count < sizeof(ipAddr) - 1)) {
+    if (LAUNCHER_OPTIONS.mode & MODE_UDPBD) {
+      uiSplashLogString(LEVEL_WARN, "Failed to get IP address from IPCONFIG.DAT\n");
+    }
+    return -ENOENT;
+  }
+
+  count = 0; // Reuse count as line index
+  // In case IP address is shorter than 15 chars
+  while (!isspace((unsigned char)ipAddr[count])) {
+    // Advance index until we read a whitespace character
+    count++;
+  }
+
+  strlcpy(LAUNCHER_OPTIONS.udpbdIp, ipAddr, count + 1);
+  return strlen(LAUNCHER_OPTIONS.udpbdIp);
+}
+
+// Builds IP address argument for SMAP modules
+char *initSMAPArguments(uint32_t *argLength) {
+  // If udpbd_ip was not set, try to get IP from IPCONFIG.DAT
+  if ((LAUNCHER_OPTIONS.udpbdIp[0] == '\0') && (parseIPConfig() <= 0)) {
+    return NULL;
+  }
+
+  char ipArg[19]; // 15 bytes for IP string + 3 bytes for 'ip='
+  *argLength = 19;
+  char *argStr = calloc(sizeof(char), 19);
+  snprintf(argStr, sizeof(ipArg), "ip=%s", LAUNCHER_OPTIONS.udpbdIp);
+  return argStr;
+}
+
+// up to 4 descriptors, 20 buffers
+static char ps2hddArguments[] = "-o"
+                                "\0"
+                                "4"
+                                "\0"
+                                "-n"
+                                "\0"
+                                "20";
+// Sets arguments for PS2HDD modules
+char *initPS2HDDArguments(uint32_t *argLength) {
+  *argLength = sizeof(ps2hddArguments);
+
+  char *argStr = malloc(sizeof(ps2hddArguments));
+  memcpy(argStr, ps2hddArguments, sizeof(ps2hddArguments));
+  return argStr;
+}
+
+// up to 10 descriptors, 40 buffers
+char ps2fsArguments[] = "-o"
+                        "\0"
+                        "10"
+                        "\0"
+                        "-n"
+                        "\0"
+                        "40";
+// Sets arguments for PS2HDD modules
+char *initPS2FSArguments(uint32_t *argLength) {
+  *argLength = sizeof(ps2fsArguments);
+
+  char *argStr = malloc(sizeof(ps2fsArguments));
+  memcpy(argStr, ps2fsArguments, sizeof(ps2fsArguments));
+  return argStr;
 }

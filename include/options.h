@@ -1,7 +1,7 @@
 #ifndef _OPTIONS_H_
 #define _OPTIONS_H_
 
-#include "devices/devices.h"
+#include "backends/backends.h"
 #include "target.h"
 #include <ps2sdkapi.h>
 

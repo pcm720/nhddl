@@ -1,10 +1,10 @@
 #include "common.h"
-#include "devices/devices.h"
+#include "backends/backends.h"
 #include "dprintf.h"
 #include "neutrino.h"
-#include "devices/init.h"
+#include "devices/devices.h"
 #include "options.h"
-#include "devices/title_id.h"
+#include "backends/title_id.h"
 #include <stdlib.h>
 #include <string.h>
 

@@ -1,7 +1,7 @@
 #include "common.h"
-#include "devices/devices.h"
+#include "backends/backends.h"
 #include "dprintf.h"
-#include "devices/init.h"
+#include "devices/devices.h"
 #include "options.h"
 #include <debug.h>
 #include <kernel.h>

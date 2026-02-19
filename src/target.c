@@ -1,6 +1,6 @@
 #include "target.h"
 #include "common.h"
-#include "devices/devices.h"
+#include "backends/backends.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <ps2sdkapi.h>

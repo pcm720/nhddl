@@ -14,8 +14,8 @@ void logString(const char *str, ...) {
   va_end(args);
 }
 
-// Maps ModeType to string
-char *modeToString(ModeType mode) {
+// Maps DeviceType to string
+char *modeToString(DeviceType mode) {
   switch (mode) {
   case MODE_ATA:
     return "ATA";

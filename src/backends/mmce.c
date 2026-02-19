@@ -1,6 +1,6 @@
 // Implements support for MMCE devices
 #include "common.h"
-#include "devices/devices.h"
+#include "backends/backends.h"
 #include "dprintf.h"
 #include "ui/ui.h"
 #include <errno.h>

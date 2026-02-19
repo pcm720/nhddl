@@ -1,5 +1,5 @@
-#ifndef _PAD_H_
-#define _PAD_H_
+#ifndef _DEVICES_PAD_H_
+#define _DEVICES_PAD_H_
 
 // Initializes gamepad input driver
 void initPad();

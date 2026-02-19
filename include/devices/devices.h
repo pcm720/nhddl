@@ -1,51 +1,44 @@
-#ifndef _DEVICES_H_
-#define _DEVICES_H_
+#ifndef _DEVICES_DEVICES_H_
+#define _DEVICES_DEVICES_H_
 
-#include "common.h"
-#include "target.h"
+// Supported device types
+typedef enum {
+  Device_None = 0,
+  Device_Basic = (1 << 0),
+  Device_HDD = (1 << 1),
+  Device_MMCE = (1 << 2),
+  Device_MX4SIO = (1 << 3),
+  Device_UDPBD = (1 << 4),
+  Device_USB = (1 << 5),
+  Device_iLink = (1 << 6),
+  Device_BDM = (1 << 7) // Internal mode for guessed device types. Not used for module init
+} DeviceType;
 
-#define MAX_DEVICES 20
+// Defined initialized device
+typedef struct Device {
+  char *mountpoint; // Device mountpoint
+  DeviceType type;  // Device type
+  uint8_t index;    // Device index
+} Device;
 
-// Must scan the device entry for titles and add them to TargetList
-typedef int (*titleScanFunc)(TargetList *result, struct DeviceMapEntry *device);
-// Must sync the device
-typedef void (*syncFunc)();
+// Linked list of devices
+typedef struct {
+  Device *current;  // Current device
+  DeviceList *next; // Next device in chain
+} DeviceListEntry;
 
-// Device map entry
-struct DeviceMapEntry {
-  char *mountpoint;               // Device mountpoint
-  syncFunc sync;                  // Must sync the device
-  titleScanFunc scan;             // Function used for scanning the device entry for titles. Can be NULL if device must be ignored during scanning. Might not be present in deviceModeMap
-  struct DeviceMapEntry *metadev; // If set, cover art and options will be loaded from metadata device instead of this device. Set during initialization
-  ModeType mode;                  // Device driver
-  uint8_t index;                  // BDM internal device driver number, must be used for passing paths to Neutrino
-};
+// Loads device modules
+int loadDeviceModules(DeviceType dtype);
 
-// Contains all available devices.
-// Device must be ignored if mode is MODE_ALL or MODE_NONE
-extern struct DeviceMapEntry deviceModeMap[];
+// Reboots IOP and initializes basic devices
+int rebootIOP();
 
-// Initializes device mode map and returns device count
-int initDeviceMap();
+// Implemented in devices/list.c
 
-// Delays for
-void delay(int count);
+// Returns all known devices
+DeviceListEntry *getDevices();
 
-// Uses MMCE devctl calls to switch memory card to given title ID
-void mmceMountVMC(char *titleID);
-
-//
-// Device-specific scanning functions
-//
-
-// Scans given storage device for ISO files and appends valid launch candidates to TargetList
-// Returns 0 if successful, non-zero if no targets were found or an error occurs
-// Implemented in devices_iso.c
-int findISO(TargetList *list, struct DeviceMapEntry *device);
-
-// Scans given APA HDD for HDL partitions and appends valid launch candidates to TargetList
-// Returns 0 if successful, non-zero if no targets were found or an error occurs
-// Implemented in devices_hdl.c
-int findHDLTargets(TargetList *result, struct DeviceMapEntry *device);
+// Frees device list. Frees devices if freeDevices is not 0
+void freeDeviceList(DeviceListEntry *list, int freeDevices);
 
 #endif

@@ -4,7 +4,7 @@
 #include "options.h"
 #include "ui/args.h"
 #include "ui/graphics.h"
-#include "ui/pad.h"
+#include "devices/pad.h"
 #include "ui/ui.h"
 #include <dmaKit.h>
 #include <gsKit.h>
@@ -166,7 +166,7 @@ void closeUI() {
 // Main UI loop. Displays the target list.
 int uiLoop(TargetList *titles) {
   // Reinitialize UI if video mode doesn't match
-  if ((LAUNCHER_OPTIONS.vmode != VMODE_NONE) && (gsGlobal->Mode != LAUNCHER_OPTIONS.vmode)) {
+  if ((LAUNCHER_OPTIONS.vmode != VMode_NONE) && (gsGlobal->Mode != LAUNCHER_OPTIONS.vmode)) {
     uiInit();
   }
 

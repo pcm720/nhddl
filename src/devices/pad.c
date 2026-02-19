@@ -1,4 +1,4 @@
-#include "ui/pad.h"
+#include "devices/pad.h"
 #include <kernel.h>
 #include <libpad.h>
 #include <stdint.h>
