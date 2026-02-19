@@ -1,7 +1,6 @@
-# SMAP UDPBD module
+# SMAP UDPFS module
 
-UDPBD BDM module.  
-Includes small network stack and UDPTTY.
+UDPFS module.  
 
 Requires `ip=<IPv4 address>` argument.
 

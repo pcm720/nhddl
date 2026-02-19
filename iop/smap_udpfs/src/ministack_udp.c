@@ -34,7 +34,7 @@ udp_socket_t *udp_bind(uint16_t port_src, udp_port_handler handler, void *handle
 
 int udp_packet_send_ll(udp_socket_t *socket, udp_packet_t *pkt, uint16_t pktdatasize, const void *data, uint16_t datasize)
 {
-    pkt->udp.port_src = socket->port_src;
+    pkt->udp.port_src = htons(socket->port_src);
     pkt->udp.len  = htons(sizeof(udp_header_t) + pktdatasize + datasize);
     pkt->udp.csum = 0; // not needed
 
@@ -44,12 +44,13 @@ int udp_packet_send_ll(udp_socket_t *socket, udp_packet_t *pkt, uint16_t pktdata
 int handle_rx_udp(uint16_t pointer)
 {
     USE_SMAP_REGS;
-    uint16_t dport;
+    uint16_t dport_raw, dport;
     int i;
 
     // Check port
     SMAP_REG16(SMAP_R_RXFIFO_RD_PTR) = pointer + 0x24;
-    dport = SMAP_REG16(SMAP_R_RXFIFO_DATA);
+    dport_raw = SMAP_REG16(SMAP_R_RXFIFO_DATA);
+    dport = ntohs(dport_raw);
 
     for (i=0; i<UDP_MAX_PORTS; i++) {
         if (dport == udp_ports[i].port_src)
