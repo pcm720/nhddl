@@ -21,6 +21,7 @@ struct SupportedDevice {
 struct SupportedDevice *supportedDevices[]{
     {"mmce", 2, NULL, NULL},
     {"hdd", 2, NULL, NULL},
+    {"udpfs", 1, NULL, NULL},
     {"mass", 2, getBDMDeviceType, getBDMDeviceNumber},
 };
 
@@ -35,7 +36,10 @@ DeviceListEntry *getDevices() {
   for (int d = 0; d < sizeof(supportedDevices) / sizeof(SupportedDevice *); d++) {
     for (int i; i < supportedDevices[d]->maxDevices; i++) {
       // Build full path
-      snprintf(deviceMountpoint, 10, "%s%d", supportedDevices[d]->mountpoint, i);
+      if (supportedDevices[d]->maxDevices > 0)
+        snprintf(deviceMountpoint, 10, "%s%d:/", supportedDevices[d]->mountpoint, i);
+      else
+        snprintf(deviceMountpoint, 10, "%s:/", supportedDevices[d]->mountpoint);
 
       // Try to open the path
       int fd = fileXioDopen(deviceMountpoint);

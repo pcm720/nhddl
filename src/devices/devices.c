@@ -43,7 +43,7 @@ IRX_DEFINE(usbmass_bd_mini);
 IRX_DEFINE(mx4sio_bd_mini);
 IRX_DEFINE(iLinkman);
 IRX_DEFINE(IEEE1394_bd_mini);
-IRX_DEFINE(smap_udpbd);
+IRX_DEFINE(smap_udpfs);
 IRX_DEFINE(ps2hdd_bdm);
 IRX_DEFINE(ps2fs);
 
@@ -89,13 +89,13 @@ static ModuleListEntry moduleList[] = {
     // Backend modules
     //
     // DEV9
-    INT_MODULE(ps2dev9, Device_HDD | Device_UDPBD | Device_iLink, NULL),
+    INT_MODULE(ps2dev9, Device_HDD | Device_UDPFS | Device_iLink, NULL),
     // BDM
-    INT_MODULE(bdm, Device_HDD | Device_UDPBD | Device_USB | Device_MX4SIO | Device_iLink, NULL),
+    INT_MODULE(bdm, Device_HDD | Device_USB | Device_MX4SIO | Device_iLink, NULL),
     // FAT/exFAT
-    INT_MODULE(bdmfs_fatfs, Device_HDD | Device_UDPBD | Device_USB | Device_MX4SIO | Device_iLink, NULL),
+    INT_MODULE(bdmfs_fatfs, Device_HDD | Device_USB | Device_MX4SIO | Device_iLink, NULL),
     // SMAP UDPBD driver, includes small IP stack and UDPTTY
-    INT_MODULE(smap_udpbd, Device_UDPBD, &initSMAPArguments),
+    INT_MODULE(smap_udpfs, Device_UDPFS, &initSMAPArguments),
     // ATA
     INT_MODULE(ata_bd, Device_HDD, NULL),
     // USBD

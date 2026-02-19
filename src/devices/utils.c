@@ -20,6 +20,8 @@ DeviceType guessDeviceType(const char *path) {
     return Device_MMCE;
   if (strncmp(path, "hdd", 3) == 0)
     return Device_HDD;
+  if (strncmp(path, "udpfs", 5) == 0)
+    return Device_UDPFS;
   if (strncmp(path, "mass", 4) == 0)
     return Device_BDM;
   return Device_BDM;
@@ -35,8 +37,6 @@ static DeviceType mapBDMDriverName(char *driverName) {
     return Device_USB;
   else if (!strncmp(driverName, "sd", 2))
     return Device_iLink;
-  else if (!strncmp(driverName, "udp", 3))
-    return Device_UDPBD;
   return Device_None;
 }
 

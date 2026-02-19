@@ -22,7 +22,7 @@ set(IRX_FILES
 # Local IRX files
 set(LOCAL_IRX_FILES
     mmceman
-    smap_udpbd
+    smap_udpfs
 )
 
 # mmceman
@@ -38,17 +38,17 @@ add_custom_command(
     COMMENT "Building mmceman"
 )
 
-# smap_udpbd
+# smap_udpfs
 add_custom_command(
     OUTPUT
-        ${CMAKE_CURRENT_BINARY_DIR}/smap_udpbd.irx
-    COMMAND make -C ${CMAKE_CURRENT_SOURCE_DIR}/iop/smap_udpbd
+        ${CMAKE_CURRENT_BINARY_DIR}/smap_udpfs.irx
+    COMMAND make -C ${CMAKE_CURRENT_SOURCE_DIR}/iop/smap_udpfs
     COMMAND ${CMAKE_COMMAND} -E rename
-        ${CMAKE_CURRENT_SOURCE_DIR}/iop/smap_udpbd/smap_udpbd.irx
-        ${CMAKE_CURRENT_BINARY_DIR}/smap_udpbd.irx
+        ${CMAKE_CURRENT_SOURCE_DIR}/iop/smap_udpfs/smap_udpfs.irx
+        ${CMAKE_CURRENT_BINARY_DIR}/smap_udpfs.irx
     WORKING_DIRECTORY
-        ${CMAKE_CURRENT_SOURCE_DIR}/iop/smap_udpbd
-    COMMENT "Building smap_udpbd"
+        ${CMAKE_CURRENT_SOURCE_DIR}/iop/smap_udpfs
+    COMMENT "Building smap_udpfs"
 )
 
 foreach(IRX_FILE ${IRX_FILES})

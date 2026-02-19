@@ -8,7 +8,7 @@ typedef enum {
   Device_HDD = (1 << 1),
   Device_MMCE = (1 << 2),
   Device_MX4SIO = (1 << 3),
-  Device_UDPBD = (1 << 4),
+  Device_UDPFS = (1 << 4),
   Device_USB = (1 << 5),
   Device_iLink = (1 << 6),
   Device_BDM = (1 << 7) // Internal mode for guessed device types. Not used for module init
