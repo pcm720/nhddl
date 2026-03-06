@@ -41,7 +41,7 @@ jobs:
         path: |
           nhddl.elf
           README.md
-          examples/*.yaml
+          examples/*.cnf
 
   release:
     needs: [build]

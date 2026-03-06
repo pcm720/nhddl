@@ -5,9 +5,9 @@ neutrino/
 *.elf
 *.o
 *.irx
-*.yaml
+*.cnf
+!examples/*.cnf
 *.toml
-!examples/*.yaml
 # Created by https://www.toptal.com/developers/gitignore/api/macos,windows,linux
 
 ### Linux ###

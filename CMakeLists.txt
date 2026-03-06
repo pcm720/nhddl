@@ -13,15 +13,22 @@ option(ENABLE_PRINTF "Enable printf debugging output" OFF)
 set(SOURCES
     src/main.c
     src/common.c
-    src/options.c
     src/neutrino.c
     src/target.c
     src/forwarder.c
 
     # UI
-    src/ui/gui.c
-    src/ui/graphics.c
-    src/ui/args.c
+    # src/ui/gui.c
+    # src/ui/graphics.c
+    # src/ui/args.c
+
+    # Config
+    src/config/arguments.c
+    src/config/common.c
+    src/config/config.c
+    src/config/parse.c
+    src/config/title.c
+
 
     # Devices
     src/devices/devices.c
