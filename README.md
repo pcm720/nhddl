@@ -76,23 +76,23 @@ Updating `nhddl.elf` is as simple as replacing `nhddl.elf` with the latest versi
 
 #### ATA (MBR/GPT-formatted HDD with exFAT partition)
 
-To skip all other devices, `mode: ata` must be present in `nhddl.cnf`.
+To skip all other devices, `-device=ata` must be present in `nhddl.cnf`.
 
 #### MX4SIO
 
 MX4SIO support requires explicit configuration due to conflicts with memory cards and MMCE devices.  
-`mode: mx4sio` must be present in `nhddl.cnf` on __the memory card__ for MX4SIO to work.  
+`-device=mx4sio` must be present in `nhddl.cnf` on __the memory card__ for MX4SIO to work.  
 
 Note that __MMCE devices will not be available__ when this mode is enabled.
 
 #### USB
 
 Using more than one USB mass storage device at the same time is not recommended.
-To skip all other devices, `mode: usb` must be present in `nhddl.cnf`.
+To skip all other devices, `-device=usb` must be present in `nhddl.cnf`.
 
-#### UDPBD
+#### UDPFS
 
-To skip all other devices, `mode: udpbd` must be present in `nhddl.cnf`.
+To skip all other devices, `-device=udpfs` must be present in `nhddl.cnf`.
 
 UDPBD module requires PS2 IP address to work.  
 NHDDL attempts to retrieve PS2 IP address from the following sources:
@@ -101,25 +101,20 @@ NHDDL attempts to retrieve PS2 IP address from the following sources:
 
 `ip_addr` flag takes priority over `IPCONFIG.DAT`.
 
-Make sure to set the IP address in Neutrino config files (as of Neutrino 1.6.0, `config/bsd-udpbd.toml`).  
+Make sure to set the IP address in Neutrino config files (as of Neutrino 1.8.0, `config/bsd-udpfs.toml`).  
 Consult Neutrino documentation for more details.
 
-Recommended UDPBD server implementations:
-- [udpbd-server](https://gitlab.com/ps2max/udpbd-server) by Maximus32
-  - Supports serving physical disks or disk images
-  - Supports read and write operations
-  - Preferred server implementation for *nix systems
-- [udpbd-vexfat](https://github.com/awaken1ng/udpbd-vexfat) by Awaken1ng
-  - Creates virtual exFAT filesystem from directory contents
-  - Supports only read operations
+Recommended UDPFS server implementations:
+- [udbfs_server](https://github.com/rickgaiser/neutrino/tree/master/pc) by Maximus32
+  - Reference Python implementation
 
 #### iLink
 
-To skip all other devices, `mode: ilink` must be present in `nhddl.cnf`.
+To skip all other devices, `-device=ilink` must be present in `nhddl.cnf`.
 
 #### MMCE (SD2PSX, MemCard PRO2)
 
-To skip all other devices, `mode: mmce` must be present in `nhddl.cnf`.
+To skip all other devices, `-device=mmce` must be present in `nhddl.cnf`.
 
 #### HD Loader (APA-formatted HDD with HDL partitions)
 
@@ -127,7 +122,7 @@ Note that HDL backend **does not support** VMCs and virtual HDDs.
 Cover art, `nhddl.cnf` title options will be loaded from the OPL partition set in
 `hdd0:__common/OPL/conf_hdd.cfg`, with `+OPL` or `__common/OPL` used as a fallback.
 
-To skip all other devices, `mode: hdl` must be present in `nhddl.cnf`.
+To skip all other devices, `-device=hdl` must be present in `nhddl.cnf`.
 However, due to how device modules are initialized, this will not improve the initialization times.
 
 ### Storing ISO (MMCE, BDM backends)
@@ -158,7 +153,7 @@ If unsure where to get your cover art from, check out the latest version of [OPL
 Similar to Neutrino, NHDDL supports receiving launcher options from `argv` in the `-<arg>=<value>` format.  
 Be aware that passing any argument will cause NHDDL to completely skip loading launcher configuration files from any device.  
 
-For example, to initialize NHDDL with UDPBD mode, you can run `nhddl.elf` with `-mode=udpbd` and `-ip_addr=192.168.1.6`.  
+For example, to initialize NHDDL with UDPBD mode, you can run `nhddl.elf` with `-device=udpbd` and `-ip_addr=192.168.1.6`.  
 
 If NHDDL receives `-mode` and `-dvd=<path to the image file>`, it will skip UI initialization and directly launch Neutrino while respecting all arguments specified in argument files.  
 Add `-noinit` argument to skip IOP initialization (make sure all required modules are already loaded).  
@@ -199,7 +194,7 @@ Configuration file is loaded from one of the following paths:
 This file is _completely optional_ and must be used only to force video mode in NHDDL UI, set NHDDL device mode, or set the path to Neutrino ELF.  
 By default, default video mode is used and all BDM devices are used to look for ISO files.
 
-To disable a flag, comment out the line with `#` (e.g. `#-mode=ata`).
+To disable a flag, comment out the line with `#` (e.g. `#-device=ata`).
 
 See [this file](examples/nhddl.cnf) for an example of a valid `nhddl.cnf` file and a list of all supported arguments and possible values.
 
