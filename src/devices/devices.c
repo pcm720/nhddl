@@ -1,6 +1,7 @@
 #include "devices/devices.h"
-#include "devices/pad.h"
 #include "common.h"
+#include "config/config.h"
+#include "devices/pad.h"
 #include "dprintf.h"
 #include "ui/ui.h"
 #include <ctype.h>
@@ -94,7 +95,7 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(bdm, Device_HDD | Device_USB | Device_MX4SIO | Device_iLink, NULL),
     // FAT/exFAT
     INT_MODULE(bdmfs_fatfs, Device_HDD | Device_USB | Device_MX4SIO | Device_iLink, NULL),
-    // SMAP UDPBD driver, includes small IP stack and UDPTTY
+    // SMAP UDPFS driver, includes small IP stack and UDPTTY
     INT_MODULE(smap_udpfs, Device_UDPFS, &initSMAPArguments),
     // ATA
     INT_MODULE(ata_bd, Device_HDD, NULL),
@@ -161,9 +162,9 @@ int loadDeviceModules(DeviceType dtype) {
     if (loadedModules & (1 << moduleList[i]))
       continue; // Ignore already loaded modules
 
-    if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL) && (moduleList[i].type & LAUNCHER_OPTIONS.mode)) {
+    if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL) && (moduleList[i].type & targetDevice)) {
       if ((ret = loadModule(&moduleList[i]))) {
-        uiSplashLogString(LEVEL_ERROR, "Failed to initialize module %s: %d\n", moduleList[i].name, ret);
+        DPRINTF(ret);
         return ret;
       }
       loadedModules |= (1 << moduleList[i]);
@@ -188,7 +189,7 @@ int loadDeviceModules(DeviceType dtype) {
 int loadModule(ModuleListEntry *mod) {
   int ret, iopret = 0;
 
-  uiSplashLogString(LEVEL_INFO_NODELAY, "Loading %s\n", mod->name);
+  DPRINTF(mod->name);
 
   // If module has an arugment function, execute it
   if (mod->argumentFunction != NULL) {
@@ -205,18 +206,6 @@ int loadModule(ModuleListEntry *mod) {
     ret = 0;
   if (iopret == 1)
     ret = iopret;
-
-failCheck:
-  if ((ret != 0) &&                                                 // If module failed to initialize
-      (mod->mode != MODE_ALL) &&                                    // Module is not required
-      ((mod->mode & LAUNCHER_OPTIONS.mode) ^ LAUNCHER_OPTIONS.mode) // Module mode is not the only one enabled
-  ) {
-    // Exclude mode from target modes
-    uiSplashLogString(LEVEL_WARN, "Failed to load module %s\n", mod->name);
-    LAUNCHER_OPTIONS.mode ^= mod->mode;
-    return 0;
-  }
-
   return ret;
 }
 
@@ -238,35 +227,29 @@ int parseIPConfig() {
     }
   }
 
-  if ((ipconfigFd < 0) || (count < sizeof(ipAddr) - 1)) {
-    if (LAUNCHER_OPTIONS.mode & MODE_UDPBD) {
-      uiSplashLogString(LEVEL_WARN, "Failed to get IP address from IPCONFIG.DAT\n");
-    }
+  if ((ipconfigFd < 0) || (count < sizeof(ipAddr) - 1))
     return -ENOENT;
-  }
 
   count = 0; // Reuse count as line index
   // In case IP address is shorter than 15 chars
-  while (!isspace((unsigned char)ipAddr[count])) {
+  while (!isspace((unsigned char)ipAddr[count]))
     // Advance index until we read a whitespace character
     count++;
-  }
 
-  strlcpy(LAUNCHER_OPTIONS.udpbdIp, ipAddr, count + 1);
-  return strlen(LAUNCHER_OPTIONS.udpbdIp);
+  setIPAddress(ipAddr);
+  return strlen(getIPAddress);
 }
 
 // Builds IP address argument for SMAP modules
 char *initSMAPArguments(uint32_t *argLength) {
-  // If udpbd_ip was not set, try to get IP from IPCONFIG.DAT
-  if ((LAUNCHER_OPTIONS.udpbdIp[0] == '\0') && (parseIPConfig() <= 0)) {
+  // If ip_addr was not set, try to get IP from IPCONFIG.DAT
+  if ((getIPAddress[0] == '\0') && (parseIPConfig() <= 0))
     return NULL;
-  }
 
   char ipArg[19]; // 15 bytes for IP string + 3 bytes for 'ip='
   *argLength = 19;
   char *argStr = calloc(sizeof(char), 19);
-  snprintf(argStr, sizeof(ipArg), "ip=%s", LAUNCHER_OPTIONS.udpbdIp);
+  snprintf(argStr, sizeof(ipArg), "ip=%s", getIPAddress());
   return argStr;
 }
 

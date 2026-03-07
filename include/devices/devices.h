@@ -1,6 +1,8 @@
 #ifndef _DEVICES_DEVICES_H_
 #define _DEVICES_DEVICES_H_
 
+#include <stdint.h>
+
 // Supported device types
 typedef enum {
   Device_None = 0,
@@ -15,7 +17,7 @@ typedef enum {
 } DeviceType;
 
 // Defined initialized device
-typedef struct Device {
+typedef struct {
   char *mountpoint; // Device mountpoint
   DeviceType type;  // Device type
   uint8_t index;    // Device index
@@ -24,7 +26,7 @@ typedef struct Device {
 // Linked list of devices
 typedef struct {
   Device *current;  // Current device
-  DeviceList *next; // Next device in chain
+  struct DeviceListEntry *next; // Next device in chain
 } DeviceListEntry;
 
 // Loads device modules

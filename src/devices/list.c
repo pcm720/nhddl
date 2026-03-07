@@ -12,17 +12,19 @@
 #include <io_common.h>
 
 struct SupportedDevice {
-  char *baseMountpoint;                 // Base mountpoint
-  int maxDevices;                       // Max number of devices
-  int (*typeGetter)(char *mountpoint);  // Device type getter function (optional)
-  int (*indexGetter)(char *mountpoint); // Index getter function (optional)
+  char *baseMountpoint; // Base mountpoint
+  int maxDevices;       // Max number of devices
+  DeviceType type;      // Device type
 };
 
 struct SupportedDevice *supportedDevices[]{
-    {"mmce", 2, NULL, NULL},
-    {"hdd", 2, NULL, NULL},
-    {"udpfs", 1, NULL, NULL},
-    {"mass", 2, getBDMDeviceType, getBDMDeviceNumber},
+    {"mmce", 2, Device_MMCE},     //
+    {"hdd", 2, Device_HDD},       //
+    {"ata", 2, Device_HDD},       //
+    {"udpfs", 1, Device_UDPFS},   //
+    {"usb", 2, Device_USB},       //
+    {"mx4sio", 1, Device_MX4SIO}, //
+    {"ilink", 1, Device_iLink},   //
 };
 
 // Returns all known devices
@@ -54,8 +56,8 @@ DeviceListEntry *getDevices() {
         return NULL;
 
       dev->mountpoint = strdup(deviceMountpoint);
-      dev->type = (supportedDevices[d]->typeGetter) ? supportedDevices[d]->typeGetter(deviceMountpoint) : guessDeviceType(deviceMountpoint);
-      dev->index = (supportedDevices[d]->indexGetter) ? supportedDevices[d]->indexGetter(deviceMountpoint) : guessDeviceType(deviceMountpoint);
+      dev->type = supportedDevices[d].type;
+      dev->index = i;
       next->current = NULL;
 
       prev->next = next;
