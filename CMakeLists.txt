@@ -14,15 +14,18 @@ option(USE_EESIO "Use EE SIO for debugging" OFF)
 # Source files
 set(SOURCES
     src/main.c
-    src/common.c
     src/dprintf.c
-    src/neutrino.c
     src/forwarder.c
 
     # UI
     # src/ui/gui.c
     # src/ui/graphics.c
     # src/ui/args.c
+
+    # Neutrino support
+    src/neutrino/argv.c
+    src/neutrino/locate.c
+    src/neutrino/launcher.c
 
     # Config
     src/config/arguments.c
