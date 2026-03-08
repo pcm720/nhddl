@@ -4,6 +4,9 @@
 // printf implementation for EE SIO
 int sio_printf(const char *format, ...);
 
+// Displays the error on screen
+void displayError(const char *format, ...);
+
 #ifdef ENABLE_PRINTF
 #ifndef USE_EESIO
 #define DPRINTF(x...) printf(x)
