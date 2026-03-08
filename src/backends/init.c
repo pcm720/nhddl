@@ -112,6 +112,11 @@ int initBackend(DeviceType device) {
   int listInvalidated = 0;
   DeviceType conflict = getConflictingDeviceTypes(device);
   if (conflict != Device_None) {
+    // Refuse to init backend if our root is on conflicting device
+    const char *root = getNHDDLRoot();
+    if (root && root[0] && (guessDeviceType(root) & conflict))
+      return -EINVAL;
+
     int n = getBackendDeviceCount();
     for (int i = 0; i < n; i++) {
       if (backendDevices[i].type & conflict) {
