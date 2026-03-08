@@ -169,7 +169,7 @@ int loadDeviceModules(DeviceType dtype) {
   for (int i = 0; i < MODULE_COUNT; i++) {
     if (!(moduleList[i].type & dtype))
       continue;
-    if ((moduleList[i].conflictingDevices & loadedDevices) != 0) {
+    if (moduleList[i].conflictingDevices & loadedDevices) {
       // Requested type conflicts with already-loaded devices; reboot and reload non-conflicting
       targetDevice |= (loadedDevices & ~getConflictingDeviceTypes(dtype));
       rebootIOP();

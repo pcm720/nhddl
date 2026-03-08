@@ -29,7 +29,7 @@ int readPad(int port, int slot) {
   uint32_t curInput, padData;
 
   curInput = 0;
-  if (padRead(port, slot, &buttons) != 0) {
+  if (padRead(port, slot, &buttons)) {
     padData = 0xffff ^ buttons.btns;
 
     curInput = padData & ~prevInputs[port];
@@ -42,7 +42,7 @@ int readPad(int port, int slot) {
 // Polls the gamepad and returns currently pressed buttons
 int pollPad(int port, int slot) {
   struct padButtonStatus buttons;
-  if (padRead(port, slot, &buttons) != 0) {
+  if (padRead(port, slot, &buttons)) {
     prevInputs[port] = 0xffff ^ buttons.btns;
     return prevInputs[port];
   }

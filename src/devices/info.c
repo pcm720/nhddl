@@ -24,7 +24,7 @@ int getDeviceInfo(DeviceType type, char *baseMountpoint, size_t baseMountpointSi
   if (!baseMountpoint || baseMountpointSize == 0)
     return 0;
   for (size_t i = 0; i < SUPPORTED_DEVICE_COUNT; i++) {
-    if ((supportedDevices[i].type & type) == 0)
+    if (!(supportedDevices[i].type & type))
       continue;
     size_t len = strlen(supportedDevices[i].baseMountpoint) + 1;
     if (len > baseMountpointSize)
