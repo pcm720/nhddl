@@ -91,7 +91,7 @@ int launchTarget(Target *target, ArgumentList *arguments) {
     bsdValue = BSD_ILINK;
     break;
   default:
-    DPRINTF("ERROR: Unsupported mode\n");
+    DPRINTF("ERROR: Unsupported device\n");
     return -EINVAL;
   }
 

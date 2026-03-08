@@ -1,4 +1,4 @@
-#include <debug.h>
+#include "dprintf.h"
 #include <kernel.h>
 #include <loadfile.h>
 #include <string.h>
@@ -31,9 +31,7 @@ int launchELF(int argc, char *argv[]) {
   int ret = SifLoadElf(argv[0], &elfdata);
   SifLoadFileExit();
   if (ret || !elfdata.epc) {
-    init_scr();
-    scr_clear();
-    scr_printf(".\n\n\n\tFailed to load neutrino.elf: %d\n", ret);
+    displayError("Failed to load neutrino.elf: %d\n", ret);
     __builtin_trap();
   }
 
