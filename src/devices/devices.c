@@ -1,6 +1,7 @@
 #include "devices/devices.h"
 #include "config/config.h"
 #include "devices/pad.h"
+#include "devices/utils.h"
 #include "dprintf.h"
 #include <ctype.h>
 #include <debug.h>
@@ -78,12 +79,12 @@ char *initPS2FSArguments(uint32_t *argLength);
 
 // List of modules to load
 static ModuleListEntry moduleList[] = {
-    //
-    // Base modules
-    //
-    #ifdef ENABLE_PRINTF
+//
+// Base modules
+//
+#ifdef ENABLE_PRINTF
     INT_MODULE(ppctty, Device_Basic, NULL, Device_None),
-    #endif
+#endif
     INT_MODULE(iomanX, Device_Basic, NULL, Device_None),
     INT_MODULE(fileXio, Device_Basic, NULL, Device_None),
     INT_MODULE(sio2man, Device_Basic, NULL, Device_None),
@@ -102,7 +103,7 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(bdmfs_fatfs, Device_ATA | Device_USB | Device_MX4SIO | Device_iLink, NULL, Device_None),
     // SMAP UDPFS driver, includes small IP stack and UDPTTY
     INT_MODULE(udpfs_ioman, Device_UDPFS, &initSMAPArguments, Device_None),
-    // ATA (BDM ata0:/ata1:)
+    // exFAT on internal HDD
     INT_MODULE(ata_bd, Device_ATA, NULL, Device_None),
     // USBD
     INT_MODULE(usbd_mini, Device_USB, NULL, Device_None),
@@ -155,6 +156,14 @@ int rebootIOP() {
   loadDeviceModules(Device_Basic);
   // Initialize pad library
   initPad();
+
+  // Ensure root device is always available
+  const char *root = getNHDDLRoot();
+  if (root) {
+    DeviceType rootType = guessDeviceType(root);
+    if (rootType != Device_None && rootType != Device_Basic)
+      loadDeviceModules(rootType);
+  }
 }
 
 // Loads device modules
