@@ -1,12 +1,13 @@
 #ifndef _CONFIG_ARGUMENTS_H_
 #define _CONFIG_ARGUMENTS_H_
 
+struct BackendDevice;
+
 // An entry in ArgumentList
 typedef struct Argument {
   char *arg;   // Argument
   char *value; // Argument value
   int isDisabled;
-  int isGlobal;
 
   struct Argument *prev; // Previous argument in the list
   struct Argument *next; // Next argument in the list
@@ -38,8 +39,12 @@ void appendArgument(ArgumentList *target, Argument *arg);
 // Always places COMPAT_MODES_ARG on the top of the list
 void appendArgumentCopy(ArgumentList *target, Argument *arg);
 
-// Merges two lists into one, ignoring arguments in the second list that already exist in the first list.
-// Expects result to be initialized with zeroes. All arguments in resulting list are a deep copy of arguments in source lists.
-void mergeArgumentLists(ArgumentList *list1, ArgumentList *list2);
+// Merges src into dst, replacing duplicate names with src entries.
+// Expects both lists to be initialized. All arguments merged from src are a deep copy.
+void mergeArgumentLists(ArgumentList *dst, ArgumentList *src);
+
+// Parses a CNF-format file into ArgumentList. Overwrites options. device may be NULL (no path resolution).
+// Returns 0 on success; on error may leave options partially filled.
+int loadArgumentList(ArgumentList *options, struct BackendDevice *device, char *filePath);
 
 #endif

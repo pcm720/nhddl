@@ -1,4 +1,10 @@
 #include "config/arguments.h"
+#include "backends/backends.h"
+#include "dprintf.h"
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -30,9 +36,7 @@ void freeArgumentList(ArgumentList *result) {
 
 // Makes and returns a deep copy of src without prev/next pointers.
 Argument *copyArgument(Argument *src) {
-  // Do a deep copy for argument and value
   Argument *copy = calloc(sizeof(Argument), 1);
-  copy->isGlobal = src->isGlobal;
   copy->isDisabled = src->isDisabled;
   if (src->arg)
     copy->arg = strdup(src->arg);
@@ -43,13 +47,11 @@ Argument *copyArgument(Argument *src) {
 
 // Replaces argument and value in dst, freeing arg and value.
 // Keeps next and prev pointers.
-void replaceArgument(Argument *dst, Argument *src) {
-  // Do a deep copy for argument and value
+static void replaceArgument(Argument *dst, Argument *src) {
   if (dst->arg)
     free(dst->arg);
   if (dst->value)
     free(dst->value);
-  dst->isGlobal = src->isGlobal;
   dst->isDisabled = src->isDisabled;
   if (src->arg)
     dst->arg = strdup(src->arg);
@@ -62,7 +64,6 @@ void replaceArgument(Argument *dst, Argument *src) {
 Argument *newArgument(const char *argName, char *value) {
   Argument *arg = malloc(sizeof(Argument));
   arg->isDisabled = 0;
-  arg->isGlobal = 0;
   arg->prev = NULL;
   arg->next = NULL;
   if (argName)
@@ -94,36 +95,26 @@ void appendArgumentCopy(ArgumentList *target, Argument *arg) {
   appendArgument(target, copy);
 }
 
-// Merges two lists into one, ignoring arguments in the second list that already exist in the first list.
-// All arguments merged from the second list are a deep copy of arguments in source lists.
-// Expects both lists to be initialized.
-void mergeArgumentLists(ArgumentList *list1, ArgumentList *list2) {
+// Merges src into dst, replacing duplicate names with src entries.
+// All arguments merged from src are a deep copy. Expects both lists to be initialized.
+void mergeArgumentLists(ArgumentList *dst, ArgumentList *src) {
   Argument *curArg1;
-  Argument *curArg2 = list2->first;
+  Argument *curArg2 = src->first;
   int isDuplicate = 0;
 
-  // Copy arguments from the second list into result
   while (curArg2 != NULL) {
     isDuplicate = 0;
-    // Look for duplicate arguments in the first list
-    curArg1 = list1->first;
+    curArg1 = dst->first;
     while (curArg1 != NULL) {
-      // If result already contains argument with the same name, skip it
       if (!strcmp(curArg2->arg, curArg1->arg)) {
         isDuplicate = 1;
-        // If argument is disabled and has no value
-        if (curArg1->isDisabled && (curArg1->value[0] == '\0')) {
-          // Replace element in list1 with disabled element from list2
-          replaceArgument(curArg1, curArg2);
-          curArg1->isDisabled = 1;
-        }
+        replaceArgument(curArg1, curArg2);
         break;
       }
       curArg1 = curArg1->next;
     }
-    // If no duplicate was found, insert the argument
     if (!isDuplicate) {
-      appendArgumentCopy(list1, curArg2);
+      appendArgumentCopy(dst, curArg2);
     }
     curArg2 = curArg2->next;
   }
@@ -146,4 +137,97 @@ Argument *insertArgument(ArgumentList *target, const char *argumentName, char *v
   Argument *arg = newArgument(argumentName, value);
   appendArgument(target, arg);
   return arg;
+}
+
+static char *skip_space(char *s) {
+  while (isspace((unsigned char)*s))
+    s++;
+  return s;
+}
+
+static void trim_trailing(char *s) {
+  char *end = s + strlen(s);
+  while (end > s && (isspace((unsigned char)end[-1]) || end[-1] == '\r'))
+    *--end = '\0';
+}
+
+// Parses file into ArgumentList. Result may contain parsed arguments even if an error is returned.
+// CNF format: one argument per line as -name=value or -name; # starts comments; # -name=value is disabled.
+// If device is non-NULL, values starting with / or \ are resolved against device->mountpoint.
+static int parseOptionsFile(ArgumentList *result, struct BackendDevice *device, FILE *file) {
+  char lineBuffer[PATH_MAX];
+  lineBuffer[0] = '\0';
+
+  while (fgets(lineBuffer, sizeof(lineBuffer), file)) {
+    char *line = skip_space(lineBuffer);
+    trim_trailing(line);
+    if (line[0] == '\0')
+      continue;
+    if (line[0] != '-' && line[0] != '#')
+      continue;
+
+    int isDisabled = 0;
+    if (line[0] == '#') {
+      line = skip_space(line + 1);
+      if (line[0] != '-')
+        continue;
+      isDisabled = 1;
+    }
+    line++; // skip '-'
+
+    char *value = strchr(line, '=');
+    if (value) {
+      *value++ = '\0';
+      value = skip_space(value);
+      value[strcspn(value, "#\r\n")] = '\0';
+      trim_trailing(value);
+    } else {
+      value = (char *)"";
+    }
+    trim_trailing(line);
+    if (line[0] == '\0')
+      continue;
+
+    char *resolved = NULL;
+    if (device && value[0] != '\0' && (value[0] == '/' || value[0] == '\\')) {
+      resolved = malloc(strlen(device->mountpoint) + strlen(value) + 1);
+      if (resolved) {
+        strcpy(resolved, device->mountpoint);
+        strcat(resolved, value);
+      }
+    }
+    const char *val = resolved ? resolved : value;
+    Argument *arg = newArgument(line, val[0] ? (char *)val : NULL);
+    free(resolved);
+    arg->isDisabled = isDisabled;
+    appendArgument(result, arg);
+  }
+
+  if (ferror(file) || !feof(file)) {
+    DPRINTF("ERROR: Failed to read config file\n");
+    return -EIO;
+  }
+  return 0;
+}
+
+// Parses a CNF-format file into ArgumentList. Overwrites options. device may be NULL.
+int loadArgumentList(ArgumentList *options, struct BackendDevice *device, char *filePath) {
+  FILE *file = fopen(filePath, "r");
+  if (file == NULL) {
+    DPRINTF("ERROR: Failed to open %s\n", filePath);
+    return -ENOENT;
+  }
+
+  options->total = 0;
+  options->first = NULL;
+  options->last = NULL;
+
+  if (parseOptionsFile(options, device, file)) {
+    fclose(file);
+    freeArgumentList(options);
+    return -EIO;
+  }
+
+  fclose(file);
+  return 0;
 }

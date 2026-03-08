@@ -2,7 +2,6 @@
 #include "backends/backends.h"
 #include "config/arguments.h"
 #include "config/config.h"
-#include "config/title.h"
 #include "dprintf.h"
 #include <ctype.h>
 #include <errno.h>
@@ -109,8 +108,7 @@ static const char *deviceToStr(DeviceType type) {
 // Writes one -device=<name> line for each bit set in mask. Returns 0 on success.
 static int writeDeviceOptions(FILE *f, DeviceType mask) {
   static const DeviceType bits[] = {
-      Device_ATA, Device_HDD, Device_MX4SIO, Device_UDPFS,
-      Device_USB, Device_iLink, Device_MMCE,
+      Device_ATA, Device_HDD, Device_MX4SIO, Device_UDPFS, Device_USB, Device_iLink, Device_MMCE,
   };
   for (size_t i = 0; i < sizeof(bits) / sizeof(bits[0]); i++) {
     if (mask & bits[i]) {

@@ -1,26 +1,34 @@
-#include "config/title.h"
+#include "config/common.h"
 #include <libcdvd.h>
-#include <stdint.h>
+#include <string.h>
 
-// Generates 32-bit timestamp from RTC.
-// Will wrap around every 64th year
+static const char BASE_CONFIG_PATH[] = "/nhddl";
+
+// Writes full path to targetFileName into targetPath.
+// If targetFileName is NULL, will return path to config directory
+void buildConfigFilePath(char *targetPath, const char *targetMountpoint, const char *targetFileName) {
+  strcpy(targetPath, targetMountpoint);
+  strcat(targetPath, BASE_CONFIG_PATH);
+  if (targetFileName != NULL) {
+    if (targetFileName[0] != '/')
+      strcat(targetPath, "/");
+    strcat(targetPath, targetFileName);
+  }
+}
+
+// Generates 32-bit timestamp from RTC. Will wrap around every 64th year
 uint32_t getTimestamp(void) {
-  // Initialize libcdvd to get timestamp
   if (sceCdInit(SCECdINoD)) {
-    // Read clock
     sceCdCLOCK time;
     sceCdReadClock(&time);
     sceCdInit(SCECdEXIT);
 
-    // Pack date into 32-bit timestamp
-    // Y   26 M 22 D  17 H  12 M    6 S    0
-    // 111111 1111 11111 11111 111111 111111
-    uint32_t sum = ((uint32_t)btoi(time.year)) << 26 |        // Year
-                   ((uint32_t)btoi(time.month) & 0xF) << 22 | // Month
-                   ((uint32_t)btoi(time.day)) << 17 |         // Day
-                   ((uint32_t)btoi(time.hour)) << 12 |        // Hour
-                   ((uint32_t)btoi(time.minute)) << 6 |       // Minute
-                   (btoi(time.second) & 0x3F);                // Second
+    uint32_t sum = ((uint32_t)btoi(time.year)) << 26 |
+                   ((uint32_t)btoi(time.month) & 0xF) << 22 |
+                   ((uint32_t)btoi(time.day)) << 17 |
+                   ((uint32_t)btoi(time.hour)) << 12 |
+                   ((uint32_t)btoi(time.minute)) << 6 |
+                   (btoi(time.second) & 0x3F);
     return sum;
   }
   return 0;
