@@ -2,9 +2,14 @@
 #include "config/config.h"
 #include "devices/devices.h"
 #include "dprintf.h"
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
 #include <io_common.h>
+#include <usbhdfsd-common.h>
 
 // Attempts to guess device type from path
 DeviceType guessDeviceType(const char *path) {
@@ -113,4 +118,83 @@ void mmceMountVMC(char *titleID) {
       }
     }
   }
+}
+
+// Maps BDM driver name (from ioctl) to our DeviceType. BDM uses internal names like "ata", "sdc", "usb".
+static DeviceType mapBDMDriverName(char *driverName) {
+  if (!strncmp(driverName, "ata", 3))
+    return Device_HDD;
+  if (!strncmp(driverName, "sdc", 3))
+    return Device_MX4SIO;
+  if (!strncmp(driverName, "usb", 3))
+    return Device_USB;
+  if (!strncmp(driverName, "sd", 2))
+    return Device_iLink;
+  return Device_None;
+}
+
+// Converts massN: path into canonical path by resolving the underlying driver and device number via fileXio.
+// Returns NULL and sets *type to Device_None on failure. Caller must free the returned string after use.
+char *guessCWDDevice(const char *cwd, DeviceType *type) {
+  if (!cwd || !type)
+    return NULL;
+  *type = Device_None;
+
+  size_t bufSize = strlen(cwd) + 10;
+  char *buf = malloc(bufSize);
+  if (!buf)
+    return NULL;
+
+  const char *colon = strchr(cwd, ':');
+  if (!colon) {
+    free(buf);
+    return NULL;
+  }
+  size_t mountLen = (size_t)(colon - cwd + 1);
+  if (mountLen >= bufSize) {
+    free(buf);
+    return NULL;
+  }
+  memcpy(buf, cwd, mountLen);
+  buf[mountLen] = '\0';
+
+  // fileXioDopen will fail if the mountpoint is invalid (e.g. not mass or not present).
+  int fd = fileXioDopen(buf);
+  if (fd < 0) {
+    free(buf);
+    return NULL;
+  }
+  char driverName[10] = {0};
+  int deviceNumber = -1;
+  // Resolve driver name and device number via ioctl
+  fileXioIoctl2(fd, USBMASS_IOCTL_GET_DRIVERNAME, NULL, 0, driverName, sizeof(driverName) - 1);
+  fileXioIoctl2(fd, USBMASS_IOCTL_GET_DEVICE_NUMBER, NULL, 0, &deviceNumber, sizeof(deviceNumber));
+  fileXioDclose(fd);
+  driverName[sizeof(driverName) - 1] = '\0';
+
+  // Map BDM driver name to our type and get canonical base mountpoint from supportedDevices.
+  DeviceType deviceType = mapBDMDriverName(driverName);
+  if (deviceType == Device_None) {
+    free(buf);
+    return NULL;
+  }
+  char baseMountpoint[16];
+  if (getDeviceInfo(deviceType, baseMountpoint, sizeof(baseMountpoint)) <= 0) {
+    free(buf);
+    return NULL;
+  }
+  if (deviceNumber < 0)
+    deviceNumber = 0;
+
+  // Build result in buf
+  const char *pathPart = cwd + mountLen;
+  size_t pathPartLen = strlen(pathPart);
+  int needSlash = (pathPartLen == 0 || pathPart[pathPartLen - 1] != '/');
+  int n = snprintf(buf, bufSize, "%s%d:%s%s", baseMountpoint, deviceNumber, pathPart, needSlash ? "/" : "");
+  if (n < 0 || (size_t)n >= bufSize) {
+    free(buf);
+    return NULL;
+  }
+  *type = deviceType;
+  return buf;
 }
