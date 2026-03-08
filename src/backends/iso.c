@@ -2,7 +2,6 @@
 #include "backends/backends.h"
 #include "backends/cache.h"
 #include "backends/title_id.h"
-#include "common.h"
 #include "devices/utils.h"
 #include "dprintf.h"
 #include "ui/ui.h"

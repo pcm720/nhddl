@@ -1,6 +1,5 @@
 // Backend initialization: initBackend, initBackendForImage, and generic device probe.
 #include "backends/internal.h"
-#include "common.h"
 #include "config/config.h"
 #include "devices/devices.h"
 #include "devices/utils.h"

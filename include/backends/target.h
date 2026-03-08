@@ -1,7 +1,6 @@
 #ifndef _BACKENDS_TARGET_H_
 #define _BACKENDS_TARGET_H_
 
-#include "common.h"
 #include <stddef.h>
 #include <stdint.h>
 

@@ -1,6 +1,5 @@
 #include "backends/backends.h"
 #include "backends/cache.h"
-#include "common.h"
 #include "config/config.h"
 #include "devices/devices.h"
 #include "devices/utils.h"

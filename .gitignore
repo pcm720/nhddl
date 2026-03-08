@@ -1,6 +1,6 @@
 TODO
 build/
-neutrino/
+./neutrino
 .vscode/settings.json
 *.elf
 *.o

@@ -168,10 +168,6 @@ int loadOptions(void) {
     return -ENOENT;
   char lineBuffer[PATH_MAX];
   snprintf(lineBuffer, sizeof(lineBuffer), "%s%s", root, optionsFile);
-  if (tryFile(lineBuffer)) {
-    DPRINTF("Can't load options file, will use defaults\n");
-    return -ENOENT;
-  }
 
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, NULL, lineBuffer)) {

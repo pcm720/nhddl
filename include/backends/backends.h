@@ -2,7 +2,7 @@
 #define _BACKENDS_H_
 
 #include "backends/target.h"
-#include "common.h"
+#include "devices/devices.h"
 
 #define MAX_DEVICES 20
 
@@ -23,10 +23,10 @@ struct BackendDevice {
   cleanupFunc cleanup; // Must release resources (unmount PFS, etc.). Can be NULL.
   titleScanFunc scan;  // Function used for scanning the device for titles. Can be NULL if device must be ignored during scanning
   struct BackendDevice
-      *metadev;       // If set, cover art and options will be loaded from metadata device instead of this device. Set during initialization
-  DeviceType type;    // Backend device type (Device_HDD, Device_ATA, etc.)
-  uint8_t index;      // BDM internal device driver number, must be used for passing paths to Neutrino
-  TargetList *titles; // Per-device title list (owned by backend; UI read-only)
+      *metadev;             // If set, cover art and options will be loaded from metadata device instead of this device. Set during initialization
+  DeviceType type;          // Backend device type (Device_HDD, Device_ATA, etc.)
+  uint8_t index;            // BDM internal device driver number, must be used for passing paths to Neutrino
+  TargetList *titles;       // Per-device title list (owned by backend; UI read-only)
   int lastLaunchedTitleIdx; // Index into titles of last launched title; -1 if none or not found
 };
 
