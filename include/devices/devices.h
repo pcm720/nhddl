@@ -1,19 +1,21 @@
-#ifndef _DEVICES_DEVICES_H_
-#define _DEVICES_DEVICES_H_
+#ifndef _DEVICES_H_
+#define _DEVICES_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 // Supported device types
 typedef enum {
   Device_None = 0,
   Device_Basic = (1 << 0),
-  Device_HDD = (1 << 1),
+  Device_ATA = (1 << 1), // exFAT on internal HDD
   Device_MMCE = (1 << 2),
-  Device_MX4SIO = (1 << 3),
-  Device_UDPFS = (1 << 4),
+  Device_UDPFS = (1 << 3),
+  Device_HDD = (1 << 4), // APA on internal HDD
   Device_USB = (1 << 5),
-  Device_iLink = (1 << 6),
-  Device_BDM = (1 << 7) // Internal mode for guessed device types. Not used for module init
+  Device_MX4SIO = (1 << 6),
+  Device_iLink = (1 << 7),
+  Device_BDM = (1 << 8), // Internal mode for guessed device types. Not used for module init
 } DeviceType;
 
 // Defined initialized device
@@ -23,24 +25,17 @@ typedef struct {
   uint8_t index;    // Device index
 } Device;
 
-// Linked list of devices
-typedef struct {
-  Device *current;  // Current device
-  struct DeviceListEntry *next; // Next device in chain
-} DeviceListEntry;
-
 // Loads device modules
 int loadDeviceModules(DeviceType dtype);
 
 // Reboots IOP and initializes basic devices
 int rebootIOP();
 
-// Implemented in devices/list.c
+// Returns max device count for the given type and writes base mountpoint (e.g. "ata", "usb") into baseMountpoint buffer. Returns 0 or negative if
+// type has no supported device info.
+int getDeviceInfo(DeviceType type, char *baseMountpoint, size_t baseMountpointSize);
 
-// Returns all known devices
-DeviceListEntry *getDevices();
-
-// Frees device list. Frees devices if freeDevices is not 0
-void freeDeviceList(DeviceListEntry *list, int freeDevices);
+// Returns bitmask of device types that conflict with the given type (e.g. Device_MX4SIO for Device_MMCE).
+DeviceType getConflictingDeviceTypes(DeviceType type);
 
 #endif

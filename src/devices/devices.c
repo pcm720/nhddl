@@ -25,7 +25,7 @@
   extern uint32_t size_##mod##_irx
 
 // Defines moduleList entry for embedded module
-#define INT_MODULE(mod, device, argFunc) {#mod, mod##_irx, &size_##mod##_irx, 0, NULL, argFunc, device, 0}
+#define INT_MODULE(mod, device, argFunc, conflicting) {#mod, mod##_irx, &size_##mod##_irx, 0, NULL, argFunc, device, conflicting}
 
 // Embedded IOP modules
 IRX_DEFINE(iomanX);
@@ -61,6 +61,7 @@ typedef struct ModuleListEntry {
   char *argStr;                   // Module arguments
   moduleArgFunc argumentFunction; // Function used to initialize module arguments
   DeviceType type;                // Device type
+  DeviceType conflictingDevices;  // Device types that conflict with this module (e.g. Device_MMCE for mx4sio)
 } ModuleListEntry;
 
 // Used to keep track of loaded devices and modules
@@ -79,42 +80,51 @@ static ModuleListEntry moduleList[] = {
     //
     // Base modules
     //
-    INT_MODULE(iomanX, Device_Basic, NULL),
-    INT_MODULE(fileXio, Device_Basic, NULL),
-    INT_MODULE(sio2man, Device_Basic, NULL),
-    INT_MODULE(mcman, Device_Basic, NULL),
-    INT_MODULE(mcserv, Device_Basic, NULL),
-    INT_MODULE(freepad, Device_Basic, NULL),
-    INT_MODULE(mmceman, Device_MMCE, NULL), // MMCE driver
+    INT_MODULE(iomanX, Device_Basic, NULL, Device_None),
+    INT_MODULE(fileXio, Device_Basic, NULL, Device_None),
+    INT_MODULE(sio2man, Device_Basic, NULL, Device_None),
+    INT_MODULE(mcman, Device_Basic, NULL, Device_None),
+    INT_MODULE(mcserv, Device_Basic, NULL, Device_None),
+    INT_MODULE(freepad, Device_Basic, NULL, Device_None),
+    INT_MODULE(mmceman, Device_MMCE, NULL, Device_MX4SIO), // MMCE driver
     //
     // Backend modules
     //
     // DEV9
-    INT_MODULE(ps2dev9, Device_HDD | Device_UDPFS | Device_iLink, NULL),
+    INT_MODULE(ps2dev9, Device_ATA | Device_HDD | Device_UDPFS | Device_iLink, NULL, Device_None),
     // BDM
-    INT_MODULE(bdm, Device_HDD | Device_USB | Device_MX4SIO | Device_iLink, NULL),
+    INT_MODULE(bdm, Device_ATA | Device_USB | Device_MX4SIO | Device_iLink, NULL, Device_None),
     // FAT/exFAT
-    INT_MODULE(bdmfs_fatfs, Device_HDD | Device_USB | Device_MX4SIO | Device_iLink, NULL),
+    INT_MODULE(bdmfs_fatfs, Device_ATA | Device_USB | Device_MX4SIO | Device_iLink, NULL, Device_None),
     // SMAP UDPFS driver, includes small IP stack and UDPTTY
-    INT_MODULE(smap_udpfs, Device_UDPFS, &initSMAPArguments),
-    // ATA
-    INT_MODULE(ata_bd, Device_HDD, NULL),
+    INT_MODULE(smap_udpfs, Device_UDPFS, &initSMAPArguments, Device_None),
+    // ATA (BDM ata0:/ata1:)
+    INT_MODULE(ata_bd, Device_ATA, NULL, Device_None),
     // USBD
-    INT_MODULE(usbd_mini, Device_USB, NULL),
+    INT_MODULE(usbd_mini, Device_USB, NULL, Device_None),
     // USB Mass Storage
-    INT_MODULE(usbmass_bd_mini, Device_USB, NULL),
+    INT_MODULE(usbmass_bd_mini, Device_USB, NULL, Device_None),
     // MX4SIO
-    INT_MODULE(mx4sio_bd_mini, Device_MX4SIO, NULL),
+    INT_MODULE(mx4sio_bd_mini, Device_MX4SIO, NULL, Device_MMCE),
     // iLink
-    INT_MODULE(iLinkman, Device_iLink, NULL),
+    INT_MODULE(iLinkman, Device_iLink, NULL, Device_None),
     // iLink Mass Storage
-    INT_MODULE(IEEE1394_bd_mini, Device_iLink, NULL),
+    INT_MODULE(IEEE1394_bd_mini, Device_iLink, NULL, Device_None),
     // PS2HDD driver
-    INT_MODULE(ps2hdd_bdm, Device_HDD, &initPS2HDDArguments),
+    INT_MODULE(ps2hdd_bdm, Device_HDD, &initPS2HDDArguments, Device_None),
     // PFS driver
-    INT_MODULE(ps2fs, Device_HDD, &initPS2FSArguments),
+    INT_MODULE(ps2fs, Device_HDD, &initPS2FSArguments, Device_None),
 };
 #define MODULE_COUNT sizeof(moduleList) / sizeof(ModuleListEntry)
+
+DeviceType getConflictingDeviceTypes(DeviceType type) {
+  DeviceType result = Device_None;
+  for (int i = 0; i < MODULE_COUNT; i++) {
+    if (moduleList[i].type & type)
+      result |= moduleList[i].conflictingDevices;
+  }
+  return result;
+}
 
 // Loads module, executing argument function if it's present
 int loadModule(ModuleListEntry *mod);
@@ -138,7 +148,7 @@ int rebootIOP() {
 
   loadedModules = 0;
   loadedDevices = 0;
-  loadDeviceModule(Device_Basic);
+  loadDeviceModules(Device_Basic);
   // Initialize pad library
   initPad();
 }
@@ -152,22 +162,28 @@ int loadDeviceModules(DeviceType dtype) {
     return 0;
 
   uint32_t targetDevice = dtype;
-  if (((dtype & Device_MX4SIO) && (loadedDevices && Device_MMCE)) || ((dtype & Device_MMCE) && (loadedDevices && Device_MX4SIO))) {
-    // MX4SIO and MMCE are incompatible
-    targetDevice |= (loadedDevices & ~(Device_MMCE & Device_MX4SIO));
-    rebootIOP();
+  for (int i = 0; i < MODULE_COUNT; i++) {
+    if (!(moduleList[i].type & dtype))
+      continue;
+    if ((moduleList[i].conflictingDevices & loadedDevices) != 0) {
+      // Requested type conflicts with already-loaded devices; reboot and reload non-conflicting
+      targetDevice |= (loadedDevices & ~getConflictingDeviceTypes(dtype));
+      rebootIOP();
+      break;
+    }
   }
 
   for (int i = 0; i < MODULE_COUNT; i++) {
-    if (loadedModules & (1 << moduleList[i]))
+    if (loadedModules & (1 << i))
       continue; // Ignore already loaded modules
 
     if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL) && (moduleList[i].type & targetDevice)) {
-      if ((ret = loadModule(&moduleList[i]))) {
+      int ret = loadModule(&moduleList[i]);
+      if (ret) {
         DPRINTF(ret);
         return ret;
       }
-      loadedModules |= (1 << moduleList[i]);
+      loadedModules |= (1 << i);
 
       // Introduce delay to prevent ps2hdd module from hanging
       if (!strcmp(moduleList[i].name, "ata_bd"))
@@ -197,7 +213,7 @@ int loadModule(ModuleListEntry *mod) {
     if (mod->argStr == NULL) {
       // Ignore errors if module can fail
       ret = -EINVAL;
-      goto failCheck;
+      return ret;
     }
   }
 
@@ -237,13 +253,13 @@ int parseIPConfig() {
     count++;
 
   setIPAddress(ipAddr);
-  return strlen(getIPAddress);
+  return strlen(getIPAddress());
 }
 
 // Builds IP address argument for SMAP modules
 char *initSMAPArguments(uint32_t *argLength) {
   // If ip_addr was not set, try to get IP from IPCONFIG.DAT
-  if ((getIPAddress[0] == '\0') && (parseIPConfig() <= 0))
+  if ((getIPAddress()[0] == '\0') && (parseIPConfig() <= 0))
     return NULL;
 
   char ipArg[19]; // 15 bytes for IP string + 3 bytes for 'ip='
