@@ -1,9 +1,12 @@
-// Title ID cache for file-based devices (MMCE, BDM, UDPFS)
+// Per-backend NHDDL caches
+// Implements title ID cache for file-based devices (MMCE, BDM, UDPFS)
+// and last title information
 #include "backends/cache.h"
-#include "config/title.h"
-#include "devices/utils.h"
+#include "backends/target.h"
+#include "config/common.h"
 #include "dprintf.h"
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +18,7 @@
 #define CACHE_VERSION 3
 
 const char titleIDCacheFile[] = "/cache.bin";
+static const char lastTitleFile[] = "/lastTitle.bin";
 
 // File header
 typedef struct {
@@ -103,7 +107,6 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
 
   // Write each entry
   curTitle = list->first;
-  int mountpointLen = -1;
   while (curTitle != NULL) {
     // Ignore empty entries or entries not belonging to the current device
     if ((curTitle->id == NULL || strlen(curTitle->id) < 11) || (curTitle->device != device)) {
@@ -111,20 +114,20 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
       continue;
     }
 
-    // Path to store: relative to mountpoint if device has ":/", otherwise full path (e.g. hdd0:partition)
-    mountpointLen = getRelativePathIdx(curTitle->fullPath);
-    if (mountpointLen < 0)
-      mountpointLen = 0;
-
-    // Get file size for change detection (0 if not a regular file, e.g. HDL partition)
-    if (stat(curTitle->fullPath, &st) != 0) {
-      st.st_size = 0;
-    }
-
-    size_t pathLen = strlen(curTitle->fullPath) - mountpointLen + 1;
+    // Path is already relative to device mountpoint
+    size_t pathLen = strlen(curTitle->path) + 1;
     if (pathLen > 0xFFFFFFFFu) {
       curTitle = curTitle->next;
       continue;
+    }
+
+    char fullPathBuf[PATH_MAX];
+    if (getTargetFullPath(curTitle, fullPathBuf, sizeof(fullPathBuf)) != 0) {
+      curTitle = curTitle->next;
+      continue;
+    }
+    if (stat(fullPathBuf, &st) != 0) {
+      st.st_size = 0;
     }
 
     // Write entry header (32-byte, 16-byte aligned)
@@ -141,8 +144,7 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
       remove(cachePath);
       return -EIO;
     }
-    // Write full ISO path without the mountpoint
-    result = fwrite(curTitle->fullPath + mountpointLen, header.pathLength, 1, file);
+    result = fwrite(curTitle->path, header.pathLength, 1, file);
     if (!result) {
       DPRINTF("ERROR: %s: Failed to write full path: %d\n", curTitle->name, errno);
       fclose(file);
@@ -255,14 +257,11 @@ int loadTitleIDCache(TitleIDCache *cache, struct BackendDevice *device) {
   return 0;
 }
 
-// Returns a pointer to cache entry or NULL if fullPath is not found in the cache
-CacheEntry *getCachedEntry(char *fullPath, TitleIDCache *cache) {
-  int mountpointLen = getRelativePathIdx(fullPath);
-  if (mountpointLen < 0)
-    mountpointLen = 0; // Use full path (e.g. hdd0:partition_name)
-
+// Returns a pointer to cache entry or NULL if path is not found in the cache.
+// path must be relative to device mountpoint (same format as stored in cache entries).
+CacheEntry *getCachedEntry(char *path, TitleIDCache *cache) {
   for (int i = cache->lastMatchedIdx; i < cache->total; i++) {
-    if (!strcmp(cache->entries[i].fullPath, fullPath + mountpointLen)) {
+    if (!strcmp(cache->entries[i].fullPath, path)) {
       cache->lastMatchedIdx = i;
       return &cache->entries[i];
     }
@@ -270,9 +269,10 @@ CacheEntry *getCachedEntry(char *fullPath, TitleIDCache *cache) {
   return NULL;
 }
 
-// Returns a pointer to title ID or NULL if fullPath is not found in the cache
-char *getCachedTitleID(char *fullPath, TitleIDCache *cache) {
-  CacheEntry *entry = getCachedEntry(fullPath, cache);
+// Returns a pointer to title ID or NULL if path is not found in the cache.
+// path must be relative to device mountpoint.
+char *getCachedTitleID(char *path, TitleIDCache *cache) {
+  CacheEntry *entry = getCachedEntry(path, cache);
   return entry ? entry->titleID : NULL;
 }
 
@@ -287,4 +287,88 @@ void freeTitleCache(TitleIDCache *cache) {
 
   free(cache->entries);
   free(cache);
+}
+
+// Reads lastTitle.bin for device and sets device->lastLaunchedTitleIdx to the matching index in device->titles.
+void loadLastLaunchedIndex(struct BackendDevice *device) {
+  device->lastLaunchedTitleIdx = -1;
+  if (!device || device->type == Device_None || !device->mountpoint || !device->titles)
+    return;
+  struct BackendDevice *configDevice = device->metadev ? device->metadev : device;
+  char targetPath[PATH_MAX];
+  buildConfigFilePath(targetPath, configDevice->mountpoint, lastTitleFile);
+  int fd = open(targetPath, O_RDONLY);
+  if (fd < 0)
+    return;
+  uint32_t timestamp;
+  if (read(fd, &timestamp, sizeof(timestamp)) != sizeof(timestamp)) {
+    close(fd);
+    return;
+  }
+  size_t fsize = (size_t)(lseek(fd, 0, SEEK_END) - sizeof(timestamp));
+  lseek(fd, sizeof(timestamp), SEEK_SET);
+  if (fsize == 0 || fsize >= PATH_MAX) {
+    close(fd);
+    return;
+  }
+  char pathBuf[PATH_MAX];
+  if ((size_t)read(fd, pathBuf, fsize) != fsize) {
+    close(fd);
+    return;
+  }
+  close(fd);
+  pathBuf[fsize] = '\0';
+  int idx = 0;
+  for (Target *t = device->titles->first; t; t = t->next, idx++) {
+    if (strcmp(t->path, pathBuf) == 0) {
+      device->lastLaunchedTitleIdx = idx;
+      return;
+    }
+  }
+}
+
+// Writes last launched title (target->path) into lastTitle file on device and sets device->lastLaunchedTitleIdx.
+int updateLastLaunchedTitle(Target *target) {
+  if (!target || !target->device || !target->path)
+    return -EINVAL;
+  struct BackendDevice *device = target->device;
+  struct BackendDevice *writeDevice = device->metadev ? device->metadev : device;
+  DPRINTF("Writing last launched title as %s\n", target->path);
+  char targetPath[PATH_MAX];
+  buildConfigFilePath(targetPath, writeDevice->mountpoint, NULL);
+  struct stat st;
+  if (stat(targetPath, &st) == -1) {
+    DPRINTF("Creating config directory: %s\n", targetPath);
+    mkdir(targetPath, 0777);
+  }
+  strcat(targetPath, lastTitleFile);
+  int fd = open(targetPath, O_WRONLY | O_CREAT | O_TRUNC);
+  if (fd < 0) {
+    DPRINTF("ERROR: Failed to open last launched title file: %d\n", fd);
+    return -ENOENT;
+  }
+  uint32_t ts = getTimestamp();
+  if (write(fd, &ts, sizeof(ts)) != sizeof(ts)) {
+    DPRINTF("ERROR: Failed to write last launched title timestamp\n");
+    close(fd);
+    return -EIO;
+  }
+  size_t pathLen = strlen(target->path) + 1;
+  if (write(fd, target->path, pathLen) != (ssize_t)pathLen) {
+    DPRINTF("ERROR: Failed to write last launched title\n");
+    close(fd);
+    return -EIO;
+  }
+  close(fd);
+  device->lastLaunchedTitleIdx = -1;
+  if (device->titles) {
+    int idx = 0;
+    for (Target *t = device->titles->first; t; t = t->next, idx++) {
+      if (t == target) {
+        device->lastLaunchedTitleIdx = idx;
+        break;
+      }
+    }
+  }
+  return 0;
 }

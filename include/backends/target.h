@@ -2,6 +2,7 @@
 #define _BACKENDS_TARGET_H_
 
 #include "common.h"
+#include <stddef.h>
 #include <stdint.h>
 
 // Defined in backends.h
@@ -17,7 +18,7 @@ typedef enum {
 // An entry in TargetList
 typedef struct Target {
   uint16_t idx;                 // ISO index (monotonically increasing). Used to uniquely identify the list entry
-  char *fullPath;               // Full path to ISO
+  char *path;                   // Path relative to device->mountpoint (no repeated prefix)
   char *name;                   // Target name (extracted from file name)
   char *id;                     // Title ID
   uint32_t flags;               // TitleFlags bitfield
@@ -36,6 +37,9 @@ typedef struct {
 
 // Completely frees TargetList. Passed pointer will not be valid after this function executes
 void freeTargetList(TargetList *result);
+
+// Writes full path (device->mountpoint + path) into buf, always null-terminating. Returns 0 on success, negative on error/truncation.
+int getTargetFullPath(const Target *target, char *buf, size_t bufSize);
 
 // Finds target with given index in the list and returns a pointer to it
 Target *getTargetByIdx(TargetList *targets, int idx);

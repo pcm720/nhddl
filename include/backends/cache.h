@@ -26,15 +26,22 @@ int loadTitleIDCache(TitleIDCache *cache, struct BackendDevice *device);
 // Returns 0 on success, non-zero on error. Can be called without a prior load for that device.
 int storeTitleIDCache(TargetList *list, struct BackendDevice *device);
 
-// Returns a pointer to cache entry or NULL if fullPath is not found in the cache.
-// Caller should stat() the file and compare st_size to entry->fileSize; if equal, use entry->titleID and entry->flags.
-CacheEntry *getCachedEntry(char *fullPath, TitleIDCache *cache);
+// Returns a pointer to cache entry or NULL if path is not found in the cache.
+// path must be relative to device mountpoint (same format as stored in cache entries).
+CacheEntry *getCachedEntry(char *path, TitleIDCache *cache);
 
-// Returns a pointer to title ID or NULL if fullPath is not found in the cache.
-// Prefer getCachedEntry when you need to validate file size or apply flags.
-char *getCachedTitleID(char *fullPath, TitleIDCache *cache);
+// Returns a pointer to title ID or NULL if path is not found in the cache.
+// path must be relative to device mountpoint. Prefer getCachedEntry when you need to validate file size or apply flags.
+char *getCachedTitleID(char *path, TitleIDCache *cache);
 
 // Frees memory used by title ID cache. All pointers to cache entries (including title IDs) will be invalid.
 void freeTitleCache(TitleIDCache *cache);
+
+// Reads lastTitle.bin for device and sets device->lastLaunchedTitleIdx to the matching index in device->titles.
+// Call after device->titles is populated (e.g. after scan). Sets lastLaunchedTitleIdx to -1 if no file or no match.
+void loadLastLaunchedIndex(struct BackendDevice *device);
+
+// Writes last launched title (target->path) into lastTitle file on device and sets device->lastLaunchedTitleIdx.
+int updateLastLaunchedTitle(Target *target);
 
 #endif

@@ -67,6 +67,7 @@ void removeConflictingBackends(DeviceType conflictMask) {
       backendDevices[read].sync = NULL;
       backendDevices[read].cleanup = NULL;
       backendDevices[read].metadev = NULL;
+      backendDevices[read].lastLaunchedTitleIdx = -1;
       continue;
     }
     if (write != read) {
@@ -77,6 +78,7 @@ void removeConflictingBackends(DeviceType conflictMask) {
       backendDevices[read].sync = NULL;
       backendDevices[read].cleanup = NULL;
       backendDevices[read].metadev = NULL;
+      backendDevices[read].lastLaunchedTitleIdx = -1;
     }
     write++;
   }

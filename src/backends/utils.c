@@ -5,8 +5,10 @@
 #include <string.h>
 
 void scanBackendDevice(struct BackendDevice *device) {
-  if (device && device->scan)
+  if (device && device->scan) {
     device->scan(device);
+    loadLastLaunchedIndex(device);
+  }
 }
 
 void updateTargetFlagsAndPersist(struct BackendDevice *device, Target *target, uint32_t flags) {

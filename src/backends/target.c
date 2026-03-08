@@ -41,7 +41,7 @@ Target *copyTarget(Target *src) {
   Target *copy = calloc(sizeof(Target), 1);
   copy->idx = src->idx;
 
-  copy->fullPath = strdup(src->fullPath);
+  copy->path = src->path ? strdup(src->path) : NULL;
   copy->name = strdup(src->name);
   copy->id = strdup(src->id);
   copy->flags = src->flags;
@@ -137,11 +137,24 @@ Target *freeTarget(TargetList *targetList, Target *target) {
     target->prev->next = NULL;
   }
 
-  free(target->fullPath);
+  free(target->path);
   free(target->name);
   if (target->id != NULL)
     free(target->id);
 
   free(target);
   return next;
+}
+
+// Writes full path (device->mountpoint + path) into buf, always null-terminating. Returns 0 on success, negative on error/truncation.
+int getTargetFullPath(const Target *target, char *buf, size_t bufSize) {
+  if (!buf || bufSize == 0)
+    return -1;
+  buf[0] = '\0';
+  if (!target || !target->device || !target->device->mountpoint || !target->path)
+    return -1;
+  int n = snprintf(buf, bufSize, "%s%s", target->device->mountpoint, target->path);
+  if (n < 0 || (size_t)n >= bufSize)
+    return -1;
+  return 0;
 }

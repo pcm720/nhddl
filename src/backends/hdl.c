@@ -172,8 +172,8 @@ static void cleanupHDL(struct BackendDevice *device) {
   fileXioUmount(pfsBase);
 }
 
-// Initializes one backend device slot for APA-formatted HDL. Uses device info for mountpoint (e.g. hdd0:, hdd1:). Returns 1 on success, negative on
-// error.
+// Initializes one backend device slot for APA-formatted HDL.
+// Uses device info for mountpoint (e.g. hdd0:, hdd1:). Returns 1 on success, negative on error.
 int initHDL(struct BackendDevice *slot) {
   char baseMountpoint[8];
   int maxDevices = getDeviceInfo(Device_HDD, baseMountpoint, sizeof(baseMountpoint));
@@ -283,10 +283,7 @@ Target *scanPartition(char *deviceMountpoint, char *partitionName, uint32_t star
   title->next = NULL;
   title->id = strdup(header.startup);
   title->name = strdup(header.gamename);
-  // Build full path as deviceMountpoint + partitionName
-  title->fullPath = calloc(sizeof(char), strlen(deviceMountpoint) + strlen(partitionName) + 1);
-  strcpy(title->fullPath, deviceMountpoint);
-  strcat(title->fullPath, partitionName);
+  title->path = strdup(partitionName);
 
   return title;
 }
@@ -341,7 +338,7 @@ int findHDLTargets(struct BackendDevice *device) {
       cacheNeedsSave = 1;
     Target *curTarget = result->first;
     while (curTarget != NULL) {
-      CacheEntry *cached = getCachedEntry(curTarget->fullPath, cache);
+      CacheEntry *cached = getCachedEntry(curTarget->path, cache);
       if (cached != NULL)
         curTarget->flags = cached->flags;
       curTarget = curTarget->next;

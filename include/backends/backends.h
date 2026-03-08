@@ -27,6 +27,7 @@ struct BackendDevice {
   DeviceType type;    // Backend device type (Device_HDD, Device_ATA, etc.)
   uint8_t index;      // BDM internal device driver number, must be used for passing paths to Neutrino
   TargetList *titles; // Per-device title list (owned by backend; UI read-only)
+  int lastLaunchedTitleIdx; // Index into titles of last launched title; -1 if none or not found
 };
 
 //

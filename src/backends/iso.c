@@ -3,6 +3,7 @@
 #include "backends/cache.h"
 #include "backends/title_id.h"
 #include "common.h"
+#include "devices/utils.h"
 #include "dprintf.h"
 #include "ui/ui.h"
 #include <errno.h>
@@ -145,11 +146,14 @@ int _findISO(DIR *directory, TargetList *result, struct BackendDevice *device) {
         // Generate full path
         strcat(titlePath, entry->d_name);
 
-        // Initialize target
+        // Initialize target (store path relative to device mountpoint)
         Target *title = calloc(sizeof(Target), 1);
         title->prev = NULL;
         title->next = NULL;
-        title->fullPath = strdup(titlePath);
+        int relIdx = getRelativePathIdx(titlePath);
+        if (relIdx < 0)
+          relIdx = 0;
+        title->path = strdup(titlePath + relIdx);
         title->device = device;
 
         // Get file name without the extension
@@ -202,31 +206,34 @@ void processTitleID(TargetList *result, struct BackendDevice *device) {
     }
 
     curTarget->flags = 0;
-    CacheEntry *cached = (cache != NULL) ? getCachedEntry(curTarget->fullPath, cache) : NULL;
+    char fullPathBuf[PATH_MAX];
+    if (getTargetFullPath(curTarget, fullPathBuf, sizeof(fullPathBuf)) < 0) {
+      DPRINTF("Ignoring target (no full path) %s\n", curTarget->path);
+      curTarget = freeTarget(result, curTarget);
+      result->total -= 1;
+      continue;
+    }
+    CacheEntry *cached = (cache != NULL) ? getCachedEntry(curTarget->path, cache) : NULL;
 
+    int sizeMatches = 0;
     if (cached != NULL) {
       struct stat st;
-      int sizeMatches = (cached->fileSize == 0) || (stat(curTarget->fullPath, &st) == 0 && (uint64_t)st.st_size == cached->fileSize);
-      if (sizeMatches) {
-        // Cache hit: use cached title ID and flags
-        curTarget->id = strdup(cached->titleID);
-        curTarget->flags = cached->flags;
-      } else {
-        // Size mismatch or stat failed: re-read from ISO, preserve flags from cache
-        cacheMisses++;
-        DPRINTF("Cache miss for %s\n", curTarget->fullPath);
-        curTarget->id = getTitleID(curTarget->fullPath);
-        if (curTarget->id != NULL)
-          curTarget->flags = cached->flags;
-      }
+      sizeMatches = (cached->fileSize == 0) || (stat(fullPathBuf, &st) == 0 && (uint64_t)st.st_size == cached->fileSize);
+    }
+
+    if (cached != NULL && sizeMatches) {
+      curTarget->id = strdup(cached->titleID);
+      curTarget->flags = cached->flags;
     } else {
       cacheMisses++;
-      DPRINTF("Cache miss for %s\n", curTarget->fullPath);
-      curTarget->id = getTitleID(curTarget->fullPath);
+      DPRINTF("Cache miss for %s\n", fullPathBuf);
+      curTarget->id = getTitleID(fullPathBuf);
+      if (curTarget->id != NULL && cached != NULL)
+        curTarget->flags = cached->flags;
     }
 
     if (curTarget->id == NULL) {
-      DPRINTF(curTarget->fullPath);
+      DPRINTF("Failed to get title ID for %s\n", curTarget->path);
       curTarget = freeTarget(result, curTarget);
       result->total -= 1;
       continue;
