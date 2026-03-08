@@ -90,10 +90,14 @@ void freeAllBackendTitles(void) {
     freeBackendDeviceTitles(&backendDevices[i]);
 }
 
+// Runs cleanup on all backend devices (unmount PFS, etc.). Call before launch, exit, or IOP reboot.
 void cleanupAllBackends(void) {
-  for (int i = 0; i < MAX_DEVICES && backendDevices[i].type != Device_None; i++)
+  for (int i = 0; i < MAX_DEVICES && backendDevices[i].type != Device_None; i++) {
+    if (backendDevices[i].sync)
+      backendDevices[i].sync(&backendDevices[i]);
     if (backendDevices[i].cleanup)
       backendDevices[i].cleanup(&backendDevices[i]);
+  }
 }
 
 // Rescan all backend devices (e.g. after conflict reinit)
