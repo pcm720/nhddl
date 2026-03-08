@@ -167,17 +167,19 @@ out_global:
   return ret;
 }
 
-// Merges global and per-title Neutrino arguments for display or launch.
-// Global is base; title_overrides wins on duplicate names.
-ArgumentList *mergeNeutrinoArguments(ArgumentList *global_base, ArgumentList *title_overrides) {
+// Can be used to merge global and per-title Neutrino arguments for display or launch.
+// src is base; dst wins on duplicate names.
+ArgumentList *mergeNeutrinoArguments(ArgumentList *dst, ArgumentList *src) {
   ArgumentList *merged = calloc(sizeof(ArgumentList), 1);
-  if (!merged)
-    return NULL;
-  Argument *cur = global_base->first;
+  if (!merged) {
+    displayError("Failed to allocate memory for merged argument list\n");
+    __builtin_trap();
+  }
+  Argument *cur = src->first;
   while (cur != NULL) {
     appendArgumentCopy(merged, cur);
     cur = cur->next;
   }
-  mergeArgumentLists(merged, title_overrides);
+  mergeArgumentLists(merged, dst);
   return merged;
 }

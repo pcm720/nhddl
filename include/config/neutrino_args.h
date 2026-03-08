@@ -23,8 +23,9 @@ int saveTitleNeutrinoArguments(Target *target, ArgumentList *title_list);
 int saveGlobalNeutrinoArguments(struct BackendDevice *device, ArgumentList *options);
 
 // Merges global and per-title Neutrino arguments for display or launch.
-// Semantic: base ← per-title — per-title options (including overrides) are merged into global; per-title wins on duplicate names.
+// Can be used to merge global and per-title Neutrino arguments for display or launch.
+// Semantic: dst ← src — per-title options (including overrides) are merged into global; per-title wins on duplicate names.
 // Caller must free the returned list with freeArgumentList.
-ArgumentList *mergeNeutrinoArguments(ArgumentList *global_base, ArgumentList *title_overrides);
+ArgumentList *mergeNeutrinoArguments(ArgumentList *dst, ArgumentList *src);
 
 #endif
