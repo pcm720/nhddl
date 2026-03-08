@@ -1,5 +1,5 @@
-#ifndef _CONFIG_LAUNCHER_H_
-#define _CONFIG_LAUNCHER_H_
+#ifndef _CONFIG_H_
+#define _CONFIG_H_
 
 #include "devices/devices.h"
 #include <gsKit.h>
@@ -25,7 +25,7 @@ typedef struct {
   int probeDelay;
   Device bootDevice;
   char rootPath[PATH_MAX + 1];
-  char neutrinoELFPath[PATH_MAX + 1]; // Can be set via nhddl.cnf (-neutrino=<path>)
+  char neutrinoPath[PATH_MAX + 1]; // Can be set via nhddl.cnf (-neutrino=<path>)
 } Config;
 
 // Getters
@@ -37,7 +37,7 @@ int getNoInit(void);
 int getProbeDelay(void);
 const Device *getBootDevice(void);
 const char *getNHDDLRoot(void);
-const char *getNeutrinoElfPath(void);
+const char *getNeutrinoPath(void);
 
 // Setters
 void setVMode(VModeType v);
@@ -48,6 +48,6 @@ void setNoInit(int v);
 void setProbeDelay(int v);
 void setBootDevice(const Device *v);
 void setNHDDLRoot(const char *v);
-void setNeutrinoElfPath(const char *v);
+void setNeutrinoPath(const char *v);
 
 #endif

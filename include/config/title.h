@@ -1,9 +1,9 @@
-#ifndef _CONFIG_CONFIG_H_
-#define _CONFIG_CONFIG_H_
+#ifndef _CONFIG_TITLE_H_
+#define _CONFIG_TITLE_H_
 
-#include "config/arguments.h"
 #include "backends/backends.h"
-#include "target.h"
+#include "backends/target.h"
+#include "config/arguments.h"
 #include <ps2sdkapi.h>
 #include <stdint.h>
 
@@ -20,11 +20,11 @@ void buildConfigFilePath(char *targetPath, const char *targetMountpoint, const c
 int getLastLaunchedTitle(char *titlePath);
 
 // Writes last launched title path into lastTitle file on title mountpoint
-int updateLastLaunchedTitle(struct DeviceMapEntry *device, char *titlePath);
+int updateLastLaunchedTitle(struct BackendDevice *device, char *titlePath);
 
 // Generates ArgumentList from global config file located on device
 // Will reinitialize result without clearing existing contents. On error, result will contain invalid pointer.
-int getGlobalLaunchArguments(ArgumentList *result, struct DeviceMapEntry *device);
+int getGlobalLaunchArguments(ArgumentList *result, struct BackendDevice *device);
 
 // Generates ArgumentList from title-specific config file.
 // Will reinitialize result without clearing existing contents. On error, result will contain invalid pointer.
@@ -38,7 +38,7 @@ int updateTitleLaunchArguments(Target *target, ArgumentList *options);
 ArgumentList *loadLaunchArgumentLists(Target *target);
 
 // Parses options file into ArgumentList
-int loadArgumentList(ArgumentList *options, struct DeviceMapEntry *device, char *filePath);
+int loadArgumentList(ArgumentList *options, struct BackendDevice *device, char *filePath);
 
 // Generates 32-bit timestamp from RTC. Will wrap around every 64th year
 uint32_t getTimestamp(void);

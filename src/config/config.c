@@ -5,50 +5,28 @@
 Config config = {0};
 
 // Getters
-VModeType getVMode(void) {
-  return config.vmode;
-}
+VModeType getVMode(void) { return config.vmode; }
 
-DeviceType getEnabledDevices(void) {
-  return config.enabledDevices;
-}
+DeviceType getEnabledDevices(void) { return config.enabledDevices; }
 
-const char *getIPAddress(void) {
-  return config.ipAddr;
-}
+const char *getIPAddress(void) { return config.ipAddr; }
 
-const char *getImage(void) {
-  return config.image;
-}
+const char *getImage(void) { return config.image; }
 
-int getNoInit(void) {
-  return config.noInit;
-}
+int getNoInit(void) { return config.noInit; }
 
-int getProbeDelay(void) {
-  return config.probeDelay;
-}
+int getProbeDelay(void) { return config.probeDelay; }
 
-const Device *getBootDevice(void) {
-  return &config.bootDevice;
-}
+const Device *getBootDevice(void) { return &config.bootDevice; }
 
-const char *getNHDDLRoot(void) {
-  return config.rootPath;
-}
+const char *getNHDDLRoot(void) { return config.rootPath; }
 
-const char *getNeutrinoElfPath(void) {
-  return config.neutrinoELFPath;
-}
+const char *getNeutrinoPath(void) { return config.neutrinoPath; }
 
 // Setters
-void setVMode(VModeType v) {
-  config.vmode = v;
-}
+void setVMode(VModeType v) { config.vmode = v; }
 
-void setEnabledDevices(DeviceType v) {
-  config.enabledDevices = v;
-}
+void setEnabledDevices(DeviceType v) { config.enabledDevices = v; }
 
 void setIPAddress(const char *v) {
   if (v)
@@ -62,13 +40,9 @@ void setImage(const char *v) {
   config.image = v ? strdup(v) : NULL;
 }
 
-void setNoInit(int v) {
-  config.noInit = v;
-}
+void setNoInit(int v) { config.noInit = v; }
 
-void setProbeDelay(int v) {
-  config.probeDelay = v;
-}
+void setProbeDelay(int v) { config.probeDelay = v; }
 
 void setBootDevice(const Device *v) {
   if (v) {
@@ -86,8 +60,8 @@ void setNHDDLRoot(const char *v) {
   config.rootPath[PATH_MAX] = '\0';
 }
 
-void setNeutrinoElfPath(const char *v) {
+void setNeutrinoPath(const char *v) {
   if (v)
-    strncpy(config.neutrinoELFPath, v, PATH_MAX);
-  config.neutrinoELFPath[PATH_MAX] = '\0';
+    strncpy(config.neutrinoPath, v, PATH_MAX);
+  config.neutrinoPath[PATH_MAX] = '\0';
 }

@@ -1,10 +1,10 @@
-#include "config/parse.h"
+#include "config/nhddl.h"
 #include "backends/backends.h"
 #include "common.h"
+#include "config/arguments.h"
 #include "config/config.h"
 #include "config/title.h"
 #include "dprintf.h"
-#include "options.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -24,9 +24,16 @@ const char optionsFile[] = "nhddl.cnf";
 #define OPTION_PROBE_DELAY "probe_delay"
 #define OPTION_NEUTRINO "neutrino"
 
+// Config file line formats
+#define FMT_OPTION_STR "-%s=%s\n"
+#define FMT_OPTION_INT "-%s=%d\n"
+#define FMT_OPTION_FLAG "-%s\n"
+
 // Parses mode string into DeviceType
 DeviceType parseDevice(const char *val) {
   if (!strncmp(val, "ata", 3))
+    return Device_ATA;
+  if (!strncmp(val, "hdl", 3))
     return Device_HDD;
   if (!strncmp(val, "mx4sio", 3))
     return Device_MX4SIO;
@@ -38,8 +45,6 @@ DeviceType parseDevice(const char *val) {
     return Device_iLink;
   if (!strncmp(val, "mmce", 4))
     return Device_MMCE;
-  if (!strncmp(val, "hdl", 3))
-    return Device_HDD;
   return Device_None;
 }
 
@@ -64,6 +69,40 @@ VModeType parseVMode(const char *modeStr) {
   if (!strcmp(modeStr, "720p"))
     return VMode_720p;
   return VMode_NONE;
+}
+
+// Returns string for video mode for config file output
+static const char *vmodeToStr(VModeType v) {
+  switch (v) {
+  case VMode_NTSC:
+    return "ntsc";
+  case VMode_PAL:
+    return "pal";
+  case VMode_480p:
+    return "480p";
+  case VMode_720p:
+    return "720p";
+  default:
+    return "ntsc";
+  }
+}
+
+// Writes one -device=<name> line for each bit set in mask. Returns 0 on success.
+static int writeDeviceOptions(FILE *f, DeviceType mask) {
+  static const struct {
+    DeviceType bit;
+    const char *name;
+  } devices[] = {
+      {Device_ATA, "ata"}, {Device_HDD, "hdl"},     {Device_MX4SIO, "mx4sio"}, {Device_UDPFS, "udpfs"},
+      {Device_USB, "usb"}, {Device_iLink, "ilink"}, {Device_MMCE, "mmce"},
+  };
+  for (size_t i = 0; i < sizeof(devices) / sizeof(devices[0]); i++) {
+    if (mask & devices[i].bit) {
+      if (fprintf(f, FMT_OPTION_STR, OPTION_DEVICE, devices[i].name) < 0)
+        return -EIO;
+    }
+  }
+  return 0;
 }
 
 // Attempts to parse argv into config
@@ -102,17 +141,27 @@ void parseArgv(int argc, char *argv[]) {
       setProbeDelay(val ? atoi(val) : 0);
     } else if (!strcmp(OPTION_NEUTRINO, arg)) {
       DPRINTF("Using custom Neutrino path: %s\n", val);
-      setNeutrinoElfPath(val);
+      setNeutrinoPath(val);
     }
   }
 }
 
-// Loads NHDDL options from optionsFile in cwdPath
-int loadOptions(char *cwdPath) {
+// Loads NHDDL options from optionsFile in config root path
+int loadOptions(void) {
+  const char *root = getNHDDLRoot();
   char lineBuffer[PATH_MAX + sizeof(optionsFile) + 1];
-  if (cwdPath[0] != '\0') {
-    strcpy(lineBuffer, cwdPath);
-    strcat(lineBuffer, optionsFile);
+  lineBuffer[0] = '\0';
+  if (root && root[0] != '\0') {
+    size_t rootLen = strlen(root);
+    if (rootLen < sizeof(lineBuffer) - sizeof(optionsFile)) {
+      memcpy(lineBuffer, root, rootLen + 1);
+      strcat(lineBuffer, optionsFile);
+      if (!tryFile(lineBuffer))
+        goto fileExists;
+    }
+  }
+  if (lineBuffer[0] == '\0') {
+    strcpy(lineBuffer, optionsFile);
     if (!tryFile(lineBuffer))
       goto fileExists;
   }
@@ -139,7 +188,7 @@ fileExists:
       } else if (!strcmp(OPTION_PROBE_DELAY, arg->arg)) {
         setProbeDelay(arg->value ? atoi(arg->value) : 0);
       } else if (!strcmp(OPTION_NEUTRINO, arg->arg) && arg->value && arg->value[0] != '\0') {
-        setNeutrinoElfPath(arg->value);
+        setNeutrinoPath(arg->value);
       }
     }
     arg = arg->next;
@@ -147,4 +196,51 @@ fileExists:
   freeArgumentList(options);
 
   return 0;
+}
+
+// Saves current config to optionsFile in config root path
+int saveOptions(void) {
+  const char *root = getNHDDLRoot();
+  char path[PATH_MAX + sizeof(optionsFile) + 1];
+  if (root && root[0] != '\0') {
+    size_t rootLen = strlen(root);
+    if (rootLen >= sizeof(path) - sizeof(optionsFile))
+      return -EINVAL;
+    memcpy(path, root, rootLen + 1);
+    strcat(path, optionsFile);
+  } else {
+    strcpy(path, optionsFile);
+  }
+
+  FILE *f = fopen(path, "w");
+  if (!f)
+    return -EIO;
+
+  int err = 0;
+  VModeType vmode = getVMode();
+  if (vmode != VMode_NONE) {
+    if (fprintf(f, FMT_OPTION_STR, OPTION_VMODE, vmodeToStr(vmode)) < 0)
+      err = -EIO;
+  }
+  if (writeDeviceOptions(f, getEnabledDevices()) != 0)
+    err = -EIO;
+  if (getIPAddress()[0] != '\0') {
+    if (fprintf(f, FMT_OPTION_STR, OPTION_IP_ADDRESS, getIPAddress()) < 0)
+      err = -EIO;
+  }
+  if (getProbeDelay() > 0) {
+    if (fprintf(f, FMT_OPTION_INT, OPTION_PROBE_DELAY, getProbeDelay()) < 0)
+      err = -EIO;
+  }
+  if (getNeutrinoPath()[0] != '\0') {
+    if (fprintf(f, FMT_OPTION_STR, OPTION_NEUTRINO, getNeutrinoPath()) < 0)
+      err = -EIO;
+  }
+  if (getNoInit()) {
+    if (fprintf(f, FMT_OPTION_FLAG, OPTION_NO_INIT) < 0)
+      err = -EIO;
+  }
+  if (fclose(f) != 0)
+    err = -EIO;
+  return err;
 }

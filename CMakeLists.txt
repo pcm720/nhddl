@@ -25,7 +25,7 @@ set(SOURCES
     src/config/arguments.c
     src/config/common.c
     src/config/config.c
-    src/config/parse.c
+    src/config/nhddl.c
     src/config/title.c
 
 

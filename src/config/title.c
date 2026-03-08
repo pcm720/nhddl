@@ -1,8 +1,9 @@
 #include "config/title.h"
-#include "common.h"
 #include "backends/backends.h"
+#include "common.h"
 #include "dprintf.h"
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <ps2sdkapi.h>
@@ -10,7 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <dirent.h>
 #include <unistd.h>
 
 const char BASE_CONFIG_PATH[] = "/nhddl";
@@ -43,40 +43,32 @@ int getLastLaunchedTitle(char *titlePath) {
   uint32_t maxTimestamp = 0;
   uint32_t timestamp = 0;
   size_t fsize = 0;
-  for (int i = 0; i < MAX_DEVICES; i++) {
-    if (deviceModeMap[i].mode == Device_None || deviceModeMap[i].mountpoint == NULL) {
+  for (int i = 0; i < getBackendDeviceCount(); i++) {
+    struct BackendDevice *dev = getBackendDeviceAt(i);
+    if (!dev || dev->type == Device_None || dev->mountpoint == NULL)
       break;
-    }
-
-    if (deviceModeMap[i].metadev) // Fallback to metadata device if set
-      buildConfigFilePath(targetPath, deviceModeMap[i].metadev->mountpoint, lastTitlePath);
+    if (dev->metadev)
+      buildConfigFilePath(targetPath, dev->metadev->mountpoint, lastTitlePath);
     else
-      buildConfigFilePath(targetPath, deviceModeMap[i].mountpoint, lastTitlePath);
+      buildConfigFilePath(targetPath, dev->mountpoint, lastTitlePath);
 
-    // Open last launched title file and read it
     int fd = open(targetPath, O_RDONLY);
     if (fd < 0) {
-      DPRINTF("WARN: Failed to open last launched title file on device %s: %d\n", deviceModeMap[i].mountpoint, fd);
+      DPRINTF("WARN: Failed to open last launched title file on device %s: %d\n", dev->mountpoint, fd);
       continue;
     }
-
-    // Read file timestamp (first 4 bytes)
     if (read(fd, &timestamp, sizeof(timestamp)) != sizeof(timestamp)) {
-      DPRINTF("WARN: Failed to read last launched title file on device %s\n", deviceModeMap[i].mountpoint);
+      DPRINTF("WARN: Failed to read last launched title file on device %s\n", dev->mountpoint);
       close(fd);
       continue;
     }
-    // Read the rest of the file only if it's newer
     if (timestamp < maxTimestamp) {
       close(fd);
       continue;
     }
     maxTimestamp = timestamp;
-
-    // Get title path size
     fsize = lseek(fd, 0, SEEK_END) - sizeof(timestamp);
     lseek(fd, sizeof(timestamp), SEEK_SET);
-    // Read file contents into titlePath
     if (read(fd, titlePath, fsize) <= 0) {
       close(fd);
       DPRINTF("WARN: Failed to read last launched title\n");
@@ -90,10 +82,9 @@ int getLastLaunchedTitle(char *titlePath) {
 }
 
 // Writes last launched title path into lastTitle file on title mountpoint
-int updateLastLaunchedTitle(struct DeviceMapEntry *device, char *titlePath) {
-  if (device->metadev) { // Fallback to metadata device if set
+int updateLastLaunchedTitle(struct BackendDevice *device, char *titlePath) {
+  if (device->metadev)
     device = device->metadev;
-  }
 
   DPRINTF("Writing last launched title as %s\n", titlePath);
   char targetPath[PATH_MAX];
@@ -140,7 +131,7 @@ int updateLastLaunchedTitle(struct DeviceMapEntry *device, char *titlePath) {
 }
 
 // Generates ArgumentList from global config file located at targetMounpoint (usually ISO full path)
-int getGlobalLaunchArguments(ArgumentList *result, struct DeviceMapEntry *device) {
+int getGlobalLaunchArguments(ArgumentList *result, struct BackendDevice *device) {
   if (device->metadev) { // Fallback to metadata device if set
     device = device->metadev;
   }
@@ -158,7 +149,7 @@ int getGlobalLaunchArguments(ArgumentList *result, struct DeviceMapEntry *device
 
 // Generates ArgumentList from global and title-specific config file
 int getTitleLaunchArguments(ArgumentList *result, Target *target) {
-  struct DeviceMapEntry *device = target->device;
+  struct BackendDevice *device = target->device;
   if (device->metadev) { // Fallback to metadata device if set
     device = device->metadev;
   }
@@ -183,8 +174,7 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
       size_t dlen = strlen(entry->d_name);
       const char *cnfExt = ".cnf";
       size_t cnfLen = strlen(cnfExt);
-      if (nameLen <= dlen && !strncmp(entry->d_name, target->name, nameLen) &&
-          dlen >= cnfLen && !strcmp(entry->d_name + dlen - cnfLen, cnfExt)) {
+      if (nameLen <= dlen && !strncmp(entry->d_name, target->name, nameLen) && dlen >= cnfLen && !strcmp(entry->d_name + dlen - cnfLen, cnfExt)) {
         buildConfigFilePath(targetPath, device->mountpoint, entry->d_name);
         break;
       }
@@ -211,7 +201,7 @@ int getTitleLaunchArguments(ArgumentList *result, Target *target) {
 // CNF format: one argument per line as -name=value or -name; disabled entries as #-name=value or #-name.
 // Empty value means that the argument is empty, but still should be used without the value.
 int updateTitleLaunchArguments(Target *target, ArgumentList *options) {
-  struct DeviceMapEntry *device = target->device;
+  struct BackendDevice *device = target->device;
   if (device->metadev) { // Fallback to metadata device if set
     device = device->metadev;
   }
@@ -266,7 +256,7 @@ out:
 // Parses file into ArgumentList. Result may contain parsed arguments even if an error is returned.
 // CNF format: one argument per line as -name=value or -name; # starts comments; # -name=value is disabled.
 // Adds mountpoint with the deviceNumber to arguments values that start with \ or /
-static int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *device) {
+static int parseOptionsFile(ArgumentList *result, FILE *file, struct BackendDevice *device) {
   // Our lines will mostly consist of file paths, which aren't likely to exceed 300 characters due to 255 character limit in exFAT path component
   char lineBuffer[PATH_MAX + 1];
   lineBuffer[0] = '\0';
@@ -359,7 +349,7 @@ static int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEn
 }
 
 // Parses options file into ArgumentList
-int loadArgumentList(ArgumentList *options, struct DeviceMapEntry *device, char *filePath) {
+int loadArgumentList(ArgumentList *options, struct BackendDevice *device, char *filePath) {
   // Open options file
   FILE *file = fopen(filePath, "r");
   if (file == NULL) {
