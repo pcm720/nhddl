@@ -1,10 +1,11 @@
 # IRX files
 set(IRX_FILES
+    ppctty
+    iomanX
+    fileXio
     sio2man
     mcman
     mcserv
-    fileXio
-    iomanX
     freepad
     ps2dev9
     bdm

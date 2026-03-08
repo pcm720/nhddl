@@ -45,6 +45,9 @@ IRX_DEFINE(IEEE1394_bd_mini);
 IRX_DEFINE(udpfs_ioman);
 IRX_DEFINE(ps2hdd_bdm);
 IRX_DEFINE(ps2fs);
+#ifdef ENABLE_PRINTF
+IRX_DEFINE(ppctty);
+#endif
 
 // Function used to initialize module arguments.
 // Must set argLength and return non-null pointer to a argument string if successful.
@@ -78,6 +81,9 @@ static ModuleListEntry moduleList[] = {
     //
     // Base modules
     //
+    #ifdef ENABLE_PRINTF
+    INT_MODULE(ppctty, Device_Basic, NULL, Device_None),
+    #endif
     INT_MODULE(iomanX, Device_Basic, NULL, Device_None),
     INT_MODULE(fileXio, Device_Basic, NULL, Device_None),
     INT_MODULE(sio2man, Device_Basic, NULL, Device_None),

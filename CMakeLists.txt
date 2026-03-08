@@ -8,11 +8,14 @@ set(EE_BIN "nhddl_unc.elf")
 set(EE_BIN_PKD "nhddl.elf")
 # Enable debug output if requested
 option(ENABLE_PRINTF "Enable printf debugging output" OFF)
+# Print debug output to EE SIO
+option(USE_EESIO "Use EE SIO for debugging" OFF)
 
 # Source files
 set(SOURCES
     src/main.c
     src/common.c
+    src/dprintf.c
     src/neutrino.c
     src/forwarder.c
 
@@ -26,7 +29,7 @@ set(SOURCES
     src/config/common.c
     src/config/config.c
     src/config/nhddl.c
-    src/config/title.c
+    src/config/neutrino_args.c
 
 
     # Devices
@@ -67,6 +70,10 @@ add_definitions(-DGIT_VERSION=\"${GIT_VERSION}\")
 if(ENABLE_PRINTF)
     add_definitions(-DENABLE_PRINTF)
 endif()
+if(USE_EESIO)
+    add_definitions(-DUSE_EESIO)
+endif()
+
 
 # Create the main executable
 add_executable(${EE_BIN} ${SOURCES})
