@@ -1,9 +1,7 @@
 #include "devices/devices.h"
-#include "common.h"
 #include "config/config.h"
 #include "devices/pad.h"
 #include "dprintf.h"
-#include "ui/ui.h"
 #include <ctype.h>
 #include <debug.h>
 #include <fcntl.h>
@@ -44,7 +42,7 @@ IRX_DEFINE(usbmass_bd_mini);
 IRX_DEFINE(mx4sio_bd_mini);
 IRX_DEFINE(iLinkman);
 IRX_DEFINE(IEEE1394_bd_mini);
-IRX_DEFINE(smap_udpfs);
+IRX_DEFINE(udpfs_ioman);
 IRX_DEFINE(ps2hdd_bdm);
 IRX_DEFINE(ps2fs);
 
@@ -97,7 +95,7 @@ static ModuleListEntry moduleList[] = {
     // FAT/exFAT
     INT_MODULE(bdmfs_fatfs, Device_ATA | Device_USB | Device_MX4SIO | Device_iLink, NULL, Device_None),
     // SMAP UDPFS driver, includes small IP stack and UDPTTY
-    INT_MODULE(smap_udpfs, Device_UDPFS, &initSMAPArguments, Device_None),
+    INT_MODULE(udpfs_ioman, Device_UDPFS, &initSMAPArguments, Device_None),
     // ATA (BDM ata0:/ata1:)
     INT_MODULE(ata_bd, Device_ATA, NULL, Device_None),
     // USBD
@@ -180,7 +178,7 @@ int loadDeviceModules(DeviceType dtype) {
     if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL) && (moduleList[i].type & targetDevice)) {
       int ret = loadModule(&moduleList[i]);
       if (ret) {
-        DPRINTF(ret);
+        DPRINTF("ERROR: failed to load %s: %d\n", moduleList[i].name, ret);
         return ret;
       }
       loadedModules |= (1 << i);

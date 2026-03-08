@@ -1,6 +1,7 @@
 // Title ID cache for file-based devices (MMCE, BDM, UDPFS)
 #include "backends/cache.h"
 #include "config/title.h"
+#include "devices/utils.h"
 #include "dprintf.h"
 #include <errno.h>
 #include <limits.h>

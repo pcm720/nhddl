@@ -1,15 +1,6 @@
-#include "common.h"
 #include "devices/devices.h"
 #include "dprintf.h"
-#include <errno.h>
-#include <kernel.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <usbhdfsd-common.h>
-#define NEWLIB_PORT_AWARE
-#include <fileXio_rpc.h>
-#include <io_common.h>
 
 struct SupportedDevice {
   const char *baseMountpoint; // Base mountpoint (e.g. "ata", "usb")

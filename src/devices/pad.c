@@ -2,8 +2,6 @@
 #include <kernel.h>
 #include <libpad.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <string.h>
 
 static unsigned char padBuffer[2][256] ALIGNED(64);
 static unsigned int prevInputs[2] = {0, 0};

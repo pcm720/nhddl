@@ -1,15 +1,7 @@
 #include "devices/utils.h"
-#include "common.h"
 #include "config/config.h"
 #include "devices/devices.h"
 #include "dprintf.h"
-#include <errno.h>
-#include <kernel.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <usbhdfsd-common.h>
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
 #include <io_common.h>
@@ -35,6 +27,62 @@ DeviceType guessDeviceType(const char *path) {
   if (!strncmp(path, "mass", 4))
     return Device_BDM;
   return Device_None;
+}
+
+// Maps DeviceType to string
+char *getDeviceString(DeviceType mode) {
+  switch (mode) {
+  case Device_Basic:
+    return "Memory Card";
+  case Device_HDD:
+    return "HDD";
+  case Device_ATA:
+    return "ATA";
+  case Device_MX4SIO:
+    return "MX4SIO";
+  case Device_UDPFS:
+    return "UDPFS";
+  case Device_USB:
+    return "USB";
+  case Device_iLink:
+    return "iLink";
+  case Device_MMCE:
+    return "MMCE";
+  default:
+    return "Unknown";
+  }
+}
+
+// Returns the device index or -1 if path is not supported/invalid
+int getDeviceIndex(char *path) {
+  // Find mountpoint end
+  char *mountpoint = strchr(path, ':');
+  if (!mountpoint)
+    return -1;
+
+  // Check the last char
+  mountpoint -= 1;
+  if ((*mountpoint >= '0' || *mountpoint <= '9'))
+    // Return device index
+    return *mountpoint - '0';
+
+  // Default to 0
+  return 0;
+}
+
+// Returns the start index of relative file path without device mountpoint or -1 if path is not supported/invalid
+int getRelativePathIdx(char *path) {
+  // Find the start of relative path
+  char *relPath = strchr(path, ':');
+  if (!relPath)
+    return -1;
+
+  int idx = (int)(++relPath - path);
+  // Handle path separator after the mountpoint name
+  if ((path[0] == '/') || (path[0] == '\\'))
+    return idx + 1;
+
+  return idx;
 }
 
 // Uses MMCE devctl calls to switch memory card to given title ID

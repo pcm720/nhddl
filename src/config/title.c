@@ -1,6 +1,6 @@
 #include "config/title.h"
 #include "backends/backends.h"
-#include "common.h"
+#include "devices/utils.h"
 #include "dprintf.h"
 #include <ctype.h>
 #include <dirent.h>
