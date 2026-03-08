@@ -1,0 +1,289 @@
+// Title ID cache for file-based devices (MMCE, BDM, UDPFS)
+#include "backends/cache.h"
+#include "config/title.h"
+#include "dprintf.h"
+#include <errno.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define CACHE_MAGIC "NIDC"
+#define CACHE_VERSION 3
+
+const char titleIDCacheFile[] = "/cache.bin";
+
+// File header
+typedef struct {
+  char magic[4];
+  uint32_t version;
+  uint64_t total;
+} CacheMetadata;
+
+// Entry header
+typedef struct {
+  uint32_t pathLength; // Includes null-terminator
+  uint64_t fileSize;
+  uint32_t flags;
+  char titleID[12];
+  uint8_t reserved[4];
+} CacheEntryHeader;
+
+#define CACHE_METADATA_SIZE sizeof(CacheMetadata)
+#define CACHE_ENTRY_HEADER_SIZE sizeof(CacheEntryHeader)
+
+// Saves TargetList into title ID cache on given storage device
+int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
+  if (list->total == 0) {
+    return 0;
+  }
+
+  // Get total number of valid cache entries
+  int total = 0;
+  Target *curTitle = list->first;
+  while (curTitle != NULL) {
+    if (curTitle->id != NULL && strlen(curTitle->id) == 11) {
+      total++;
+    }
+    curTitle = curTitle->next;
+  }
+  if (total == 0) {
+    DPRINTF("WARN: No valid cache entries found\n");
+    return 0;
+  }
+
+  // Make sure path exists
+  if (device->type == Device_None || device->mountpoint == NULL)
+    return -ENODEV;
+
+  // Use metadev for config path when set (e.g. HDL cache on PFS partition)
+  struct BackendDevice *configDevice = device->metadev ? device->metadev : device;
+
+  // Prepare paths and header
+  char cachePath[PATH_MAX];
+  char dirPath[PATH_MAX];
+  CacheEntryHeader header;
+  CacheMetadata meta;
+  memcpy(meta.magic, CACHE_MAGIC, 4);
+  meta.version = (uint32_t)CACHE_VERSION;
+  meta.total = (uint64_t)total;
+
+  buildConfigFilePath(dirPath, configDevice->mountpoint, NULL);
+  buildConfigFilePath(cachePath, configDevice->mountpoint, titleIDCacheFile);
+
+  // Get path to config directory and make sure it exists
+  struct stat st;
+  if (stat(dirPath, &st) == -1) {
+    DPRINTF("Creating config directory: %s\n", dirPath);
+    if (mkdir(dirPath, 0777)) {
+      DPRINTF("ERROR: Failed to create directory\n");
+      return -EIO;
+    }
+  }
+
+  // Open cache file for writing
+  FILE *file = fopen(cachePath, "wb");
+  if (file == NULL) {
+    DPRINTF("ERROR: Failed to open cache file for writing\n");
+    return -EIO;
+  }
+
+  int result;
+  // Write cache file header (16-byte aligned)
+  result = (fwrite(&meta, 1, CACHE_METADATA_SIZE, file) == CACHE_METADATA_SIZE) ? 1 : 0;
+  if (!result) {
+    DPRINTF("ERROR: Failed to write metadata: %d\n", errno);
+    fclose(file);
+    remove(cachePath);
+    return -EIO;
+  }
+
+  // Write each entry
+  curTitle = list->first;
+  int mountpointLen = -1;
+  while (curTitle != NULL) {
+    // Ignore empty entries or entries not belonging to the current device
+    if ((curTitle->id == NULL || strlen(curTitle->id) < 11) || (curTitle->device != device)) {
+      curTitle = curTitle->next;
+      continue;
+    }
+
+    // Path to store: relative to mountpoint if device has ":/", otherwise full path (e.g. hdd0:partition)
+    mountpointLen = getRelativePathIdx(curTitle->fullPath);
+    if (mountpointLen < 0)
+      mountpointLen = 0;
+
+    // Get file size for change detection (0 if not a regular file, e.g. HDL partition)
+    if (stat(curTitle->fullPath, &st) != 0) {
+      st.st_size = 0;
+    }
+
+    size_t pathLen = strlen(curTitle->fullPath) - mountpointLen + 1;
+    if (pathLen > 0xFFFFFFFFu) {
+      curTitle = curTitle->next;
+      continue;
+    }
+
+    // Write entry header (32-byte, 16-byte aligned)
+    memset(&header, 0, sizeof(header));
+    header.pathLength = (uint32_t)pathLen;
+    header.fileSize = (uint64_t)st.st_size;
+    header.flags = curTitle->flags;
+    memcpy(header.titleID, curTitle->id, sizeof(header.titleID));
+    header.titleID[11] = '\0';
+    result = (fwrite(&header, 1, CACHE_ENTRY_HEADER_SIZE, file) == CACHE_ENTRY_HEADER_SIZE) ? 1 : 0;
+    if (!result) {
+      DPRINTF("ERROR: %s: Failed to write header: %d\n", curTitle->name, errno);
+      fclose(file);
+      remove(cachePath);
+      return -EIO;
+    }
+    // Write full ISO path without the mountpoint
+    result = fwrite(curTitle->fullPath + mountpointLen, header.pathLength, 1, file);
+    if (!result) {
+      DPRINTF("ERROR: %s: Failed to write full path: %d\n", curTitle->name, errno);
+      fclose(file);
+      remove(cachePath);
+      return -EIO;
+    }
+    curTitle = curTitle->next;
+  }
+  fclose(file);
+
+  return 0;
+}
+
+// Loads title ID cache from storage into cache
+int loadTitleIDCache(TitleIDCache *cache, struct BackendDevice *device) {
+  // Make sure path exists
+  if (device->type == Device_None || device->mountpoint == NULL)
+    return -ENODEV;
+
+  // Use metadev for config path when set (e.g. HDL cache on PFS partition)
+  struct BackendDevice *configDevice = device->metadev ? device->metadev : device;
+
+  cache->total = 0;
+  cache->lastMatchedIdx = 0;
+
+  // Open cache file for reading
+  char cachePath[PATH_MAX];
+  buildConfigFilePath(cachePath, configDevice->mountpoint, titleIDCacheFile);
+
+  FILE *file = fopen(cachePath, "rb");
+  if (file == NULL)
+    return -ENOENT;
+
+  int result;
+
+  // Read cache file header (16-byte aligned)
+  CacheMetadata meta;
+  memset(&meta, 0, sizeof(meta));
+  result = fread(&meta, 1, CACHE_METADATA_SIZE, file);
+  if (result != CACHE_METADATA_SIZE) {
+    DPRINTF("ERROR: Failed to read cache metadata\n");
+    fclose(file);
+    return -EIO;
+  }
+
+  // Make sure header is valid
+  if (strcmp(meta.magic, CACHE_MAGIC) != 0) {
+    DPRINTF("ERROR: Cache magic doesn't match, refusing to load\n");
+    fclose(file);
+    return -EINVAL;
+  }
+  if (meta.version != CACHE_VERSION) {
+    DPRINTF("ERROR: Unsupported or outdated cache version %u, rescanning\n", (unsigned)meta.version);
+    fclose(file);
+    return -EINVAL;
+  }
+
+  // Allocate memory for cache entries based on total entry count from header metadata
+  int readIndex = 0;
+  if (meta.total > (uint64_t)INT_MAX) {
+    DPRINTF("ERROR: Cache entry count too large\n");
+    fclose(file);
+    return -EINVAL;
+  }
+  int totalEntries = (int)meta.total;
+  cache->entries = malloc((sizeof(CacheEntry) * (size_t)totalEntries));
+  if (cache->entries == NULL) {
+    DPRINTF("ERROR: Can't allocate enough memory\n");
+    fclose(file);
+    return -ENOMEM;
+  }
+
+  // Read each entry (V3 only)
+  CacheEntryHeader header;
+  char pathBuf[PATH_MAX + 1];
+  while (!feof(file)) {
+    pathBuf[0] = '\0';
+    result = fread(&header, 1, CACHE_ENTRY_HEADER_SIZE, file);
+    if (result != CACHE_ENTRY_HEADER_SIZE) {
+      if (!feof(file))
+        DPRINTF("WARN: Read less than expected, title ID cache might be incomplete\n");
+      break;
+    }
+    if (header.pathLength == 0 || header.pathLength > PATH_MAX) {
+      DPRINTF("WARN: Invalid path length in cache entry\n");
+      break;
+    }
+    result = fread(&pathBuf, 1, header.pathLength, file);
+    if (result != header.pathLength) {
+      DPRINTF("WARN: Read less than expected, title ID cache might be incomplete\n");
+      break;
+    }
+    pathBuf[header.pathLength] = '\0';
+
+    CacheEntry *entry = &cache->entries[readIndex];
+    memcpy(entry->titleID, header.titleID, sizeof(entry->titleID));
+    entry->titleID[11] = '\0';
+    entry->fullPath = strdup(pathBuf);
+    entry->fileSize = header.fileSize;
+    entry->flags = header.flags;
+    readIndex++;
+  }
+  fclose(file);
+
+  // Free unused memory
+  if (readIndex != totalEntries)
+    cache->entries = realloc(cache->entries, sizeof(CacheEntry) * (size_t)readIndex);
+
+  cache->total = readIndex;
+  return 0;
+}
+
+// Returns a pointer to cache entry or NULL if fullPath is not found in the cache
+CacheEntry *getCachedEntry(char *fullPath, TitleIDCache *cache) {
+  int mountpointLen = getRelativePathIdx(fullPath);
+  if (mountpointLen < 0)
+    mountpointLen = 0; // Use full path (e.g. hdd0:partition_name)
+
+  for (int i = cache->lastMatchedIdx; i < cache->total; i++) {
+    if (!strcmp(cache->entries[i].fullPath, fullPath + mountpointLen)) {
+      cache->lastMatchedIdx = i;
+      return &cache->entries[i];
+    }
+  }
+  return NULL;
+}
+
+// Returns a pointer to title ID or NULL if fullPath is not found in the cache
+char *getCachedTitleID(char *fullPath, TitleIDCache *cache) {
+  CacheEntry *entry = getCachedEntry(fullPath, cache);
+  return entry ? entry->titleID : NULL;
+}
+
+// Frees memory used by title ID cache
+void freeTitleCache(TitleIDCache *cache) {
+  if (cache == NULL)
+    return;
+
+  for (int i = 0; i < cache->total; i++) {
+    free(cache->entries[i].fullPath);
+  }
+
+  free(cache->entries);
+  free(cache);
+}

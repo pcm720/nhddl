@@ -1,11 +1,16 @@
 // Implements support for APA-formatted HDD with HDL partitions
-#include "common.h"
 #include "backends/backends.h"
+#include "backends/cache.h"
+#include "common.h"
+#include "config/config.h"
+#include "devices/devices.h"
 #include "dprintf.h"
 #include "ui/ui.h"
 #include <hdd-ioctl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 // Used to access APA partitions and read raw sectors
 #define NEWLIB_PORT_AWARE
@@ -13,29 +18,25 @@
 #include <io_common.h>
 
 #define OPL_CONF_PARTITION_ARG "hdd_partition"
-#define PFS_MOUNTPOINT "pfs0:"
 
-// Checks and returns 0 if hdd0 contains APA partition table
-int checkAPAHeader() {
+// Checks and returns 0 if the given device contains APA partition table.
+static int checkAPAHeader(const char *mountpoint) {
   int result = -1;
 
-  // Allocate memory for storing data for the first sector.
   uint8_t *pSectorData = (uint8_t *)malloc(512);
   if (pSectorData == NULL) {
     return -ENOMEM;
   }
 
-  // Read the sector via devctl
   hddAtaTransfer_t *args = (hddAtaTransfer_t *)pSectorData;
   args->lba = 0;
   args->size = 1;
-  result = fileXioDevctl("hdd0:", HDIOC_READSECTOR, args, sizeof(hddAtaTransfer_t), pSectorData, 512);
+  result = fileXioDevctl(mountpoint, HDIOC_READSECTOR, args, sizeof(hddAtaTransfer_t), pSectorData, 512);
   if (result < 0) {
     free(pSectorData);
     return -EIO;
   }
 
-  // Test if sector contains APA magic
   if (strncmp((const char *)&pSectorData[4], "APA", 3)) {
     result = 1; // Sector doesn't contain APA magic
   }
@@ -44,30 +45,32 @@ int checkAPAHeader() {
   return result;
 }
 
-// Parses OPL configuraton file for OPL partition from
-// __common/OPL/conf_hdd.cfg and returns partition path for mounting.
-// Returns NULL if config is invalid or conf_hdd.cfg doesn't exist.
-char *readOPLConfig() {
-  if (fileXioMount(PFS_MOUNTPOINT, "hdd0:__common", FIO_MT_RDONLY))
+// Parses OPL config file for partition name from __common/OPL/conf_hdd.cfg. Returns NULL if invalid or missing.
+// deviceMountpoint is the HDL device (e.g. "hdd0:"). pfsMount is the PFS mount to use (e.g. "pfs0:").
+static char *readOPLConfig(const char *deviceMountpoint, const char *pfsMount) {
+  char commonPath[32];
+  snprintf(commonPath, sizeof(commonPath), "%s__common", deviceMountpoint);
+  if (fileXioMount(pfsMount, commonPath, FIO_MT_RDONLY))
     return NULL;
 
   char buf[PATH_MAX];
   buf[0] = '\0';
 
-  FILE *fd = fopen("pfs0:OPL/conf_hdd.cfg", "rb");
+  char cfgPath[32];
+  snprintf(cfgPath, sizeof(cfgPath), "%s/OPL/conf_hdd.cfg", pfsMount);
+  FILE *fd = fopen(cfgPath, "rb");
   if (!fd) {
-    fileXioUmount(PFS_MOUNTPOINT);
+    fileXioUmount(pfsMount);
     return NULL;
   }
 
   while (fgets(buf, sizeof(buf), fd) != NULL) {
     if (!strncmp(buf, OPL_CONF_PARTITION_ARG, sizeof(OPL_CONF_PARTITION_ARG) - 1))
       break;
-
     buf[0] = '\0';
   }
   fclose(fd);
-  fileXioUmount(PFS_MOUNTPOINT);
+  fileXioUmount(pfsMount);
 
   if (buf[0] == '\0')
     return NULL;
@@ -75,130 +78,155 @@ char *readOPLConfig() {
   char *val = strchr(buf, '=');
   if (!val)
     return NULL;
+  val++;
 
-  val++; // Point to argument value
-
-  // Remove newline from value
-  char *newline = NULL;
-  if ((newline = strchr(val, '\r')) != NULL)
+  char *newline = strchr(val, '\r');
+  if (newline)
     *newline = '\0';
   else if ((newline = strchr(val, '\n')) != NULL)
     *newline = '\0';
 
-  // Set partition name
-  char *partitionName = calloc(sizeof(char), strlen(val) + 6);
-  strcpy(partitionName, "hdd0:");
+  size_t prefixLen = strlen(deviceMountpoint);
+  char *partitionName = calloc(prefixLen + strlen(val) + 1, sizeof(char));
+  if (!partitionName)
+    return NULL;
+  strcpy(partitionName, deviceMountpoint);
   strcat(partitionName, val);
-
-  // Close the file after reading
   return partitionName;
 }
 
-// Creates DeviceMapEntry for metadata device
-struct DeviceMapEntry *createMetadataEntry(char *partitionPath) {
-  struct DeviceMapEntry *dev = malloc(sizeof(struct DeviceMapEntry));
+// Creates BackendDevice for metadata device. deviceMountpoint is the HDL device (e.g. "hdd0:"). pfsMount is the PFS base (e.g. "pfs0:").
+static struct BackendDevice *createMetadataEntry(const char *deviceMountpoint, char *partitionPath, const char *pfsMount) {
+  struct BackendDevice *dev = malloc(sizeof(struct BackendDevice));
   dev->scan = NULL;
+  dev->sync = NULL;
+  dev->cleanup = NULL;
   dev->metadev = NULL;
-  dev->mode = MODE_HDL;
+  dev->type = Device_HDD;
   dev->index = 0;
+  dev->titles = NULL;
 
-  if (!strcmp(partitionPath, "hdd0:__common")) {
-    // OPL uses /OPL subfolder on __common partition
-    dev->mountpoint = calloc(sizeof(char), sizeof(PFS_MOUNTPOINT) + 4);
-    strcpy(dev->mountpoint, PFS_MOUNTPOINT);
-    strcat(dev->mountpoint, "/OPL");
+  char commonPath[32];
+  snprintf(commonPath, sizeof(commonPath), "%s__common", deviceMountpoint);
+  if (!strcmp(partitionPath, commonPath)) {
+    dev->mountpoint = malloc(strlen(pfsMount) + 5);
+    if (dev->mountpoint) {
+      strcpy(dev->mountpoint, pfsMount);
+      strcat(dev->mountpoint, "/OPL");
+    } else {
+      free(dev);
+      return NULL;
+    }
   } else
-    dev->mountpoint = strdup(PFS_MOUNTPOINT);
+    dev->mountpoint = strdup(pfsMount);
 
-  DPRINTF("Using %s for HDL metadata\n", dev->mountpoint);
-
+  if (dev->mountpoint)
+    DPRINTF("Using %s for HDL metadata\n", dev->mountpoint);
   return dev;
 }
 
-// Attempts to mount PFS partition containing OPL files and returns DeviceModeEntry for mounted filesystem
-// Note: this device entry is not added to deviceModeMap and might leak memory if not freed properly
-struct DeviceMapEntry *mountPFS() {
-  static char *pfsPartitions[] = {
-      "hdd0:+OPL",
-      "hdd0:__common",
-  };
+// Mounts PFS partition with OPL metadata for the given HDL device. pfsMount is the PFS mount to use (e.g. "pfs0:"). Returns BackendDevice or NULL.
+static struct BackendDevice *mountPFS(const char *deviceMountpoint, const char *pfsMount) {
+  char partitionBuf[32];
 
-  // Try to read OPL config and get a partition name
-  char *oplPartition = readOPLConfig();
+  char *oplPartition = readOPLConfig(deviceMountpoint, pfsMount);
   if (oplPartition) {
-    if (fileXioMount(PFS_MOUNTPOINT, oplPartition, FIO_MT_RDWR))
-      DPRINTF("WARN: failed to mount %s, will try to use fallbacks\n", oplPartition);
+    if (fileXioMount(pfsMount, oplPartition, FIO_MT_RDWR))
+      DPRINTF("WARN: failed to mount %s, will try fallbacks\n", oplPartition);
     else {
-      DPRINTF("Mounted %s as pfs0:\n", oplPartition);
-      struct DeviceMapEntry *dev = createMetadataEntry(oplPartition);
+      DPRINTF("Mounted %s as %s\n", oplPartition, pfsMount);
+      struct BackendDevice *dev = createMetadataEntry(deviceMountpoint, oplPartition, pfsMount);
       free(oplPartition);
       return dev;
     }
     free(oplPartition);
   }
 
-  // Fallback to predefined partitions
-  for (int i = 0; i < sizeof(pfsPartitions) / sizeof(char *); i++) {
-    if (fileXioMount(PFS_MOUNTPOINT, pfsPartitions[i], FIO_MT_RDWR)) {
-      continue;
-    }
-
-    DPRINTF("Mounted %s as pfs0:\n", pfsPartitions[i]);
-    return createMetadataEntry(pfsPartitions[i]);
+  snprintf(partitionBuf, sizeof(partitionBuf), "%s+OPL", deviceMountpoint);
+  if (!fileXioMount(pfsMount, partitionBuf, FIO_MT_RDWR)) {
+    DPRINTF("Mounted %s as %s\n", partitionBuf, pfsMount);
+    return createMetadataEntry(deviceMountpoint, partitionBuf, pfsMount);
   }
-
+  snprintf(partitionBuf, sizeof(partitionBuf), "%s__common", deviceMountpoint);
+  if (!fileXioMount(pfsMount, partitionBuf, FIO_MT_RDWR)) {
+    DPRINTF("Mounted %s as %s\n", partitionBuf, pfsMount);
+    return createMetadataEntry(deviceMountpoint, partitionBuf, pfsMount);
+  }
   return NULL;
 }
 
-void syncHDL() {
+static void syncHDL(struct BackendDevice *device) {
+  char pfsBase[12];
+  if (!device || !device->metadev || !device->metadev->mountpoint ||
+      getMountpointFromPath(device->metadev->mountpoint, pfsBase, sizeof(pfsBase)) != 0)
+    return;
   fileXioDevctl("pfs:", PDIOC_CLOSEALL, NULL, 0, NULL, 0);
-  fileXioSync("pfs0:", FXIO_WAIT);
+  fileXioSync(pfsBase, FXIO_WAIT);
 }
 
-// Initializes map entries for APA-formatted HDDs with HDL partitions
-int initHDL(int deviceIdx) {
-  char mountpoint[] = "hdd0:";
-  DIR *directory;
+static void cleanupHDL(struct BackendDevice *device) {
+  char pfsBase[12];
+  if (!device || !device->metadev || !device->metadev->mountpoint ||
+      getMountpointFromPath(device->metadev->mountpoint, pfsBase, sizeof(pfsBase)) != 0)
+    return;
+  fileXioUmount(pfsBase);
+}
 
-  deviceModeMap[deviceIdx].mode = MODE_NONE;
+// Initializes one backend device slot for APA-formatted HDL. Uses device info for mountpoint (e.g. hdd0:, hdd1:). Returns 1 on success, negative on
+// error.
+int initHDL(struct BackendDevice *slot) {
+  char baseMountpoint[8];
+  int maxDevices = getDeviceInfo(Device_HDD, baseMountpoint, sizeof(baseMountpoint));
+  if (maxDevices <= 0)
+    return -ENODEV;
 
-  // Wait for IOP to initialize device driver
-  for (int attempts = 0; attempts < 20; attempts++) {
-    directory = opendir(mountpoint);
-    if (directory != NULL) {
-      closedir(directory);
-      break;
+  slot->type = Device_None;
+
+  char path[12];
+  for (int i = 0; i < maxDevices; i++) {
+    snprintf(path, sizeof(path), "%s%d:", baseMountpoint, i);
+
+    int maxAttempts = getProbeDelay() > 0 ? getProbeDelay() : 1;
+    DIR *directory = NULL;
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      directory = opendir(path);
+      if (directory != NULL) {
+        closedir(directory);
+        break;
+      }
+      sleep(1);
     }
-    delay(5);
+    if (directory == NULL)
+      continue;
+
+    if (checkAPAHeader(path) != 0) {
+      DPRINTF("No APA partition table on %s\n", path);
+      continue;
+    }
+
+    slot->type = Device_HDD;
+    slot->mountpoint = strdup(path);
+    if (!slot->mountpoint)
+      return -ENOMEM;
+    slot->index = i;
+    slot->scan = &findHDLTargets;
+    slot->sync = &syncHDL;
+    slot->cleanup = &cleanupHDL;
+    slot->titles = NULL;
+    char pfsMount[12];
+    snprintf(pfsMount, sizeof(pfsMount), "pfs%d:", i);
+    slot->metadev = mountPFS(path, pfsMount);
+    if (!slot->metadev) {
+      DPRINTF("Failed to mount PFS partition on %s\n", path);
+      free(slot->mountpoint);
+      slot->mountpoint = NULL;
+      slot->type = Device_None;
+      continue;
+    }
+    DPRINTF("Found device %s\n", slot->mountpoint);
+    return 1;
   }
-  if (directory == NULL) {
-    return -ENODEV;
-  }
-
-  // Make sure hdd0: is an APA-formatted drive
-  if (checkAPAHeader()) {
-    DPRINTF("ERROR: failed to find APA partition table on hdd0\n");
-    return -ENODEV;
-  }
-
-  // Set device mountpoint
-  deviceModeMap[deviceIdx].mode = MODE_HDL;
-  deviceModeMap[deviceIdx].mountpoint = strdup(mountpoint);
-  deviceModeMap[deviceIdx].index = 0;
-  // Set functions
-  deviceModeMap[deviceIdx].scan = &findHDLTargets;
-  deviceModeMap[deviceIdx].sync = &syncHDL;
-
-  // Mount metadata partition
-  deviceModeMap[deviceIdx].metadev = mountPFS();
-  if (!deviceModeMap[deviceIdx].metadev) {
-    DPRINTF("Failed to mount PFS partition\n");
-    return -ENODEV;
-  }
-
-  uiSplashLogString(LEVEL_INFO_NODELAY, "Found device %s\n", mountpoint);
-
-  return 1;
+  return -ENODEV;
 }
 
 //
@@ -255,52 +283,73 @@ Target *scanPartition(char *deviceMountpoint, char *partitionName, uint32_t star
   title->next = NULL;
   title->id = strdup(header.startup);
   title->name = strdup(header.gamename);
-  // Build full path
-  title->fullPath = calloc(sizeof(char), strlen(partitionName) + 5);
-  strcpy(title->fullPath, "hdl:");
+  // Build full path as deviceMountpoint + partitionName
+  title->fullPath = calloc(sizeof(char), strlen(deviceMountpoint) + strlen(partitionName) + 1);
+  strcpy(title->fullPath, deviceMountpoint);
   strcat(title->fullPath, partitionName);
 
   return title;
 }
 
-// Scans given storage device and appends valid launch candidates to TargetList
+// Scans given storage device and fills device->titles with valid launch candidates
 // Returns 0 if successful, non-zero if no targets were found or an error occurs
-int findHDLTargets(TargetList *result, struct DeviceMapEntry *device) {
-  // Open the drive
+int findHDLTargets(struct BackendDevice *device) {
+  if (!device || !device->mountpoint)
+    return -ENODEV;
+  if (device->titles)
+    freeTargetList(device->titles);
+  device->titles = calloc(1, sizeof(TargetList));
+  if (!device->titles)
+    return -ENOMEM;
+  TargetList *result = device->titles;
+
   int fd = fileXioDopen(device->mountpoint);
   if (fd < 0) {
     DPRINTF("ERROR: failed to open %s for scanning: %d\n", device->mountpoint, fd);
+    free(device->titles);
+    device->titles = NULL;
     return -ENODEV;
   }
 
   iox_dirent_t dirent = {0};
-  // PS2HDD Dread calls return APA partitions
   while (fileXioDread(fd, &dirent) > 0) {
-    // Check partition magic and partition flag
     if (dirent.stat.mode == HDL_FS_MAGIC && (dirent.stat.attr & APA_FLAG_SUB) == 0) {
       Target *title = scanPartition(device->mountpoint, dirent.name, dirent.stat.private_5);
       if (!title)
         continue;
-
       title->device = device;
-
-      // Increment title counter and update target list
       result->total++;
       if (result->first == NULL) {
-        // If this is the first entry, update both pointers
         result->first = title;
         result->last = title;
-      } else {
+      } else
         insertIntoTargetList(result, title);
-      }
     }
   }
   fileXioDclose(fd);
 
-  if (result->total == 0)
+  if (result->total == 0) {
+    freeTargetList(device->titles);
+    device->titles = NULL;
     return -ENOENT;
+  }
 
-  // Set indexes for each title
+  TitleIDCache *cache = malloc(sizeof(TitleIDCache));
+  int cacheNeedsSave = 0;
+  if (loadTitleIDCache(cache, device) == 0) {
+    if (cache->total != result->total)
+      cacheNeedsSave = 1;
+    Target *curTarget = result->first;
+    while (curTarget != NULL) {
+      CacheEntry *cached = getCachedEntry(curTarget->fullPath, cache);
+      if (cached != NULL)
+        curTarget->flags = cached->flags;
+      curTarget = curTarget->next;
+    }
+  } else
+    cacheNeedsSave = 1;
+  freeTitleCache(cache);
+
   int idx = 0;
   Target *curTitle = result->first;
   while (curTitle != NULL) {
@@ -309,5 +358,10 @@ int findHDLTargets(TargetList *result, struct DeviceMapEntry *device) {
     curTitle = curTitle->next;
   }
 
+  if (cacheNeedsSave) {
+    DPRINTF("Updating title cache...\n");
+    if (storeTitleIDCache(result, device))
+      DPRINTF("Failed to save title cache\n");
+  }
   return 0;
 }

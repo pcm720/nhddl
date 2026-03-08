@@ -14,7 +14,6 @@ set(SOURCES
     src/main.c
     src/common.c
     src/neutrino.c
-    src/target.c
     src/forwarder.c
 
     # UI
@@ -33,13 +32,15 @@ set(SOURCES
     # Devices
     src/devices/devices.c
     src/devices/utils.c
-    src/devices/list.c
+    src/devices/info.c
     src/devices/pad.c
 
     # Backends
     src/backends/backends.c
-    src/backends/mmce.c
-    src/backends/bdm.c
+    src/backends/init.c
+    src/backends/utils.c
+    src/backends/cache.c
+    src/backends/target.c
     src/backends/iso.c
     src/backends/hdl.c
     src/backends/title_id.c

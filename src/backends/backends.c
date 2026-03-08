@@ -1,64 +1,103 @@
 #include "backends/backends.h"
+#include "backends/cache.h"
 #include "common.h"
+#include "config/config.h"
+#include "devices/devices.h"
+#include "devices/utils.h"
 #include "dprintf.h"
 #include "ui/ui.h"
+#include <dirent.h>
 #include <errno.h>
 #include <kernel.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <usbhdfsd-common.h>
+#include <unistd.h>
 
-// Used to get BDM driver name and make devctl calls
-#define NEWLIB_PORT_AWARE
-#include <fileXio_rpc.h>
-#include <io_common.h>
+// Contains all available backend devices. Device must be ignored if mode is Device_None
+struct BackendDevice backendDevices[MAX_DEVICES];
 
-// Function used to initialize device map entry.
-// Must initialize DeviceMapEntries in deviceModeMap and return number of found devices or negative error number.
-// newDeviceIdx is the first free index in deviceModeMap array
-typedef int (*backendInitFunc)(int newDeviceIdx);
-
-typedef struct {
-  char *name;
-  DeviceType targetModes;
-  backendInitFunc initFunction;
-} SupportedBackends;
-
-int initBDMDevices();
-int initMMCEDevices();
-int initHDL();
-void delay(int count);
-
-// List of modules to load
-static SupportedBackends backends[] = {
-    {.name = "MMCE", .initFunction = (void *)initMMCEDevices, .targetModes = MODE_MMCE},
-    {.name = "BDM", .initFunction = (void *)initBDMDevices, .targetModes = MODE_ATA | MODE_MX4SIO | MODE_UDPBD | MODE_USB | MODE_ILINK},
-    {.name = "HDL", .initFunction = (void *)initHDL, .targetModes = MODE_HDL},
-};
-
-// Contains all available devices.
-// Device must be ignored if mode is MODE_ALL or MODE_NONE
-struct DeviceMapEntry deviceModeMap[MAX_DEVICES] = {};
-
-// Initializes device mode map and returns device count
-int initDeviceMap() {
-  int deviceCount = 0;
-  int res = 0;
-  for (int i = 0; i < sizeof(backends) / sizeof(SupportedBackends); i++) {
-    if (!(backends[i].targetModes & LAUNCHER_OPTIONS.mode)) {
-      // Skip initializing unneeded backends
-      continue;
-    }
-
-    uiSplashLogString(LEVEL_INFO_NODELAY, "Initializing %s backend\n", backends[i].name);
-    if ((res = backends[i].initFunction(deviceCount)) < 0) {
-      DPRINTF("ERROR: Failed to initialize %s backend: %d\n", backends[i].name, res);
-      continue;
-    }
-    deviceCount += res;
-  }
-  return deviceCount;
+int getBackendDeviceCount(void) {
+  int i = 0;
+  while (i < MAX_DEVICES && backendDevices[i].type != Device_None)
+    i++;
+  return i;
 }
 
+struct BackendDevice *getBackendDeviceAt(int index) {
+  int n = getBackendDeviceCount();
+  if (index < 0 || index >= n)
+    return NULL;
+  return &backendDevices[index];
+}
 
+TargetList *getBackendDeviceTitles(struct BackendDevice *device) { return device ? device->titles : NULL; }
+
+int getBackendDeviceCountByType(DeviceType type) {
+  int n = 0;
+  for (int i = 0; i < MAX_DEVICES && backendDevices[i].type != Device_None; i++)
+    if (backendDevices[i].type == type)
+      n++;
+  return n;
+}
+
+struct BackendDevice *getBackendDeviceOfType(DeviceType type, int index) {
+  int cur = 0;
+  for (int i = 0; i < MAX_DEVICES && backendDevices[i].type != Device_None; i++) {
+    if (backendDevices[i].type != type)
+      continue;
+    if (cur == index)
+      return &backendDevices[i];
+    cur++;
+  }
+  return NULL;
+}
+
+// Remove backends whose type is in the conflict mask; compact array so no holes
+void removeConflictingBackends(DeviceType conflictMask) {
+  int write = 0;
+  for (int read = 0; read < MAX_DEVICES; read++) {
+    if (backendDevices[read].type == Device_None)
+      break;
+    if (conflictMask & backendDevices[read].type) {
+      freeBackendDeviceTitles(&backendDevices[read]);
+      backendDevices[read].type = Device_None;
+      backendDevices[read].mountpoint = NULL;
+      backendDevices[read].scan = NULL;
+      backendDevices[read].sync = NULL;
+      backendDevices[read].cleanup = NULL;
+      backendDevices[read].metadev = NULL;
+      continue;
+    }
+    if (write != read) {
+      backendDevices[write] = backendDevices[read];
+      backendDevices[read].type = Device_None;
+      backendDevices[read].mountpoint = NULL;
+      backendDevices[read].scan = NULL;
+      backendDevices[read].sync = NULL;
+      backendDevices[read].cleanup = NULL;
+      backendDevices[read].metadev = NULL;
+    }
+    write++;
+  }
+  for (int i = write; i < MAX_DEVICES; i++)
+    backendDevices[i].type = Device_None;
+}
+
+void freeAllBackendTitles(void) {
+  for (int i = 0; i < MAX_DEVICES && backendDevices[i].type != Device_None; i++)
+    freeBackendDeviceTitles(&backendDevices[i]);
+}
+
+void cleanupAllBackends(void) {
+  for (int i = 0; i < MAX_DEVICES && backendDevices[i].type != Device_None; i++)
+    if (backendDevices[i].cleanup)
+      backendDevices[i].cleanup(&backendDevices[i]);
+}
+
+// Rescan all backend devices (e.g. after conflict reinit)
+void rescanAllBackendDevices(void) {
+  for (int i = 0; i < MAX_DEVICES && backendDevices[i].type != Device_None; i++)
+    if (backendDevices[i].scan)
+      backendDevices[i].scan(&backendDevices[i]);
+}

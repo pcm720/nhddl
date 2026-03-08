@@ -1,19 +1,27 @@
-#ifndef _TARGET_H_
-#define _TARGET_H_
+#ifndef _BACKENDS_TARGET_H_
+#define _BACKENDS_TARGET_H_
 
 #include "common.h"
 #include <stdint.h>
 
-// Defined in devices.h
-struct DeviceMapEntry;
+// Defined in backends.h
+struct BackendDevice;
+
+// Title flags (bitfield), used in Target and cache. Mask unknown bits when reading for forward compatibility.
+typedef enum {
+  TitleFlag_None = 0,
+  TitleFlag_Favorite = (1 << 0),
+  /* bits 1–31 reserved for future use */
+} TitleFlags;
 
 // An entry in TargetList
 typedef struct Target {
-  uint16_t idx;           // ISO index (monotonically increasing). Used to uniquely identify the list entry
-  char *fullPath;         // Full path to ISO
-  char *name;             // Target name (extracted from file name)
-  char *id;               // Title ID
-  struct DeviceMapEntry *device; // Device entry
+  uint16_t idx;                 // ISO index (monotonically increasing). Used to uniquely identify the list entry
+  char *fullPath;               // Full path to ISO
+  char *name;                   // Target name (extracted from file name)
+  char *id;                     // Title ID
+  uint32_t flags;               // TitleFlags bitfield
+  struct BackendDevice *device; // Device entry
 
   struct Target *prev; // Previous target in the list
   struct Target *next; // Next target in the list

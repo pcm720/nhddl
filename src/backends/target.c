@@ -1,6 +1,6 @@
-#include "target.h"
-#include "common.h"
+#include "backends/target.h"
 #include "backends/backends.h"
+#include "common.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <ps2sdkapi.h>
@@ -12,9 +12,9 @@
 // Completely frees TargetList. Passed pointer will not be valid after this function executes
 void freeTargetList(TargetList *result) {
   Target *target = result->first;
-  while (target != NULL) {
+  while (target != NULL)
     target = freeTarget(result, target);
-  }
+
   result->first = NULL;
   result->last = NULL;
   result->total = 0;
@@ -25,9 +25,8 @@ void freeTargetList(TargetList *result) {
 Target *getTargetByIdx(TargetList *targets, int idx) {
   Target *current = targets->first;
   while (1) {
-    if (current->idx == idx) {
+    if (current->idx == idx)
       return current;
-    }
 
     if (current->next == NULL)
       break;
@@ -45,6 +44,7 @@ Target *copyTarget(Target *src) {
   copy->fullPath = strdup(src->fullPath);
   copy->name = strdup(src->name);
   copy->id = strdup(src->id);
+  copy->flags = src->flags;
   copy->device = src->device;
 
   return copy;
@@ -53,9 +53,8 @@ Target *copyTarget(Target *src) {
 // Converts lowercase ASCII string into uppercase
 void toUppercase(char *str) {
   for (int i = 0; i <= strlen(str); i++)
-    if (str[i] >= 0x61 && str[i] <= 0x7A) {
+    if (str[i] >= 0x61 && str[i] <= 0x7A)
       str[i] -= 32;
-    }
 }
 
 // Inserts title in the list while keeping the alphabetical order
