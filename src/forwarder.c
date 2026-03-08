@@ -1,74 +1,110 @@
-#include "common.h"
 #include "backends/backends.h"
-#include "dprintf.h"
-#include "neutrino.h"
-#include "devices/devices.h"
-#include "options.h"
 #include "backends/title_id.h"
+#include "config/config.h"
+#include "config/neutrino_args.h"
+#include "devices/devices.h"
+#include "devices/utils.h"
+#include "dprintf.h"
+#include "neutrino/neutrino.h"
+#include <fcntl.h>
+#include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 // Quickly forwards the image to Neutrino without loading the UI
 int forwardBoot() {
-  int res;
-  // Forward to Neutrino without loading the UI
-  if (!LAUNCHER_OPTIONS.noInit)
-    res = initModules(INIT_TYPE_FULL);
-  else
-    res = initModules(INIT_TYPE_NOINIT);
-  if (res) {
-    DPRINTF("Failed to init modules: %d\n", res);
+  const char *image = getImage();
+  if (!image || !image[0]) {
+    displayError("No image path\n");
+    return -EINVAL;
+  }
+
+  // Get relative path to ISO and try to guess device type
+  int relIdx = getRelativePathIdx((char *)image);
+  DeviceType type = guessDeviceType((char *)image);
+  if ((relIdx < 0) || (type == Device_None)) {
+    displayError("Invalid image path\n");
+    return -EINVAL;
+  }
+
+  // Generate canonical path for initializing device backends
+  char canonicalPath[PATH_MAX] = {0};
+  if (type == Device_BDM) {
+    // Default to exFAT partition on internal HDD for BDM
+    getDeviceInfo(Device_ATA, canonicalPath, PATH_MAX);
+    strcat(canonicalPath, "0:");
+    strcat(canonicalPath, image + relIdx);
+  } else
+    strncpy(canonicalPath, image, PATH_MAX - 1);
+
+  // Initialize device backend
+  int res = initBackendForImage(canonicalPath);
+  if (res < 0) {
+    displayError("Failed to init backend: %d\n", res);
     return res;
   }
 
-  int deviceCount = initDeviceMap();
-  if (deviceCount <= 0) {
-    DPRINTF("Failed to init devices: %d\n", deviceCount);
-    return -ENODEV;
-  }
-
-  if ((res = tryFile(LAUNCHER_OPTIONS.image)) < 0) {
-    DPRINTF("Target image not found: %d\n", res);
+  // Check if image exist
+  res = open(canonicalPath, O_RDONLY);
+  if (res < 0) {
+    displayError("Target image not found\n");
     return -ENOENT;
   }
+  close(res);
 
-  if (findNeutrinoELF(NULL, INIT_TYPE_FULL)) {
-    DPRINTF("Failed to find Neutrino\n");
-    return -ENOENT;
-  }
-
+  // Create target entity
   Target target = {
       .idx = 0,
-      .id = getTitleID(LAUNCHER_OPTIONS.image),
-      .fullPath = LAUNCHER_OPTIONS.image,
+      .id = getTitleID((char *)image),
+      .device = getBackendDeviceForPath(canonicalPath),
+      .path = (char *)(image + relIdx),
   };
-
-  char *fileext = strrchr(LAUNCHER_OPTIONS.image, '.');
-  if ((fileext != NULL) && (!strcmp(fileext, ".iso") || !strcmp(fileext, ".ISO"))) {
-    // Get file name without the extension
-    char *isoName = strrchr(LAUNCHER_OPTIONS.image, '/');
-    if (!isoName)
-      isoName = LAUNCHER_OPTIONS.image;
-    else
-      isoName++;
-
-    int nameLength = (int)(fileext - isoName);
-    target.name = calloc(sizeof(char), nameLength + 1);
-    strncpy(target.name, isoName, nameLength);
-  }
-
-  for (int i = 0; i < deviceCount; i++)
-    if (strstr(LAUNCHER_OPTIONS.image, deviceModeMap[i].mountpoint)) {
-      target.device = &deviceModeMap[i];
-      break;
-    }
-
   if (!target.device) {
-    DPRINTF("Target device not found\n");
+    displayError("Target device not found\n");
+    free(target.id);
     return -ENODEV;
   }
 
-  // Run the image
-  launchTitle(&target, loadLaunchArgumentLists(&target));
-  return -ENOENT;
+  // Parse ISO name from path
+  char *fileext = strrchr((char *)image, '.');
+  if (fileext && (!strcmp(fileext, ".iso") || !strcmp(fileext, ".ISO"))) {
+    char *isoName = strrchr((char *)image, '/');
+    if (!isoName)
+      isoName = (char *)image;
+    else
+      isoName++;
+    int nameLength = (int)(fileext - isoName);
+    target.name = calloc(sizeof(char), nameLength + 1);
+    if (target.name)
+      strncpy(target.name, isoName, nameLength);
+  }
+
+  // Load Neutrino arguments
+  ArgumentList *globalArguments = calloc(sizeof(ArgumentList), 1);
+  ArgumentList *titleArguments = calloc(sizeof(ArgumentList), 1);
+  if (!globalArguments || !titleArguments) {
+    displayError("Failed to allocate memory for Neutrino arguments\n");
+    __builtin_trap();
+  }
+  loadGlobalNeutrinoArguments(globalArguments, target.device);
+  loadTitleNeutrinoArguments(titleArguments, &target);
+  // Merge title into global (global is base); title wins on duplicate names.
+  ArgumentList *arguments = mergeNeutrinoArguments(globalArguments, titleArguments);
+  freeArgumentList(globalArguments);
+  freeArgumentList(titleArguments);
+
+  switch ((res = launchTarget(&target, arguments))) {
+  case -ENOENT:
+    displayError("Neutrino not found\n");
+    break;
+  case -EINVAL:
+    displayError("Unsupported target device\n");
+    break;
+  }
+  freeArgumentList(arguments);
+  free(target.name);
+  free(target.id);
+  return res;
 }
