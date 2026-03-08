@@ -216,7 +216,7 @@ int saveOptions(void) {
     if (fprintf(f, FMT_OPTION_STR, OPTION_VMODE, vmodeToStr(vmode)) < 0)
       err = -EIO;
   }
-  if (writeDeviceOptions(f, getEnabledDevices()) != 0)
+  if (writeDeviceOptions(f, getEnabledDevices()))
     err = -EIO;
   if (getIPAddress()[0] != '\0') {
     if (fprintf(f, FMT_OPTION_STR, OPTION_IP_ADDRESS, getIPAddress()) < 0)
@@ -234,7 +234,7 @@ int saveOptions(void) {
     if (fprintf(f, FMT_OPTION_FLAG, OPTION_NO_INIT) < 0)
       err = -EIO;
   }
-  if (fclose(f) != 0)
+  if (fclose(f))
     err = -EIO;
   return err;
 }
