@@ -1,5 +1,3 @@
-// Config module internal common code (distinct from src/common.c).
-
 #include "config/title.h"
 #include <libcdvd.h>
 #include <stdint.h>

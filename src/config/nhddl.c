@@ -1,6 +1,5 @@
 #include "config/nhddl.h"
 #include "backends/backends.h"
-#include "common.h"
 #include "config/arguments.h"
 #include "config/config.h"
 #include "config/title.h"
@@ -87,18 +86,36 @@ static const char *vmodeToStr(VModeType v) {
   }
 }
 
+static const char *deviceToStr(DeviceType type) {
+  switch (type) {
+  case Device_ATA:
+    return "ata";
+  case Device_MMCE:
+    return "mmce";
+  case Device_HDD:
+    return "hdl";
+  case Device_MX4SIO:
+    return "mx4sio";
+  case Device_UDPFS:
+    return "udpfs";
+  case Device_USB:
+    return "usb";
+  case Device_iLink:
+    return "ilink";
+  }
+  return NULL;
+}
+
 // Writes one -device=<name> line for each bit set in mask. Returns 0 on success.
 static int writeDeviceOptions(FILE *f, DeviceType mask) {
-  static const struct {
-    DeviceType bit;
-    const char *name;
-  } devices[] = {
-      {Device_ATA, "ata"}, {Device_HDD, "hdl"},     {Device_MX4SIO, "mx4sio"}, {Device_UDPFS, "udpfs"},
-      {Device_USB, "usb"}, {Device_iLink, "ilink"}, {Device_MMCE, "mmce"},
+  static const DeviceType bits[] = {
+      Device_ATA, Device_HDD, Device_MX4SIO, Device_UDPFS,
+      Device_USB, Device_iLink, Device_MMCE,
   };
-  for (size_t i = 0; i < sizeof(devices) / sizeof(devices[0]); i++) {
-    if (mask & devices[i].bit) {
-      if (fprintf(f, FMT_OPTION_STR, OPTION_DEVICE, devices[i].name) < 0)
+  for (size_t i = 0; i < sizeof(bits) / sizeof(bits[0]); i++) {
+    if (mask & bits[i]) {
+      const char *name = deviceToStr(bits[i]);
+      if (name && fprintf(f, FMT_OPTION_STR, OPTION_DEVICE, name) < 0)
         return -EIO;
     }
   }
@@ -149,26 +166,15 @@ void parseArgv(int argc, char *argv[]) {
 // Loads NHDDL options from optionsFile in config root path
 int loadOptions(void) {
   const char *root = getNHDDLRoot();
-  char lineBuffer[PATH_MAX + sizeof(optionsFile) + 1];
-  lineBuffer[0] = '\0';
-  if (root && root[0] != '\0') {
-    size_t rootLen = strlen(root);
-    if (rootLen < sizeof(lineBuffer) - sizeof(optionsFile)) {
-      memcpy(lineBuffer, root, rootLen + 1);
-      strcat(lineBuffer, optionsFile);
-      if (!tryFile(lineBuffer))
-        goto fileExists;
-    }
+  if (!root || root[0] == '\0')
+    return -ENOENT;
+  char lineBuffer[PATH_MAX];
+  snprintf(lineBuffer, sizeof(lineBuffer), "%s%s", root, optionsFile);
+  if (tryFile(lineBuffer)) {
+    DPRINTF("Can't load options file, will use defaults\n");
+    return -ENOENT;
   }
-  if (lineBuffer[0] == '\0') {
-    strcpy(lineBuffer, optionsFile);
-    if (!tryFile(lineBuffer))
-      goto fileExists;
-  }
-  DPRINTF("Can't load options file, will use defaults\n");
-  return -ENOENT;
 
-fileExists:
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, NULL, lineBuffer)) {
     DPRINTF("Can't load options file, will use defaults\n");
@@ -201,16 +207,10 @@ fileExists:
 // Saves current config to optionsFile in config root path
 int saveOptions(void) {
   const char *root = getNHDDLRoot();
-  char path[PATH_MAX + sizeof(optionsFile) + 1];
-  if (root && root[0] != '\0') {
-    size_t rootLen = strlen(root);
-    if (rootLen >= sizeof(path) - sizeof(optionsFile))
-      return -EINVAL;
-    memcpy(path, root, rootLen + 1);
-    strcat(path, optionsFile);
-  } else {
-    strcpy(path, optionsFile);
-  }
+  if (!root || root[0] == '\0')
+    return -ENOENT;
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path), "%s%s", root, optionsFile);
 
   FILE *f = fopen(path, "w");
   if (!f)

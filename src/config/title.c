@@ -232,11 +232,7 @@ int updateTitleLaunchArguments(Target *target, ArgumentList *options) {
       // Check if arg is a file path and trim mountpoint
       int relIdx = tArg->value ? getRelativePathIdx(tArg->value) : -1;
       const char *valStr = (tArg->value && relIdx > 0) ? &tArg->value[relIdx] : (tArg->value ? tArg->value : "");
-      if (tArg->isDisabled) {
-        len = sprintf(lineBuffer, "#-%s%s%s\n", tArg->arg, valStr[0] ? "=" : "", valStr);
-      } else {
-        len = sprintf(lineBuffer, "-%s%s%s\n", tArg->arg, valStr[0] ? "=" : "", valStr);
-      }
+      len = sprintf(lineBuffer, "%s-%s%s%s\n", (tArg->isDisabled) ? "#" : "", tArg->arg, (valStr[0]) ? "=" : "", valStr);
     } else if (tArg->isDisabled) {
       len = sprintf(lineBuffer, "#-%s\n", tArg->arg);
     }
@@ -253,98 +249,74 @@ out:
   return ret;
 }
 
+static char *skip_space(char *s) {
+  while (isspace((unsigned char)*s))
+    s++;
+  return s;
+}
+
+static void trim_trailing(char *s) {
+  char *end = s + strlen(s);
+  while (end > s && (isspace((unsigned char)end[-1]) || end[-1] == '\r'))
+    *--end = '\0';
+}
+
 // Parses file into ArgumentList. Result may contain parsed arguments even if an error is returned.
 // CNF format: one argument per line as -name=value or -name; # starts comments; # -name=value is disabled.
 // Adds mountpoint with the deviceNumber to arguments values that start with \ or /
 static int parseOptionsFile(ArgumentList *result, FILE *file, struct BackendDevice *device) {
-  // Our lines will mostly consist of file paths, which aren't likely to exceed 300 characters due to 255 character limit in exFAT path component
-  char lineBuffer[PATH_MAX + 1];
+  char lineBuffer[PATH_MAX];
   lineBuffer[0] = '\0';
-  int isDisabled = 0;
-  char *valuePtr = NULL;
-  char *argPtr = NULL;
 
-  while (fgets(lineBuffer, PATH_MAX, file)) { // fgets returns NULL if EOF or an error occurs
-    argPtr = lineBuffer;
-    while (isspace((int)*argPtr))
-      argPtr++; // Advance until the first non-whitespace character
-
-    // Trim trailing whitespace and newline
-    char *lineEnd = argPtr + strlen(argPtr);
-    while (lineEnd > argPtr && (isspace((int)lineEnd[-1]) || lineEnd[-1] == '\r'))
-      *--lineEnd = '\0';
-
-    if (argPtr[0] == '\0') // Skip empty lines
+  while (fgets(lineBuffer, sizeof(lineBuffer), file)) {
+    char *line = skip_space(lineBuffer);
+    trim_trailing(line);
+    if (line[0] == '\0')
+      continue;
+    if (line[0] != '-' && line[0] != '#')
       continue;
 
-    // Ignore lines that don't start with - or #
-    if (argPtr[0] != '-' && argPtr[0] != '#')
-      continue;
-
-    if (argPtr[0] == '#') {
-      // Skip optional whitespace after #
-      char *p = argPtr + 1;
-      while (isspace((int)*p))
-        p++;
-      if (*p != '-') // Comment line, not a disabled argument
+    int isDisabled = 0;
+    if (line[0] == '#') {
+      line = skip_space(line + 1);
+      if (line[0] != '-')
         continue;
-      // Disabled argument: parse from the -
-      argPtr = p;
       isDisabled = 1;
-    } else {
-      isDisabled = 0;
     }
+    line++; // skip '-'
 
-    // argPtr now points to -name=value or -name
-    if (argPtr[0] != '-')
-      continue;
-    argPtr++; // Skip leading -
-    valuePtr = strchr(argPtr, '=');
-    if (valuePtr) {
-      *valuePtr = '\0';
-      valuePtr++;
-      // Trim value
-      while (isspace((int)*valuePtr))
-        valuePtr++;
-      valuePtr[strcspn(valuePtr, "#\r\n")] = '\0';
-      char *vEnd = valuePtr + strlen(valuePtr);
-      while (vEnd > valuePtr && isspace((int)vEnd[-1]))
-        *--vEnd = '\0';
+    char *value = strchr(line, '=');
+    if (value) {
+      *value++ = '\0';
+      value = skip_space(value);
+      value[strcspn(value, "#\r\n")] = '\0';
+      trim_trailing(value);
     } else {
-      valuePtr = (char *)"";
+      value = (char *)"";
     }
-
-    // Trim trailing whitespace from arg name
-    char *argEnd = argPtr + strlen(argPtr);
-    while (argEnd > argPtr && isspace((int)argEnd[-1]))
-      *--argEnd = '\0';
-
-    if (argPtr[0] == '\0') // Empty arg name
+    trim_trailing(line);
+    if (line[0] == '\0')
       continue;
 
-    char *newValue = NULL;
-    if (device && valuePtr[0] != '\0' && (valuePtr[0] == '/' || valuePtr[0] == '\\')) {
-      // Add device mountpoint to argument value if path starts with \ or /
-      newValue = calloc(sizeof(char), strlen(valuePtr) + 1 + strlen(device->mountpoint));
-      strcpy(newValue, device->mountpoint);
-      strcat(newValue, valuePtr);
+    char *resolved = NULL;
+    if (device && value[0] != '\0' && (value[0] == '/' || value[0] == '\\')) {
+      resolved = malloc(strlen(device->mountpoint) + strlen(value) + 1);
+      if (resolved) {
+        strcpy(resolved, device->mountpoint);
+        strcat(resolved, value);
+      }
     }
-
-    Argument *arg = NULL;
-    if (newValue) {
-      arg = newArgument(argPtr, newValue);
-      free(newValue);
-    } else
-      arg = newArgument(argPtr, valuePtr[0] != '\0' ? valuePtr : NULL);
-
+    const char *val = resolved ? resolved : value;
+    Argument *arg = newArgument(line, val[0] ? (char *)val : NULL);
+    free(resolved);
     arg->isDisabled = isDisabled;
     appendArgument(result, arg);
   }
+
   if (ferror(file) || !feof(file)) {
     DPRINTF("ERROR: Failed to read config file\n");
     return -EIO;
   }
-
   return 0;
 }
 

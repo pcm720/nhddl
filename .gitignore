@@ -6,6 +6,7 @@ neutrino/
 *.o
 *.irx
 *.cnf
+obj*/
 !examples/*.cnf
 *.toml
 # Created by https://www.toptal.com/developers/gitignore/api/macos,windows,linux
