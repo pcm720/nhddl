@@ -51,7 +51,7 @@ char *getTitleID(char *path) {
   // Get location of root directory entry
   uint32_t rootLBA = 0;
   int rootLength = 0;
-  if (getPVD(fd, &rootLBA, &rootLength) != 0) {
+  if (getPVD(fd, &rootLBA, &rootLength)) {
     DPRINTF("WARN: %s: Failed to parse ISO PVD\n", path);
     close(fd);
     return NULL;

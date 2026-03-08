@@ -122,7 +122,7 @@ int initBackend(DeviceType device) {
       }
     }
   }
-  if (loadDeviceModules(device) != 0)
+  if (loadDeviceModules(device))
     return -EIO;
   if (listInvalidated)
     rescanAllBackendDevices();

@@ -122,11 +122,11 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
     }
 
     char fullPathBuf[PATH_MAX];
-    if (getTargetFullPath(curTitle, fullPathBuf, sizeof(fullPathBuf)) != 0) {
+    if (getTargetFullPath(curTitle, fullPathBuf, sizeof(fullPathBuf))) {
       curTitle = curTitle->next;
       continue;
     }
-    if (stat(fullPathBuf, &st) != 0) {
+    if (stat(fullPathBuf, &st)) {
       st.st_size = 0;
     }
 
@@ -191,7 +191,7 @@ int loadTitleIDCache(TitleIDCache *cache, struct BackendDevice *device) {
   }
 
   // Make sure header is valid
-  if (strcmp(meta.magic, CACHE_MAGIC) != 0) {
+  if (strcmp(meta.magic, CACHE_MAGIC)) {
     DPRINTF("ERROR: Cache magic doesn't match, refusing to load\n");
     fclose(file);
     return -EINVAL;
@@ -320,7 +320,7 @@ void loadLastLaunchedIndex(struct BackendDevice *device) {
   pathBuf[fsize] = '\0';
   int idx = 0;
   for (Target *t = device->titles->first; t; t = t->next, idx++) {
-    if (strcmp(t->path, pathBuf) == 0) {
+    if (!strcmp(t->path, pathBuf)) {
       device->lastLaunchedTitleIdx = idx;
       return;
     }

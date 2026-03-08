@@ -156,8 +156,7 @@ static struct BackendDevice *mountPFS(const char *deviceMountpoint, const char *
 
 static void syncHDL(struct BackendDevice *device) {
   char pfsBase[12];
-  if (!device || !device->metadev || !device->metadev->mountpoint ||
-      getMountpointFromPath(device->metadev->mountpoint, pfsBase, sizeof(pfsBase)) != 0)
+  if (!device || !device->metadev || !device->metadev->mountpoint || getMountpointFromPath(device->metadev->mountpoint, pfsBase, sizeof(pfsBase)))
     return;
   fileXioDevctl("pfs:", PDIOC_CLOSEALL, NULL, 0, NULL, 0);
   fileXioSync(pfsBase, FXIO_WAIT);
@@ -165,9 +164,15 @@ static void syncHDL(struct BackendDevice *device) {
 
 static void cleanupHDL(struct BackendDevice *device) {
   char pfsBase[12];
-  if (!device || !device->metadev || !device->metadev->mountpoint ||
-      getMountpointFromPath(device->metadev->mountpoint, pfsBase, sizeof(pfsBase)) != 0)
+  if (!device || !device->metadev || !device->metadev->mountpoint || getMountpointFromPath(device->metadev->mountpoint, pfsBase, sizeof(pfsBase)))
     return;
+  const char *neutrinoPath = getNeutrinoPath();
+  if (neutrinoPath) {
+    if (!strncmp(neutrinoPath, pfsBase, 4)) {
+      DPRINTF("Not unmounting %s\n", pfsBase);
+      return;
+    }
+  }
   fileXioUmount(pfsBase);
 }
 
@@ -198,7 +203,7 @@ int initHDL(struct BackendDevice *slot) {
     if (directory == NULL)
       continue;
 
-    if (checkAPAHeader(path) != 0) {
+    if (checkAPAHeader(path)) {
       DPRINTF("No APA partition table on %s\n", path);
       continue;
     }
@@ -267,7 +272,7 @@ Target *scanPartition(char *deviceMountpoint, char *partitionName, uint32_t star
   hddAtaTransfer_t *args = (hddAtaTransfer_t *)&header;
   args->lba = lba;
   args->size = nsectors;
-  if (fileXioDevctl(deviceMountpoint, HDIOC_READSECTOR, args, sizeof(hddAtaTransfer_t), &header, nsectors * 512) != 0) {
+  if (fileXioDevctl(deviceMountpoint, HDIOC_READSECTOR, args, sizeof(hddAtaTransfer_t), &header, nsectors * 512)) {
     DPRINTF("ERROR: failed to read sector\n");
     return NULL;
   }
@@ -309,7 +314,7 @@ int findHDLTargets(struct BackendDevice *device) {
 
   iox_dirent_t dirent = {0};
   while (fileXioDread(fd, &dirent) > 0) {
-    if (dirent.stat.mode == HDL_FS_MAGIC && (dirent.stat.attr & APA_FLAG_SUB) == 0) {
+    if (dirent.stat.mode == HDL_FS_MAGIC && !(dirent.stat.attr & APA_FLAG_SUB)) {
       Target *title = scanPartition(device->mountpoint, dirent.name, dirent.stat.private_5);
       if (!title)
         continue;
@@ -332,7 +337,7 @@ int findHDLTargets(struct BackendDevice *device) {
 
   TitleIDCache *cache = malloc(sizeof(TitleIDCache));
   int cacheNeedsSave = 0;
-  if (loadTitleIDCache(cache, device) == 0) {
+  if (!loadTitleIDCache(cache, device)) {
     if (cache->total != result->total)
       cacheNeedsSave = 1;
     Target *curTarget = result->first;

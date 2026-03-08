@@ -217,7 +217,7 @@ void processTitleID(TargetList *result, struct BackendDevice *device) {
     int sizeMatches = 0;
     if (cached != NULL) {
       struct stat st;
-      sizeMatches = (cached->fileSize == 0) || (stat(fullPathBuf, &st) == 0 && (uint64_t)st.st_size == cached->fileSize);
+      sizeMatches = (cached->fileSize == 0) || (!stat(fullPathBuf, &st) && (uint64_t)st.st_size == cached->fileSize);
     }
 
     if (cached != NULL && sizeMatches) {
