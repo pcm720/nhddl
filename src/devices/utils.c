@@ -206,7 +206,7 @@ char *guessCWDDevice(const char *cwd, DeviceType *type) {
   return buf;
 }
 
-// Probes device prefix (path up to first ':') with opendir in a loop. Uses getProbeDelay() for max attempts; if 0, uses 10.
+// Probes device prefix (path up to first ':') with opendir in a loop, retrying until device timeouts.
 // Returns 0 if opendir succeeds within the delay, non-zero on failure.
 int probePathPrefix(char *path, int noDelay) {
   char *relPath = strchr(path, ':');
@@ -215,7 +215,7 @@ int probePathPrefix(char *path, int noDelay) {
   char saved = *(++relPath);
   *relPath = '\0';
 
-  for (int attempt = 0; attempt < getProbeDelay(); attempt++) {
+  for (int attempt = 0; attempt < getProbeDelayWithDefaults(); attempt++) {
     DIR *dir = opendir(path);
     if (dir) {
       closedir(dir);
