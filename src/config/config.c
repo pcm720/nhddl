@@ -21,7 +21,7 @@ int getProbeDelay(void) { return (config.probeDelay) ? config.probeDelay : 10; }
 const char *getNHDDLRawRoot(void) { return config.rootPath; }
 
 const char *getNHDDLRoot(void) {
-  if (!strncmp(config.rootPath, "hdd0", 4))
+  if (!strncmp(config.rootPath, "hdd", 3))
     return getNHDDLHDDRoot();
 
   return config.rootPath;
