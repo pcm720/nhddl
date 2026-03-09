@@ -27,6 +27,9 @@ int loadGlobalNeutrinoArguments(ArgumentList *result, struct BackendDevice *devi
 
 // Loads ArgumentList from title-specific config file only (not global).
 int loadTitleNeutrinoArguments(ArgumentList *result, Target *target) {
+  if (!target->name)
+    return -ENOENT;
+
   struct BackendDevice *device = target->device;
   if (device->metadev) { // Fallback to metadata device if set
     device = device->metadev;
@@ -38,7 +41,7 @@ int loadTitleNeutrinoArguments(ArgumentList *result, Target *target) {
   // Determine actual title options file from config directory contents
   DIR *directory = opendir(targetPath);
   if (directory == NULL) {
-    DPRINTF("config: error: Can't open %s\n", targetPath);
+    DPRINTF("config: error: can't open %s\n", targetPath);
     return -ENOENT;
   }
   targetPath[0] = '\0';
@@ -79,6 +82,9 @@ int loadTitleNeutrinoArguments(ArgumentList *result, Target *target) {
 // Accepts only the title list; writes every argument in the list to the title .cnf.
 // CNF format: one argument per line as -name=value or -name; disabled entries as #-name=value or #-name.
 int saveTitleNeutrinoArguments(Target *target, ArgumentList *options) {
+  if (!target->name)
+    return -ENOENT;
+
   struct BackendDevice *device = target->device;
   if (device->metadev) { // Fallback to metadata device if set
     device = device->metadev;
