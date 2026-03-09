@@ -157,7 +157,9 @@ int rebootIOP() {
 
   loadedModules = 0;
   loadedDevices = 0;
-  loadDeviceModules(Device_Basic);
+  int res = loadDeviceModules(Device_Basic);
+  if (res)
+    return res;
   // Initialize pad library
   initPad();
 
@@ -197,6 +199,8 @@ int loadDeviceModules(DeviceType dtype) {
     if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL) && (moduleList[i].type & targetDevice)) {
       int ret = loadModule(&moduleList[i]);
       if (ret) {
+        if (!strcmp(moduleList[i].name, "ppctty")) // ppctty will fail on non-PPC consoles
+          continue;
         DPRINTF("devices error: failed to load %s: %d\n", moduleList[i].name, ret);
         return ret;
       }
