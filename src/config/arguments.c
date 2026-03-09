@@ -204,7 +204,7 @@ static int parseConfigFile(ArgumentList *result, struct BackendDevice *device, F
   }
 
   if (ferror(file) || !feof(file)) {
-    DPRINTF("arguments: error: failed to read config file\n");
+    DPRINTF("config: error: failed to read config file\n");
     return -EIO;
   }
   return 0;
@@ -214,7 +214,7 @@ static int parseConfigFile(ArgumentList *result, struct BackendDevice *device, F
 int loadArgumentList(ArgumentList *options, struct BackendDevice *device, char *filePath) {
   FILE *file = fopen(filePath, "r");
   if (file == NULL) {
-    DPRINTF("arguments: error: failed to open %s\n", filePath);
+    DPRINTF("config: error: failed to open %s\n", filePath);
     return -ENOENT;
   }
 

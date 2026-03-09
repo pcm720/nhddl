@@ -137,25 +137,25 @@ void parseArgv(int argc, char *argv[]) {
     arg++;
 
     if (val && !strcmp(OPTION_VMODE, arg)) {
-      DPRINTF("arguments/nhddl: using VMode %s\n", val);
+      DPRINTF("config/nhddl: using VMode %s\n", val);
       setVMode(parseVMode(val));
     } else if (val && !strcmp(OPTION_DEVICE, arg)) {
-      DPRINTF("arguments/nhddl: enabling device %s\n", val);
+      DPRINTF("config/nhddl: enabling device %s\n", val);
       setEnabledDevices(getEnabledDevices() | parseDevice(val));
     } else if (val && !strcmp(OPTION_IP_ADDRESS, arg)) {
-      DPRINTF("arguments/nhddl: using IP %s\n", val);
+      DPRINTF("config/nhddl: using IP %s\n", val);
       setIPAddress(val);
     } else if (val && !strcmp(OPTION_IMAGE, arg)) {
-      DPRINTF("arguments/nhddl: using image %s\n", val);
+      DPRINTF("config/nhddl: using image %s\n", val);
       setImage(val);
     } else if (!strcmp(OPTION_NO_INIT, arg)) {
-      DPRINTF("arguments/nhddl: skipping IOP init\n");
+      DPRINTF("config/nhddl: skipping IOP init\n");
       setNoInit(1);
     } else if (!strcmp(OPTION_PROBE_DELAY, arg)) {
-      DPRINTF("arguments/nhddl: using probe delay %d\n", val);
+      DPRINTF("config/nhddl: using probe delay %d\n", val);
       setProbeDelay(val ? atoi(val) : 0);
     } else if (!strcmp(OPTION_NEUTRINO, arg)) {
-      DPRINTF("arguments/nhddl: using custom Neutrino path: %s\n", val);
+      DPRINTF("config/nhddl: using custom Neutrino path: %s\n", val);
       setNeutrinoPath(val);
     }
   }
@@ -169,9 +169,10 @@ int loadOptions(void) {
   char lineBuffer[PATH_MAX];
   snprintf(lineBuffer, sizeof(lineBuffer), "%s%s", root, optionsFile);
 
+  DPRINTF("config/nhddl: loading options file from %s\n", lineBuffer);
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, NULL, lineBuffer)) {
-    DPRINTF("arguments/nhddl: can't load options file, will use defaults\n");
+    DPRINTF("config/nhddl: can't load options file, will use defaults\n");
     freeArgumentList(options);
     return -ENOENT;
   }
@@ -206,9 +207,12 @@ int saveOptions(void) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path), "%s%s", root, optionsFile);
 
+  DPRINTF("config/nhddl: saving options to %s\n", lineBuffer);
   FILE *f = fopen(path, "w");
-  if (!f)
+  if (!f) {
+    DPRINTF("config/nhddl: failed to open %s\n", lineBuffer);
     return -EIO;
+  }
 
   int err = 0;
   VModeType vmode = getVMode();
