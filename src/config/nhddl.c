@@ -207,10 +207,10 @@ int saveOptions(void) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path), "%s%s", root, optionsFile);
 
-  DPRINTF("config/nhddl: saving options to %s\n", lineBuffer);
+  DPRINTF("config/nhddl: saving options to %s\n", path);
   FILE *f = fopen(path, "w");
   if (!f) {
-    DPRINTF("config/nhddl: failed to open %s\n", lineBuffer);
+    DPRINTF("config/nhddl: failed to open %s\n", path);
     return -EIO;
   }
 
