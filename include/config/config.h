@@ -36,7 +36,7 @@ int getNoInit(void);
 int getProbeDelay(void);
 const Device *getBootDevice(void);
 const char *getNHDDLRoot(void);
-// Raw stored root (for internal use). When root is HDD, getNHDDLRoot() returns the I/O path (pfs2:/path) instead.
+// Raw stored root (for internal use). When root is HDD, getNHDDLRoot() returns the I/O path (pfs?:/path) instead.
 const char *getNHDDLRawRoot(void);
 const char *getNeutrinoPath(void);
 

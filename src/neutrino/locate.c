@@ -1,9 +1,11 @@
 #include "backends/backends.h"
 #include "config/config.h"
+#include "devices/hdd.h"
 #include "dprintf.h"
 #include <fcntl.h>
 #include <ps2sdkapi.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // Neutrino ELF path relative to CWD
@@ -29,8 +31,22 @@ int testPath(const char *filepath) {
 int findNeutrinoELF() {
   // If path is set in config and the file exists, use it first
   const char *configPath = getNeutrinoPath();
-  if (configPath && (configPath[0] != '\0') && !testPath((char *)configPath))
-    return 0;
+  if (configPath) {
+    // Handle HDD path
+    if (!strncmp(configPath, "hdd", 3)) {
+      char *pfsMount = mountPFSPartition(configPath, 0x1);
+      char *path = toPFSPath(configPath, pfsMount);
+      free(pfsMount);
+      if (pfsMount && path) {
+        if (!testPath(path)) {
+          free(path);
+          return 0;
+        }
+        free(path);
+      }
+    } else if ((configPath[0] != '\0') && !testPath((char *)configPath))
+      return 0;
+  }
 
   // Try CWD next
   char neutrinoPath[PATH_MAX] = {0};
