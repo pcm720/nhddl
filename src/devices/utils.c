@@ -107,7 +107,7 @@ void mmceMountVMC(char *titleID) {
 
     const char *neutrinoPath = getNeutrinoPath();
     if (neutrinoPath && neutrinoPath[0] && !strncmp(mcMountpoint, neutrinoPath, 3)) {
-      DPRINTF("WARN: Refusing to mount VMC on %s\n", mmceMountpoint);
+      DPRINTF("devices: warning: Refusing to mount VMC on %s\n", mmceMountpoint);
       continue;
     }
 
@@ -120,7 +120,7 @@ void mmceMountVMC(char *titleID) {
     for (int j = 0; j < 15; j++) {
       sleep(2);
       if (!(fileXioDevctl(mmceMountpoint, 0x2, NULL, 0, NULL, 0) & 1)) {
-        DPRINTF("Mounted VMC for %s on %s\n", titleID, mmceMountpoint);
+        DPRINTF("devices: mounted VMC for %s on %s\n", titleID, mmceMountpoint);
         break;
       }
     }

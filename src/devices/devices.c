@@ -139,7 +139,7 @@ int loadModule(ModuleListEntry *mod);
 
 // Reboots IOP and initializes basic devices
 int rebootIOP() {
-  DPRINTF("Rebooting IOP\n");
+  DPRINTF("devices: rebooting IOP\n");
   cleanupRootMount();
   fileXioExit();
   while (!SifIopReset("", 0)) {
@@ -197,7 +197,7 @@ int loadDeviceModules(DeviceType dtype) {
     if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL) && (moduleList[i].type & targetDevice)) {
       int ret = loadModule(&moduleList[i]);
       if (ret) {
-        DPRINTF("ERROR: failed to load %s: %d\n", moduleList[i].name, ret);
+        DPRINTF("devices error: failed to load %s: %d\n", moduleList[i].name, ret);
         return ret;
       }
       loadedModules |= (1 << i);
@@ -222,7 +222,7 @@ int loadDeviceModules(DeviceType dtype) {
 int loadModule(ModuleListEntry *mod) {
   int ret, iopret = 0;
 
-  DPRINTF(mod->name);
+  DPRINTF("devices: loading %s\n", mod->name);
 
   // If module has an arugment function, execute it
   if (mod->argumentFunction != NULL) {

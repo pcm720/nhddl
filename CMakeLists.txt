@@ -37,6 +37,7 @@ set(SOURCES
 
     # Devices
     src/devices/devices.c
+    src/devices/hdd.c
     src/devices/utils.c
     src/devices/info.c
     src/devices/pad.c

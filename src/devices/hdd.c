@@ -33,30 +33,6 @@ static int mountRootPartition(char *path) {
   return ret;
 }
 
-// Resolves HDD root from argv0 in format hdd0:<partition>:pfs:<path to ELF>.
-// Returns raw path to CWD (e.g. hdd0:__common:pfs:/nhddl/) or NULL on parse/mount failure.
-// Caller must free the returned string.
-char *resolveHDDRoot(char *argv0) {
-  // Make sure the path is valid
-  char *pfs = strstr(argv0, ":pfs:");
-  if (!pfs)
-    return NULL;
-
-  // Get the last slash location
-  char *lastSlash = strrchr(pfs, '/');
-  if (!lastSlash)
-    return NULL;
-
-  // Temporarily truncate the path at the last slash
-  char saved = *(++lastSlash);
-  *lastSlash = '\0';
-
-  // Duplicate the path and restore the last slash
-  char *rawPath = strdup(argv0);
-  *lastSlash = saved;
-  return rawPath;
-}
-
 // Returns path to use for file I/O
 const char *getNHDDLHDDRoot(void) {
   // Check if ioPath is already initalized
