@@ -172,7 +172,7 @@ out_global:
 ArgumentList *mergeNeutrinoArguments(ArgumentList *dst, ArgumentList *src) {
   ArgumentList *merged = calloc(sizeof(ArgumentList), 1);
   if (!merged) {
-    displayError("Failed to allocate memory for merged argument list\n");
+    displayFatalError("Failed to allocate memory for merged argument list\n");
     __builtin_trap();
   }
   Argument *cur = src->first;

@@ -22,7 +22,7 @@ int sio_printf(const char *format, ...) {
 static int isScreenInitialized = 0;
 
 // Displays the error on screen
-void displayError(const char *format, ...) {
+void displayFatalError(const char *format, ...) {
   if (!isScreenInitialized) {
     init_scr();
     scr_setCursor(0);

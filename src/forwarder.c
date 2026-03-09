@@ -17,7 +17,7 @@
 int forwardBoot() {
   const char *image = getImage();
   if (!image || !image[0]) {
-    displayError("No image path\n");
+    displayFatalError("No image path\n");
     return -EINVAL;
   }
 
@@ -25,7 +25,7 @@ int forwardBoot() {
   int relIdx = getRelativePathIdx((char *)image);
   DeviceType type = guessDeviceType((char *)image);
   if ((relIdx < 0) || (type == Device_None)) {
-    displayError("Invalid image path\n");
+    displayFatalError("Invalid image path\n");
     return -EINVAL;
   }
 
@@ -42,14 +42,14 @@ int forwardBoot() {
   // Initialize device backend
   int res = initBackendForImage(canonicalPath);
   if (res < 0) {
-    displayError("Failed to init backend: %d\n", res);
+    displayFatalError("Failed to init backend: %d\n", res);
     return res;
   }
 
   // Check if image exist
   res = open(canonicalPath, O_RDONLY);
   if (res < 0) {
-    displayError("Target image not found\n");
+    displayFatalError("Target image not found\n");
     return -ENOENT;
   }
   close(res);
@@ -62,7 +62,7 @@ int forwardBoot() {
       .path = (char *)(image + relIdx),
   };
   if (!target.device) {
-    displayError("Target device not found\n");
+    displayFatalError("Target device not found\n");
     free(target.id);
     return -ENODEV;
   }
@@ -85,7 +85,7 @@ int forwardBoot() {
   ArgumentList *globalArguments = calloc(sizeof(ArgumentList), 1);
   ArgumentList *titleArguments = calloc(sizeof(ArgumentList), 1);
   if (!globalArguments || !titleArguments) {
-    displayError("Failed to allocate memory for Neutrino arguments\n");
+    displayFatalError("Failed to allocate memory for Neutrino arguments\n");
     __builtin_trap();
   }
   loadGlobalNeutrinoArguments(globalArguments, target.device);
@@ -97,10 +97,10 @@ int forwardBoot() {
 
   switch ((res = launchTarget(&target, arguments))) {
   case -ENOENT:
-    displayError("Neutrino not found\n");
+    displayFatalError("Neutrino not found\n");
     break;
   case -EINVAL:
-    displayError("Unsupported target device\n");
+    displayFatalError("Unsupported target device\n");
     break;
   }
   freeArgumentList(arguments);

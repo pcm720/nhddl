@@ -5,7 +5,7 @@
 int sio_printf(const char *format, ...);
 
 // Displays the error on screen
-void displayError(const char *format, ...);
+void displayFatalError(const char *format, ...);
 
 #ifdef ENABLE_PRINTF
 #ifndef USE_EESIO
