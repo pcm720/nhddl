@@ -113,7 +113,7 @@ int initBackend(DeviceType device) {
   DeviceType conflict = getConflictingDeviceTypes(device);
   if (conflict != Device_None) {
     // Refuse to init backend if our root is on conflicting device
-    const char *root = getNHDDLRoot();
+    const char *root = getNHDDLRawRoot();
     if (root && root[0] && (guessDeviceType(root) & conflict))
       return -EINVAL;
 

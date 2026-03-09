@@ -13,7 +13,7 @@
 #include <string.h>
 #include <unistd.h>
 
-// Contains all available backend devices. Device must be ignored if mode is Device_None
+// Contains all available backend devices. Device must be ignored if type is Device_None
 struct BackendDevice backendDevices[MAX_DEVICES];
 
 int getBackendDeviceCount(void) {
