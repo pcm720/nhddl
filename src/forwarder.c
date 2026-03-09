@@ -33,6 +33,7 @@ int forwardBoot() {
   char canonicalPath[PATH_MAX] = {0};
   if (type == Device_BDM) {
     // Default to exFAT partition on internal HDD for BDM
+    type = Device_ATA;
     getDeviceInfo(Device_ATA, canonicalPath, PATH_MAX);
     strcat(canonicalPath, "0:");
     strcat(canonicalPath, image + relIdx);
@@ -40,9 +41,10 @@ int forwardBoot() {
     strncpy(canonicalPath, image, PATH_MAX - 1);
 
   // Initialize device backend
+  DPRINTF("forwarder: initializing target device\n");
   int res = initBackendForImage(canonicalPath);
   if (res < 0) {
-    displayFatalError("Failed to init backend: %d\n", res);
+    displayFatalError("Failed to init %s backend: %d\n", getDeviceString(type), res);
     return res;
   }
 
@@ -55,6 +57,7 @@ int forwardBoot() {
   close(res);
 
   // Create target entity
+  DPRINTF("forwarder: initializing target data\n");
   Target target = {
       .idx = 0,
       .id = getTitleID((char *)image),
@@ -82,6 +85,7 @@ int forwardBoot() {
   }
 
   // Load Neutrino arguments
+  DPRINTF("forwarder: loading target argument\n");
   ArgumentList *globalArguments = calloc(sizeof(ArgumentList), 1);
   ArgumentList *titleArguments = calloc(sizeof(ArgumentList), 1);
   if (!globalArguments || !titleArguments) {
@@ -95,12 +99,16 @@ int forwardBoot() {
   freeArgumentList(globalArguments);
   freeArgumentList(titleArguments);
 
+  DPRINTF("forwarder: launching target\n");
   switch ((res = launchTarget(&target, arguments))) {
   case -ENOENT:
     displayFatalError("Neutrino not found\n");
     break;
   case -EINVAL:
     displayFatalError("Unsupported target device\n");
+    break;
+  default:
+    displayFatalError("Failed to launch Neutrino: %d\n", res);
     break;
   }
   freeArgumentList(arguments);
