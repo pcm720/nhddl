@@ -25,7 +25,7 @@ Since NHDDL only launches Neutrino, PADEMU, IGR, IGS, cheats and other features 
 
 NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) installation to be present at one of the following paths:
 - `<NHDDL launch directory>/neutrino.elf` (__might be case-sensitive__ depending on device)
-- `<>:/neutrino/neutrino.elf` (storage devices, __might be case-sensitive__ depending on device)
+- `<>:/neutrino/neutrino.elf` (NHDDL device and storage devices, __might be case-sensitive__ depending on device)
 - `hdd0:/<OPL partition>/neutrino/neutrino.elf` (APA device, if HDL mode is enabled)  
   `OPL partition` is read from `hdd0:__common/OPL/conf_hdd.cfg`, with `+OPL` or `__common/OPL` used as a fallback
 

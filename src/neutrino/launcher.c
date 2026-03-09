@@ -31,7 +31,7 @@ int launchELF(int argc, char *argv[]) {
   int ret = SifLoadElf(argv[0], &elfdata);
   SifLoadFileExit();
   if (ret || !elfdata.epc) {
-    displayError("Failed to load neutrino.elf: %d\n", ret);
+    displayFatalError("Failed to load neutrino.elf: %d\n", ret);
     __builtin_trap();
   }
 

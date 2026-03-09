@@ -2,6 +2,7 @@
 #include "backends/cache.h"
 #include "config/arguments.h"
 #include "config/config.h"
+#include "devices/hdd.h"
 #include "devices/utils.h"
 #include "dprintf.h"
 #include <stdio.h>
@@ -91,18 +92,20 @@ int launchTarget(Target *target, ArgumentList *arguments) {
     bsdValue = BSD_ILINK;
     break;
   default:
-    DPRINTF("ERROR: Unsupported device\n");
+    DPRINTF("neutrino: error: unsupported device\n");
     return -EINVAL;
   }
 
-  DPRINTF("Updating last launched title\n");
+  DPRINTF("neutrino: updating last launched title\n");
   if (updateLastLaunchedTitle(target))
-    DPRINTF("ERROR: Failed to update last launched title\n");
+    DPRINTF("neutrino: error: failed to update last launched title\n");
 
   // Cleanup storage devices before loading Neutrino
   cleanupAllBackends();
+  if (!strncmp(getNHDDLRawRoot(), "hdd0", 4) && strncmp(getNHDDLRoot(), getNeutrinoPath(), 4))
+    cleanupRootMount(); // Do not unmount NHDDL root if Neutrino is on CWD
 
-  DPRINTF("Mounting VMC on MMCE devices\n");
+  DPRINTF("neutrino: mounting VMC on MMCE devices\n");
   mmceMountVMC(target->id);
 
   appendArgument(arguments, newArgument(bsdArgument, bsdValue));
@@ -114,7 +117,7 @@ int launchTarget(Target *target, ArgumentList *arguments) {
   char **argv = malloc(((arguments->total) + 1) * sizeof(char *));
   int argCount = assembleArgv(arguments, &argv);
 
-  DPRINTF("Launching %s (%s) with arguments:\n", target->name, target->id);
+  DPRINTF("neutrino: launching %s (%s) with arguments:\n", target->name, target->id);
   for (int i = 0; i < argCount; i++)
     DPRINTF("%d: %s\n", i + 1, argv[i]);
 

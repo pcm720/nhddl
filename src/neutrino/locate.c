@@ -39,6 +39,19 @@ int findNeutrinoELF() {
       setNeutrinoPath(neutrinoPath);
       return 0;
     }
+
+    // Try the root of CWD device
+    neutrinoPath[0] = '\0';
+    char *cwdMount = strchr(cwd, ':');
+    if (++cwdMount) {
+      strncpy(neutrinoPath, cwd, cwdMount - cwd);
+      neutrinoPath[cwdMount - cwd] = '\0';
+      strcat(neutrinoPath, neutrinoRootPath);
+      if (!tryFile(neutrinoPath)) {
+        setNeutrinoPath(neutrinoPath);
+        return 0;
+      }
+    }
   }
 
   // Try enabled backends
