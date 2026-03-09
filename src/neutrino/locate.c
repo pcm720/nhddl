@@ -1,5 +1,6 @@
 #include "backends/backends.h"
 #include "config/config.h"
+#include "dprintf.h"
 #include <fcntl.h>
 #include <ps2sdkapi.h>
 #include <stdio.h>
@@ -10,13 +11,16 @@ static const char neutrinoCWDPath[] = "neutrino.elf";
 // Neutrino ELF path relative to storage root
 static char neutrinoRootPath[] = "/neutrino/neutrino.elf";
 
-// Tests if file exists by opening it
-int tryFile(const char *filepath) {
+// Tests if file exists by opening it and sets Neutrino path on success
+int testPath(const char *filepath) {
+  DPRINTF("neutrino/locate: trying %s\n", filepath);
   int fd = open(filepath, O_RDONLY);
   if (fd < 0) {
     return fd;
   }
   close(fd);
+  if (filepath != getNeutrinoPath())
+    setNeutrinoPath(filepath);
   return 0;
 }
 
@@ -25,32 +29,28 @@ int tryFile(const char *filepath) {
 int findNeutrinoELF() {
   // If path is set in config and the file exists, use it first
   const char *configPath = getNeutrinoPath();
-  if (configPath && !tryFile((char *)configPath))
+  if (configPath && (configPath[0] != '\0') && !testPath((char *)configPath))
     return 0;
 
   // Try CWD next
   char neutrinoPath[PATH_MAX] = {0};
-
   const char *cwd = getNHDDLRoot();
   if (cwd) {
     // If path is valid, try it
     snprintf(neutrinoPath, PATH_MAX, "%s%s", cwd, neutrinoCWDPath);
-    if (!tryFile(neutrinoPath)) {
-      setNeutrinoPath(neutrinoPath);
+    if (!testPath(neutrinoPath))
       return 0;
-    }
 
     // Try the root of CWD device
     neutrinoPath[0] = '\0';
     char *cwdMount = strchr(cwd, ':');
-    if (++cwdMount) {
+    if (cwdMount) {
+      cwdMount += 1;
       strncpy(neutrinoPath, cwd, cwdMount - cwd);
       neutrinoPath[cwdMount - cwd] = '\0';
       strcat(neutrinoPath, neutrinoRootPath);
-      if (!tryFile(neutrinoPath)) {
-        setNeutrinoPath(neutrinoPath);
+      if (!testPath(neutrinoPath))
         return 0;
-      }
     }
   }
 
@@ -69,10 +69,8 @@ int findNeutrinoELF() {
       device = dev;
     if (device->mountpoint) {
       snprintf(neutrinoPath, PATH_MAX, "%s%s", device->mountpoint, neutrinoRootPath);
-      if (!tryFile(neutrinoPath)) {
-        setNeutrinoPath(neutrinoPath);
+      if (!testPath(neutrinoPath))
         return 0;
-      }
     }
   }
 

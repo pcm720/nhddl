@@ -46,7 +46,7 @@ int assembleArgv(ArgumentList *arguments, char **argv[]) {
       else
         snprintf(value, argSize, "-%s=%s", curArg->arg, curArg->value);
 
-      *argv[argCount] = value;
+      (*argv)[argCount] = value;
       argCount++;
     }
     curArg = curArg->next;
@@ -62,7 +62,7 @@ int assembleArgv(ArgumentList *arguments, char **argv[]) {
 // Launches target, passing arguments to Neutrino.
 // Expects arguments to be initialized
 int launchTarget(Target *target, ArgumentList *arguments) {
-  if (!findNeutrinoELF())
+  if (findNeutrinoELF())
     return -ENOENT;
 
   // Append arguments
@@ -74,7 +74,6 @@ int launchTarget(Target *target, ArgumentList *arguments) {
     break;
   case Device_HDD:
     // Disable quickboot for HDL, BSD is set by Device_ATA case
-    appendArgument(arguments, newArgument("qb", ""));
     appendArgument(arguments, newArgument(bsdfsArgument, BSDFS_HDL));
   case Device_ATA:
     bsdValue = BSD_ATA;
@@ -96,6 +95,9 @@ int launchTarget(Target *target, ArgumentList *arguments) {
     return -EINVAL;
   }
 
+  if (dev->type != Device_HDD) // Disable quickboot for HDL
+    appendArgument(arguments, newArgument("qb", ""));
+
   DPRINTF("neutrino: updating last launched title\n");
   if (updateLastLaunchedTitle(target))
     DPRINTF("neutrino: error: failed to update last launched title\n");
@@ -114,6 +116,7 @@ int launchTarget(Target *target, ArgumentList *arguments) {
     appendArgument(arguments, newArgument(isoArgument, fullPathBuf));
 
   // Assemble argv
+  DPRINTF("neutrino: assembling argv\n");
   char **argv = malloc(((arguments->total) + 1) * sizeof(char *));
   int argCount = assembleArgv(arguments, &argv);
 
