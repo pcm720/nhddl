@@ -120,7 +120,7 @@ static struct BackendDevice *createMetadataEntry(const char *deviceMountpoint, c
     dev->mountpoint = strdup(pfsMount);
 
   if (dev->mountpoint)
-    DPRINTF("Using %s for HDL metadata\n", dev->mountpoint);
+    DPRINTF("backends/hdl: using %s for HDL metadata\n", dev->mountpoint);
   return dev;
 }
 
@@ -131,9 +131,9 @@ static struct BackendDevice *mountPFS(const char *deviceMountpoint, const char *
   char *oplPartition = readOPLConfig(deviceMountpoint, pfsMount);
   if (oplPartition) {
     if (fileXioMount(pfsMount, oplPartition, FIO_MT_RDWR))
-      DPRINTF("WARN: failed to mount %s, will try fallbacks\n", oplPartition);
+      DPRINTF("backends/hdl: warning: failed to mount %s, will try fallbacks\n", oplPartition);
     else {
-      DPRINTF("Mounted %s as %s\n", oplPartition, pfsMount);
+      DPRINTF("backends/hdl: mounted %s as %s\n", oplPartition, pfsMount);
       struct BackendDevice *dev = createMetadataEntry(deviceMountpoint, oplPartition, pfsMount);
       free(oplPartition);
       return dev;
@@ -143,19 +143,19 @@ static struct BackendDevice *mountPFS(const char *deviceMountpoint, const char *
 
   snprintf(partitionBuf, sizeof(partitionBuf), "%s+OPL", deviceMountpoint);
   if (!fileXioMount(pfsMount, partitionBuf, FIO_MT_RDWR)) {
-    DPRINTF("Mounted %s as %s\n", partitionBuf, pfsMount);
+    DPRINTF("backends/hdl: mounted %s as %s\n", partitionBuf, pfsMount);
     return createMetadataEntry(deviceMountpoint, partitionBuf, pfsMount);
   }
   snprintf(partitionBuf, sizeof(partitionBuf), "%s__common", deviceMountpoint);
   if (!fileXioMount(pfsMount, partitionBuf, FIO_MT_RDWR)) {
-    DPRINTF("Mounted %s as %s\n", partitionBuf, pfsMount);
+    DPRINTF("backends/hdl: mounted %s as %s\n", partitionBuf, pfsMount);
     return createMetadataEntry(deviceMountpoint, partitionBuf, pfsMount);
   }
   return NULL;
 }
 
 static void syncHDL(struct BackendDevice *device) {
-  char pfsBase[12];
+  char pfsBase[5];
   if (!device || !device->metadev || !device->metadev->mountpoint || getMountpointFromPath(device->metadev->mountpoint, pfsBase, sizeof(pfsBase)))
     return;
   fileXioDevctl("pfs:", PDIOC_CLOSEALL, NULL, 0, NULL, 0);
@@ -163,13 +163,13 @@ static void syncHDL(struct BackendDevice *device) {
 }
 
 static void cleanupHDL(struct BackendDevice *device) {
-  char pfsBase[12];
+  char pfsBase[5];
   if (!device || !device->metadev || !device->metadev->mountpoint || getMountpointFromPath(device->metadev->mountpoint, pfsBase, sizeof(pfsBase)))
     return;
   const char *neutrinoPath = getNeutrinoPath();
   if (neutrinoPath) {
     if (!strncmp(neutrinoPath, pfsBase, 4)) {
-      DPRINTF("Not unmounting %s\n", pfsBase);
+      DPRINTF("backends/hdl: not unmounting %s\n", pfsBase);
       return;
     }
   }
@@ -204,7 +204,7 @@ int initHDL(struct BackendDevice *slot) {
       continue;
 
     if (checkAPAHeader(path)) {
-      DPRINTF("No APA partition table on %s\n", path);
+      DPRINTF("backends/hdl: no APA partition table on %s\n", path);
       continue;
     }
 
@@ -221,13 +221,13 @@ int initHDL(struct BackendDevice *slot) {
     snprintf(pfsMount, sizeof(pfsMount), "pfs%d:", i);
     slot->metadev = mountPFS(path, pfsMount);
     if (!slot->metadev) {
-      DPRINTF("Failed to mount PFS partition on %s\n", path);
+      DPRINTF("backends/hdl: failed to mount PFS partition on %s\n", path);
       free(slot->mountpoint);
       slot->mountpoint = NULL;
       slot->type = Device_None;
       continue;
     }
-    DPRINTF("Found device %s\n", slot->mountpoint);
+    DPRINTF("backends/hdl: found device %s\n", slot->mountpoint);
     return 1;
   }
   return -ENODEV;
@@ -273,12 +273,12 @@ Target *scanPartition(char *deviceMountpoint, char *partitionName, uint32_t star
   args->lba = lba;
   args->size = nsectors;
   if (fileXioDevctl(deviceMountpoint, HDIOC_READSECTOR, args, sizeof(hddAtaTransfer_t), &header, nsectors * 512)) {
-    DPRINTF("ERROR: failed to read sector\n");
+    DPRINTF("backends/hdl: error: failed to read sector\n");
     return NULL;
   }
 
   if (header.checksum != 0xdeadfeed) {
-    DPRINTF("ERROR: invalid HDL checksum (0x%X)\n", header.checksum);
+    DPRINTF("backends/hdl: error: invalid HDL checksum (0x%X)\n", header.checksum);
     return NULL;
   }
 
@@ -306,7 +306,7 @@ int findHDLTargets(struct BackendDevice *device) {
 
   int fd = fileXioDopen(device->mountpoint);
   if (fd < 0) {
-    DPRINTF("ERROR: failed to open %s for scanning: %d\n", device->mountpoint, fd);
+    DPRINTF("backends/hdl: error: failed to open %s for scanning: %d\n", device->mountpoint, fd);
     free(device->titles);
     device->titles = NULL;
     return -ENODEV;
@@ -360,9 +360,9 @@ int findHDLTargets(struct BackendDevice *device) {
   }
 
   if (cacheNeedsSave) {
-    DPRINTF("Updating title cache...\n");
+    DPRINTF("backends/hdl: updating title cache...\n");
     if (storeTitleIDCache(result, device))
-      DPRINTF("Failed to save title cache\n");
+      DPRINTF("backends/hdl: error: failed to save title cache\n");
   }
   return 0;
 }

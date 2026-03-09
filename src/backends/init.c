@@ -48,7 +48,7 @@ static int initDevice(struct BackendDevice *slot, DeviceType type) {
     slot->metadev = NULL;
     slot->titles = NULL;
     slot->lastLaunchedTitleIdx = -1;
-    DPRINTF("Found device %s\n", slot->mountpoint);
+    DPRINTF("backends/init: found device %s\n", slot->mountpoint);
     slot++;
     deviceCount++;
   }

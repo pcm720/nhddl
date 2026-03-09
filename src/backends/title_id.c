@@ -44,7 +44,7 @@ char *getTitleID(char *path) {
   // Open ISO
   int fd = open(path, O_RDONLY);
   if (fd < 0) {
-    DPRINTF("WARN: %s: Failed to open file: %d\n", path, fd);
+    DPRINTF("backends/title_id: warning: %s: Failed to open file: %d\n", path, fd);
     return NULL;
   }
 
@@ -52,7 +52,7 @@ char *getTitleID(char *path) {
   uint32_t rootLBA = 0;
   int rootLength = 0;
   if (getPVD(fd, &rootLBA, &rootLength)) {
-    DPRINTF("WARN: %s: Failed to parse ISO PVD\n", path);
+    DPRINTF("backends/title_id: warning: %s: Failed to parse ISO PVD\n", path);
     close(fd);
     return NULL;
   }
@@ -60,7 +60,7 @@ char *getTitleID(char *path) {
   // Get SYSTEM.CNF entry
   struct dirTOCEntry *tocEntry = getTOCEntry(fd, rootLBA, rootLength);
   if (tocEntry == NULL) {
-    DPRINTF("WARN: %s: Failed to find SYSTEM.CNF\n", path);
+    DPRINTF("backends/title_id: warning: %s: Failed to find SYSTEM.CNF\n", path);
     close(fd);
     return NULL;
   }
@@ -68,13 +68,13 @@ char *getTitleID(char *path) {
   // Seek to SYSTEM.CNF location and read file contents
   int64_t res = lseek64(fd, (int64_t)tocEntry->fileLBA * SECTOR_SIZE, SEEK_SET);
   if (res < 0) {
-    DPRINTF("WARN: %s: Failed to seek to SYSTEM.CNF\n", path);
+    DPRINTF("backends/title_id: warning: %s: Failed to seek to SYSTEM.CNF\n", path);
     close(fd);
     return NULL;
   }
   char *systemCNF = malloc(tocEntry->length);
   if (read(fd, systemCNF, tocEntry->length) != tocEntry->length) {
-    DPRINTF("WARN: %s: Failed to read SYSTEM.CNF\n", path);
+    DPRINTF("backends/title_id: warning: %s: Failed to read SYSTEM.CNF\n", path);
     free(systemCNF);
     close(fd);
     return NULL;
@@ -82,7 +82,7 @@ char *getTitleID(char *path) {
 
   char *boot2Arg = strstr(systemCNF, "BOOT2");
   if (boot2Arg == NULL) {
-    DPRINTF("WARN: %s: BOOT2 not found in SYSTEM.CNF\n", path);
+    DPRINTF("backends/title_id: warning: %s: BOOT2 not found in SYSTEM.CNF\n", path);
     free(systemCNF);
     close(fd);
     return NULL;
@@ -93,7 +93,7 @@ char *getTitleID(char *path) {
   char *selfFile = strstr(boot2Arg, "cdrom0:");
   char *argEnd = strstr(boot2Arg, ";");
   if (selfFile == NULL || argEnd == NULL) {
-    DPRINTF("WARN: %s: File name not found in SYSTEM.CNF\n", path);
+    DPRINTF("backends/title_id: warning: %s: File name not found in SYSTEM.CNF\n", path);
     free(titleID);
     titleID = NULL;
   } else {

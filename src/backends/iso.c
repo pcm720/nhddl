@@ -42,7 +42,7 @@ int findISO(struct BackendDevice *device) {
   curRecursionLevel = 1;
   DIR *directory = opendir(device->mountpoint);
   if (directory == NULL) {
-    DPRINTF(device->mountpoint);
+    DPRINTF("backends/iso: failed to open %s\n", device->mountpoint);
     free(device->titles);
     device->titles = NULL;
     return -ENOENT;
@@ -87,7 +87,7 @@ int _findISO(DIR *directory, TargetList *result, struct BackendDevice *device) {
   char *fileext;
   char titlePath[PATH_MAX + 1];
   if (!getcwd(titlePath, PATH_MAX + 1)) { // Initialize titlePath with current working directory
-    DPRINTF("Failed to get cwd\n");
+    DPRINTF("backends/iso: failed to get cwd\n");
     return -ENOENT;
   }
   int cwdLen = strlen(titlePath);     // Get the length of base path string
@@ -98,7 +98,7 @@ int _findISO(DIR *directory, TargetList *result, struct BackendDevice *device) {
 
   curRecursionLevel++;
   if (curRecursionLevel == MAX_SCAN_DEPTH)
-    DPRINTF("Max recursion limit reached, all directories in %s will be ignored\n", titlePath);
+    DPRINTF("backends/iso: max recursion limit reached, all directories in %s will be ignored\n", titlePath);
 
   while ((entry = readdir(directory)) != NULL) {
     // Reset titlePath by ending string on base path
@@ -128,7 +128,7 @@ int _findISO(DIR *directory, TargetList *result, struct BackendDevice *device) {
       strcat(titlePath, entry->d_name);
       DIR *d = opendir(titlePath);
       if (d == NULL) {
-        DPRINTF("Failed to open %s for scanning\n", entry->d_name);
+        DPRINTF("backends/iso: failed to open %s for scanning\n", entry->d_name);
         continue;
       }
       chdir(titlePath);
@@ -186,7 +186,7 @@ void processTitleID(TargetList *result, struct BackendDevice *device) {
   TitleIDCache *cache = malloc(sizeof(TitleIDCache));
   int isCacheUpdateNeeded = 0;
   if (loadTitleIDCache(cache, device)) {
-    DPRINTF("all ISOs will be rescanned\n");
+    DPRINTF("backends/iso: all ISOs will be rescanned\n");
     free(cache);
     cache = NULL;
   } else if (cache->total != result->total) {
@@ -207,7 +207,7 @@ void processTitleID(TargetList *result, struct BackendDevice *device) {
     curTarget->flags = 0;
     char fullPathBuf[PATH_MAX];
     if (getTargetFullPath(curTarget, fullPathBuf, sizeof(fullPathBuf)) < 0) {
-      DPRINTF("Ignoring target (no full path) %s\n", curTarget->path);
+      DPRINTF("backends/iso: ignoring target (no full path) %s\n", curTarget->path);
       curTarget = freeTarget(result, curTarget);
       result->total -= 1;
       continue;
@@ -225,14 +225,14 @@ void processTitleID(TargetList *result, struct BackendDevice *device) {
       curTarget->flags = cached->flags;
     } else {
       cacheMisses++;
-      DPRINTF("Cache miss for %s\n", fullPathBuf);
+      DPRINTF("backends/iso: cache miss for %s\n", fullPathBuf);
       curTarget->id = getTitleID(fullPathBuf);
       if (curTarget->id != NULL && cached != NULL)
         curTarget->flags = cached->flags;
     }
 
     if (curTarget->id == NULL) {
-      DPRINTF("Failed to get title ID for %s\n", curTarget->path);
+      DPRINTF("backends/iso: failed to get title ID for %s\n", curTarget->path);
       curTarget = freeTarget(result, curTarget);
       result->total -= 1;
       continue;
@@ -243,9 +243,9 @@ void processTitleID(TargetList *result, struct BackendDevice *device) {
   freeTitleCache(cache);
 
   if ((cacheMisses > 0) || (isCacheUpdateNeeded)) {
-    DPRINTF("Updating title ID cache...\n");
+    DPRINTF("backends/iso: updating title ID cache...\n");
     if (storeTitleIDCache(result, device)) {
-      DPRINTF("Failed to save title ID cache\n");
+      DPRINTF("backends/iso: failed to save title ID cache\n");
     }
   }
 }

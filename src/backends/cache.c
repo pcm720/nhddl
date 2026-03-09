@@ -55,7 +55,7 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
     curTitle = curTitle->next;
   }
   if (total == 0) {
-    DPRINTF("WARN: No valid cache entries found\n");
+    DPRINTF("backends/cache: warning: no valid cache entries found\n");
     return 0;
   }
 
@@ -81,9 +81,9 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
   // Get path to config directory and make sure it exists
   struct stat st;
   if (stat(dirPath, &st) == -1) {
-    DPRINTF("Creating config directory: %s\n", dirPath);
+    DPRINTF("backends/cache: creating config directory: %s\n", dirPath);
     if (mkdir(dirPath, 0777)) {
-      DPRINTF("ERROR: Failed to create directory\n");
+      DPRINTF("backends/cache: error: failed to create directory\n");
       return -EIO;
     }
   }
@@ -91,7 +91,7 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
   // Open cache file for writing
   FILE *file = fopen(cachePath, "wb");
   if (file == NULL) {
-    DPRINTF("ERROR: Failed to open cache file for writing\n");
+    DPRINTF("backends/cache: error: failed to open cache file for writing\n");
     return -EIO;
   }
 
@@ -99,7 +99,7 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
   // Write cache file header (16-byte aligned)
   result = (fwrite(&meta, 1, CACHE_METADATA_SIZE, file) == CACHE_METADATA_SIZE) ? 1 : 0;
   if (!result) {
-    DPRINTF("ERROR: Failed to write metadata: %d\n", errno);
+    DPRINTF("backends/cache: error: failed to write metadata: %d\n", errno);
     fclose(file);
     remove(cachePath);
     return -EIO;
@@ -139,14 +139,14 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
     header.titleID[11] = '\0';
     result = (fwrite(&header, 1, CACHE_ENTRY_HEADER_SIZE, file) == CACHE_ENTRY_HEADER_SIZE) ? 1 : 0;
     if (!result) {
-      DPRINTF("ERROR: %s: Failed to write header: %d\n", curTitle->name, errno);
+      DPRINTF("backends/cache: error: %s: failed to write header: %d\n", curTitle->name, errno);
       fclose(file);
       remove(cachePath);
       return -EIO;
     }
     result = fwrite(curTitle->path, header.pathLength, 1, file);
     if (!result) {
-      DPRINTF("ERROR: %s: Failed to write full path: %d\n", curTitle->name, errno);
+      DPRINTF("backends/cache: error: %s: failed to write full path: %d\n", curTitle->name, errno);
       fclose(file);
       remove(cachePath);
       return -EIO;
@@ -185,19 +185,19 @@ int loadTitleIDCache(TitleIDCache *cache, struct BackendDevice *device) {
   memset(&meta, 0, sizeof(meta));
   result = fread(&meta, 1, CACHE_METADATA_SIZE, file);
   if (result != CACHE_METADATA_SIZE) {
-    DPRINTF("ERROR: Failed to read cache metadata\n");
+    DPRINTF("backends/cache: error: failed to read cache metadata\n");
     fclose(file);
     return -EIO;
   }
 
   // Make sure header is valid
   if (strcmp(meta.magic, CACHE_MAGIC)) {
-    DPRINTF("ERROR: Cache magic doesn't match, refusing to load\n");
+    DPRINTF("backends/cache: error: cache magic doesn't match, refusing to load\n");
     fclose(file);
     return -EINVAL;
   }
   if (meta.version != CACHE_VERSION) {
-    DPRINTF("ERROR: Unsupported or outdated cache version %u, rescanning\n", (unsigned)meta.version);
+    DPRINTF("backends/cache: error: unsupported or outdated cache version %u, rescanning\n", (unsigned)meta.version);
     fclose(file);
     return -EINVAL;
   }
@@ -205,14 +205,14 @@ int loadTitleIDCache(TitleIDCache *cache, struct BackendDevice *device) {
   // Allocate memory for cache entries based on total entry count from header metadata
   int readIndex = 0;
   if (meta.total > (uint64_t)INT_MAX) {
-    DPRINTF("ERROR: Cache entry count too large\n");
+    DPRINTF("backends/cache: error: cache entry count too large\n");
     fclose(file);
     return -EINVAL;
   }
   int totalEntries = (int)meta.total;
   cache->entries = malloc((sizeof(CacheEntry) * (size_t)totalEntries));
   if (cache->entries == NULL) {
-    DPRINTF("ERROR: Can't allocate enough memory\n");
+    DPRINTF("backends/cache: error: can't allocate enough memory\n");
     fclose(file);
     return -ENOMEM;
   }
@@ -225,16 +225,16 @@ int loadTitleIDCache(TitleIDCache *cache, struct BackendDevice *device) {
     result = fread(&header, 1, CACHE_ENTRY_HEADER_SIZE, file);
     if (result != CACHE_ENTRY_HEADER_SIZE) {
       if (!feof(file))
-        DPRINTF("WARN: Read less than expected, title ID cache might be incomplete\n");
+        DPRINTF("backends/cache: warning: read less than expected, title ID cache might be incomplete\n");
       break;
     }
     if (header.pathLength == 0 || header.pathLength > PATH_MAX) {
-      DPRINTF("WARN: Invalid path length in cache entry\n");
+      DPRINTF("backends/cache: warning: invalid path length in cache entry\n");
       break;
     }
     result = fread(&pathBuf, 1, header.pathLength, file);
     if (result != header.pathLength) {
-      DPRINTF("WARN: Read less than expected, title ID cache might be incomplete\n");
+      DPRINTF("backends/cache: warning: read less than expected, title ID cache might be incomplete\n");
       break;
     }
     pathBuf[header.pathLength] = '\0';
@@ -333,29 +333,29 @@ int updateLastLaunchedTitle(Target *target) {
     return -EINVAL;
   struct BackendDevice *device = target->device;
   struct BackendDevice *writeDevice = device->metadev ? device->metadev : device;
-  DPRINTF("Writing last launched title as %s\n", target->path);
+  DPRINTF("backends/cache: writing last launched title as %s\n", target->path);
   char targetPath[PATH_MAX];
   buildConfigFilePath(targetPath, writeDevice->mountpoint, NULL);
   struct stat st;
   if (stat(targetPath, &st) == -1) {
-    DPRINTF("Creating config directory: %s\n", targetPath);
+    DPRINTF("backends/cache: creating config directory: %s\n", targetPath);
     mkdir(targetPath, 0777);
   }
   strcat(targetPath, lastTitleFile);
   int fd = open(targetPath, O_WRONLY | O_CREAT | O_TRUNC);
   if (fd < 0) {
-    DPRINTF("ERROR: Failed to open last launched title file: %d\n", fd);
+    DPRINTF("backends/cache: error: failed to open last launched title file: %d\n", fd);
     return -ENOENT;
   }
   uint32_t ts = getTimestamp();
   if (write(fd, &ts, sizeof(ts)) != sizeof(ts)) {
-    DPRINTF("ERROR: Failed to write last launched title timestamp\n");
+    DPRINTF("backends/cache: error: failed to write last launched title timestamp\n");
     close(fd);
     return -EIO;
   }
   size_t pathLen = strlen(target->path) + 1;
   if (write(fd, target->path, pathLen) != (ssize_t)pathLen) {
-    DPRINTF("ERROR: Failed to write last launched title\n");
+    DPRINTF("backends/cache: error: failed to write last launched title\n");
     close(fd);
     return -EIO;
   }
