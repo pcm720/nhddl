@@ -11,6 +11,7 @@ struct BackendDevice;
 typedef enum {
   TitleFlag_None = 0,
   TitleFlag_Favorite = (1 << 0),
+  TitleFlag_FakeDEV9 = (1 << 1), // If set, will enable DEV9 faking
   /* bits 1–31 reserved for future use */
 } TitleFlags;
 
