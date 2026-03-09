@@ -104,7 +104,7 @@ int launchTarget(Target *target, ArgumentList *arguments) {
 
   // Cleanup storage devices before loading Neutrino
   cleanupAllBackends();
-  if (!strncmp(getNHDDLRawRoot(), "hdd0", 4) && strncmp(getNHDDLRoot(), getNeutrinoPath(), 4))
+  if (!strncmp(getNHDDLRawRoot(), "hdd", 3) && strncmp(getNHDDLRoot(), getNeutrinoPath(), 4))
     cleanupRootMount(); // Do not unmount NHDDL root if Neutrino is on CWD
 
   DPRINTF("neutrino: mounting VMC on MMCE devices\n");
