@@ -38,4 +38,7 @@ int getDeviceInfo(DeviceType type, char *baseMountpoint, size_t baseMountpointSi
 // Returns bitmask of device types that conflict with the given type (e.g. Device_MX4SIO for Device_MMCE).
 DeviceType getConflictingDeviceTypes(DeviceType type);
 
+// Returns non-zero if the given device type has been loaded
+int isDeviceLoaded(DeviceType type);
+
 #endif

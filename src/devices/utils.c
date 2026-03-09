@@ -2,10 +2,12 @@
 #include "config/config.h"
 #include "devices/devices.h"
 #include "dprintf.h"
+#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
 #include <io_common.h>
@@ -35,8 +37,8 @@ DeviceType guessDeviceType(const char *path) {
 }
 
 // Maps DeviceType to string
-char *getDeviceString(DeviceType mode) {
-  switch (mode) {
+char *getDeviceString(DeviceType type) {
+  switch (type) {
   case Device_Basic:
     return "Memory Card";
   case Device_HDD:
@@ -92,6 +94,11 @@ int getRelativePathIdx(char *path) {
 
 // Uses MMCE devctl calls to switch memory card to given title ID
 void mmceMountVMC(char *titleID) {
+  if (isDeviceLoaded(Device_MX4SIO))
+    return;
+  if (!isDeviceLoaded(Device_MMCE) && loadDeviceModules(Device_MMCE))
+    return;
+
   char mcMountpoint[] = "mcX:";
   static char mmceMountpoint[] = "mmceX:";
   for (int i = '0'; i < '2'; i++) {
@@ -197,4 +204,60 @@ char *guessCWDDevice(const char *cwd, DeviceType *type) {
   }
   *type = deviceType;
   return buf;
+}
+
+// Probes device prefix (path up to first ':') with opendir in a loop. Uses getProbeDelay() for max attempts; if 0, uses 10.
+// Returns 0 if opendir succeeds within the delay, non-zero on failure.
+int probePathPrefix(char *path, int noDelay) {
+  char *relPath = strchr(path, ':');
+  if (!relPath)
+    return -1;
+  char saved = *(++relPath);
+  relPath = '\0';
+
+  for (int attempt = 0; attempt < getProbeDelay(); attempt++) {
+    DIR *dir = opendir(path);
+    if (dir) {
+      closedir(dir);
+      *relPath = saved;
+      return 0;
+    }
+    if (noDelay)
+      return -1;
+
+    sleep(1);
+  }
+  *relPath = saved;
+  return -1;
+}
+
+// Probes and builds canonical path for any given path and device type.
+// Expects the path to be path to directory (e.g. CWD)
+char *probeCanonicalPath(const char *path, DeviceType type) {
+  char *relPath = strchr(path, ':');
+  if (!relPath)
+    return NULL;
+  relPath++;
+
+  size_t bufSize = strlen(relPath) + 10;
+  char *buf = calloc(sizeof(char), bufSize);
+  if (!buf)
+    return NULL;
+
+  // Extract relative path
+  char mountpoint[10] = {0};
+  int deviceCount = getDeviceInfo(type, buf, bufSize);
+  if (!deviceCount) {
+    free(buf);
+    return NULL;
+  }
+
+  for (int i; i < deviceCount; i++) {
+    snprintf(buf, bufSize, "%s%d:%s%s", mountpoint, i, relPath);
+    // For the first device, probe with delay
+    if (!probePathPrefix(buf, i))
+      return buf;
+  }
+  free(buf);
+  return NULL;
 }

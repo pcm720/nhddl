@@ -18,6 +18,10 @@ int getRelativePathIdx(char *path);
 // Uses MMCE devctl calls to switch memory card to given title ID
 void mmceMountVMC(char *titleID);
 
+// Probes and builds canonical path for any given path and device type.
+// Expects the path to be path to directory (e.g. CWD)
+char *probeCanonicalPath(const char *path, DeviceType type);
+
 // Converts massN: path into canonical path by resolving the underlying driver and device number via fileXio.
 // Returns NULL and sets *type to Device_None on failure. Caller must free the returned string after use.
 char *guessCWDDevice(const char *cwd, DeviceType *type);

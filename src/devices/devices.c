@@ -1,5 +1,6 @@
 #include "devices/devices.h"
 #include "config/config.h"
+#include "devices/hdd.h"
 #include "devices/pad.h"
 #include "devices/utils.h"
 #include "dprintf.h"
@@ -131,12 +132,15 @@ DeviceType getConflictingDeviceTypes(DeviceType type) {
   return result;
 }
 
+int isDeviceLoaded(DeviceType type) { return (loadedDevices & type) != 0; }
+
 // Loads module, executing argument function if it's present
 int loadModule(ModuleListEntry *mod);
 
 // Reboots IOP and initializes basic devices
 int rebootIOP() {
   DPRINTF("Rebooting IOP\n");
+  cleanupRootMount();
   fileXioExit();
   while (!SifIopReset("", 0)) {
   };
@@ -158,7 +162,7 @@ int rebootIOP() {
   initPad();
 
   // Ensure root device is always available
-  const char *root = getNHDDLRoot();
+  const char *root = getNHDDLRawRoot();
   if (root) {
     DeviceType rootType = guessDeviceType(root);
     if (rootType != Device_None && rootType != Device_Basic)
@@ -299,8 +303,10 @@ char *initPS2HDDArguments(uint32_t *argLength) {
   return argStr;
 }
 
-// up to 10 descriptors, 40 buffers
-char ps2fsArguments[] = "-o"
+// up to 4 mountpoints, up to 10 descriptors, 40 buffers
+char ps2fsArguments[] = "-m\0"
+                        "4\0"
+                        "-o"
                         "\0"
                         "10"
                         "\0"
