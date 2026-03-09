@@ -137,25 +137,25 @@ void parseArgv(int argc, char *argv[]) {
     arg++;
 
     if (val && !strcmp(OPTION_VMODE, arg)) {
-      DPRINTF("Using VMode %s\n", val);
+      DPRINTF("arguments/nhddl: using VMode %s\n", val);
       setVMode(parseVMode(val));
     } else if (val && !strcmp(OPTION_DEVICE, arg)) {
-      DPRINTF("Enabling device %s\n", val);
+      DPRINTF("arguments/nhddl: enabling device %s\n", val);
       setEnabledDevices(getEnabledDevices() | parseDevice(val));
     } else if (val && !strcmp(OPTION_IP_ADDRESS, arg)) {
-      DPRINTF("Using IP %s\n", val);
+      DPRINTF("arguments/nhddl: using IP %s\n", val);
       setIPAddress(val);
     } else if (val && !strcmp(OPTION_IMAGE, arg)) {
-      DPRINTF("Using image %s\n", val);
+      DPRINTF("arguments/nhddl: using image %s\n", val);
       setImage(val);
     } else if (!strcmp(OPTION_NO_INIT, arg)) {
-      DPRINTF("Skipping IOP init\n");
+      DPRINTF("arguments/nhddl: skipping IOP init\n");
       setNoInit(1);
     } else if (!strcmp(OPTION_PROBE_DELAY, arg)) {
-      DPRINTF("Using probe delay %d\n", val);
+      DPRINTF("arguments/nhddl: using probe delay %d\n", val);
       setProbeDelay(val ? atoi(val) : 0);
     } else if (!strcmp(OPTION_NEUTRINO, arg)) {
-      DPRINTF("Using custom Neutrino path: %s\n", val);
+      DPRINTF("arguments/nhddl: using custom Neutrino path: %s\n", val);
       setNeutrinoPath(val);
     }
   }
@@ -171,7 +171,7 @@ int loadOptions(void) {
 
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, NULL, lineBuffer)) {
-    DPRINTF("Can't load options file, will use defaults\n");
+    DPRINTF("arguments/nhddl: can't load options file, will use defaults\n");
     freeArgumentList(options);
     return -ENOENT;
   }

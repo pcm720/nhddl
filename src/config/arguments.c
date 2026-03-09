@@ -154,7 +154,7 @@ static void trim_trailing(char *s) {
 // Parses file into ArgumentList. Result may contain parsed arguments even if an error is returned.
 // CNF format: one argument per line as -name=value or -name; # starts comments; # -name=value is disabled.
 // If device is non-NULL, values starting with / or \ are resolved against device->mountpoint.
-static int parseOptionsFile(ArgumentList *result, struct BackendDevice *device, FILE *file) {
+static int parseConfigFile(ArgumentList *result, struct BackendDevice *device, FILE *file) {
   char lineBuffer[PATH_MAX];
   lineBuffer[0] = '\0';
 
@@ -204,7 +204,7 @@ static int parseOptionsFile(ArgumentList *result, struct BackendDevice *device, 
   }
 
   if (ferror(file) || !feof(file)) {
-    DPRINTF("ERROR: Failed to read config file\n");
+    DPRINTF("arguments: error: failed to read config file\n");
     return -EIO;
   }
   return 0;
@@ -214,7 +214,7 @@ static int parseOptionsFile(ArgumentList *result, struct BackendDevice *device, 
 int loadArgumentList(ArgumentList *options, struct BackendDevice *device, char *filePath) {
   FILE *file = fopen(filePath, "r");
   if (file == NULL) {
-    DPRINTF("ERROR: Failed to open %s\n", filePath);
+    DPRINTF("arguments: error: failed to open %s\n", filePath);
     return -ENOENT;
   }
 
@@ -222,7 +222,7 @@ int loadArgumentList(ArgumentList *options, struct BackendDevice *device, char *
   options->first = NULL;
   options->last = NULL;
 
-  if (parseOptionsFile(options, device, file)) {
+  if (parseConfigFile(options, device, file)) {
     fclose(file);
     freeArgumentList(options);
     return -EIO;

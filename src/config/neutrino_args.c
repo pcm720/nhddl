@@ -32,13 +32,13 @@ int loadTitleNeutrinoArguments(ArgumentList *result, Target *target) {
     device = device->metadev;
   }
 
-  DPRINTF("Looking for title-specific config for %s (%s)\n", target->name, target->id);
+  DPRINTF("arguments: looking for title-specific config for %s (%s)\n", target->name, target->id);
   char targetPath[PATH_MAX + 1];
   buildConfigFilePath(targetPath, device->mountpoint, NULL);
   // Determine actual title options file from config directory contents
   DIR *directory = opendir(targetPath);
   if (directory == NULL) {
-    DPRINTF("ERROR: Can't open %s\n", targetPath);
+    DPRINTF("arguments: error: Can't open %s\n", targetPath);
     return -ENOENT;
   }
   targetPath[0] = '\0';
@@ -61,15 +61,15 @@ int loadTitleNeutrinoArguments(ArgumentList *result, Target *target) {
   closedir(directory);
 
   if (targetPath[0] == '\0') {
-    DPRINTF("Title-specific config not found\n");
+    DPRINTF("arguments: title-specific config not found\n");
     return 0;
   }
 
   // Load arguments
-  DPRINTF("Loading title-specific config from %s\n", targetPath);
+  DPRINTF("arguments: loading title-specific config from %s\n", targetPath);
   int ret = loadArgumentList(result, device, targetPath);
   if (ret) {
-    DPRINTF("ERROR: Failed to load argument list: %d\n", ret);
+    DPRINTF("arguments: error: Failed to load argument list: %d\n", ret);
   }
 
   return 0;
@@ -88,12 +88,12 @@ int saveTitleNeutrinoArguments(Target *target, ArgumentList *options) {
   char lineBuffer[PATH_MAX + 1];
   buildConfigFilePath(lineBuffer, device->mountpoint, target->name);
   strcat(lineBuffer, ".cnf");
-  DPRINTF("Saving title-specific config to %s\n", lineBuffer);
+  DPRINTF("arguments: saving title-specific config to %s\n", lineBuffer);
 
   // Open file, truncating it
   int fd = open(lineBuffer, O_WRONLY | O_CREAT | O_TRUNC);
   if (fd < 0) {
-    DPRINTF("ERROR: Failed to open file\n");
+    DPRINTF("arguments: error: failed to open file\n");
     return fd;
   }
 
@@ -109,7 +109,7 @@ int saveTitleNeutrinoArguments(Target *target, ArgumentList *options) {
     len = sprintf(lineBuffer, "%s-%s%s%s\n", (tArg->isDisabled) ? "#" : "", tArg->arg, (valStr[0]) ? "=" : "", valStr);
     if (len > 0) {
       if ((ret = write(fd, lineBuffer, len)) != len) {
-        DPRINTF("ERROR: Failed to write to file\n");
+        DPRINTF("arguments: error: failed to write to file\n");
         goto out;
       }
     }
@@ -131,16 +131,16 @@ int saveGlobalNeutrinoArguments(struct BackendDevice *device, ArgumentList *opti
 
   struct stat st;
   if (stat(targetPath, &st) == -1) {
-    DPRINTF("Creating config directory: %s\n", targetPath);
+    DPRINTF("arguments: creating config directory: %s\n", targetPath);
     mkdir(targetPath, 0777);
   }
 
   buildConfigFilePath(targetPath, device->mountpoint, globalOptionsPath);
-  DPRINTF("Saving global config to %s\n", targetPath);
+  DPRINTF("arguments: saving global config to %s\n", targetPath);
 
   int fd = open(targetPath, O_WRONLY | O_CREAT | O_TRUNC);
   if (fd < 0) {
-    DPRINTF("ERROR: Failed to open file\n");
+    DPRINTF("arguments: error: failed to open file\n");
     return fd;
   }
 
@@ -156,7 +156,7 @@ int saveGlobalNeutrinoArguments(struct BackendDevice *device, ArgumentList *opti
     len = sprintf(lineBuffer, "%s-%s%s%s\n", (tArg->isDisabled) ? "#" : "", tArg->arg, (valStr[0]) ? "=" : "", valStr);
     if (len > 0) {
       if ((ret = write(fd, lineBuffer, len)) != len) {
-        DPRINTF("ERROR: Failed to write to file\n");
+        DPRINTF("arguments: error: failed to write to file\n");
         goto out_global;
       }
     }
