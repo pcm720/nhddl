@@ -34,7 +34,7 @@ struct BackendDevice *getBackendDeviceForPath(const char *path) {
   int n = getBackendDeviceCount();
   for (int i = 0; i < n; i++) {
     struct BackendDevice *dev = getBackendDeviceAt(i);
-    if (dev && dev->mountpoint && strstr(path, dev->mountpoint))
+    if (dev && dev->mountpoint && !strncmp(path, dev->mountpoint, strlen(dev->mountpoint)))
       return dev;
   }
   return NULL;

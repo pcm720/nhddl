@@ -3,6 +3,7 @@
 #include "backends/cache.h"
 #include "config/config.h"
 #include "devices/devices.h"
+#include "devices/hdd.h"
 #include "dprintf.h"
 #include "ui/ui.h"
 #include <hdd-ioctl.h>
@@ -18,91 +19,34 @@
 
 #define OPL_CONF_PARTITION_ARG "hdd_partition"
 
-// Checks and returns 0 if the given device contains APA partition table.
-static int checkAPAHeader(const char *mountpoint) {
-  int result = -1;
-
-  uint8_t *pSectorData = (uint8_t *)malloc(512);
-  if (pSectorData == NULL) {
-    return -ENOMEM;
-  }
-
-  hddAtaTransfer_t *args = (hddAtaTransfer_t *)pSectorData;
-  args->lba = 0;
-  args->size = 1;
-  result = fileXioDevctl(mountpoint, HDIOC_READSECTOR, args, sizeof(hddAtaTransfer_t), pSectorData, 512);
-  if (result < 0) {
-    free(pSectorData);
-    return -EIO;
-  }
-
-  if (strncmp((const char *)&pSectorData[4], "APA", 3)) {
-    result = 1; // Sector doesn't contain APA magic
-  }
-
-  free(pSectorData);
-  return result;
-}
-
-// Mounts partition and returns PFS mountpoint
-// Returned string must be freed by the caller
-char *mountPFSPartition(const char *partitionPath, int pfsNumber, int mountFlag) {
-  char *pfsMount = (char *)malloc(6);
-  if (!pfsMount)
-    return NULL;
-  pfsMount[0] = '\0';
-  pfsMount[5] = '\0';
-
-  // Check if __common is already mounted as NHDDL root
-  // getNHDDLRoot forces the root to be mounted
-  const char *nhddlRoot = getNHDDLRoot();
-  int isMounted = (nhddlRoot) ? !strncmp(getNHDDLRawRoot(), partitionPath, strlen(partitionPath)) : 0;
-
-  if (isMounted) {
-    strncpy(pfsMount, nhddlRoot, 5);
-    return pfsMount;
-  }
-
-  snprintf(pfsMount, 6, "pfs%d:", pfsNumber);
-  if (fileXioMount(pfsMount, partitionPath, mountFlag)) {
-    free(pfsMount);
-    return NULL;
-  }
-  return pfsMount;
-}
-
 // Parses OPL config file for partition name from __common/OPL/conf_hdd.cfg. Returns NULL if invalid or missing.
 // deviceMountpoint is the HDL device (e.g. "hdd0:").
 static char *readOPLConfig(const char *deviceMountpoint) {
-  char commonPath[32];
-  snprintf(commonPath, sizeof(commonPath), "%s__common", deviceMountpoint);
+  char cfgPath[32];
+  snprintf(cfgPath, sizeof(cfgPath), "%s__common", deviceMountpoint);
 
-  // Mount __common (or use NHDDL root if same partition); use temporary pfs3 for read
-  char *pfsMount = mountPFSPartition(commonPath, 3, FIO_MT_RDONLY);
+  // Mount __common (or use NHDDL root if same partition)
+  char *pfsMount = mountPFSPartition(cfgPath, FIO_MT_RDONLY);
   if (!pfsMount)
     return NULL;
 
-  char buf[PATH_MAX];
-  buf[0] = '\0';
-
-  char cfgPath[32];
   snprintf(cfgPath, sizeof(cfgPath), "%s/OPL/conf_hdd.cfg", pfsMount);
   FILE *fd = fopen(cfgPath, "rb");
   if (!fd) {
-    if (pfsMount[3] == '3')
-      fileXioUmount(pfsMount);
+    unmountPFSPartition(pfsMount);
     free(pfsMount);
     return NULL;
   }
 
+  char buf[PATH_MAX];
+  buf[0] = '\0';
   while (fgets(buf, sizeof(buf), fd) != NULL) {
     if (!strncmp(buf, OPL_CONF_PARTITION_ARG, sizeof(OPL_CONF_PARTITION_ARG) - 1))
       break;
     buf[0] = '\0';
   }
   fclose(fd);
-  if (pfsMount[3] == '3')
-    fileXioUmount(pfsMount);
+  unmountPFSPartition(pfsMount);
   free(pfsMount);
 
   if (buf[0] == '\0')
@@ -139,9 +83,8 @@ static struct BackendDevice *createMetadataEntry(const char *deviceMountpoint, c
   dev->index = 0;
   dev->titles = NULL;
 
-  char commonPath[32];
-  snprintf(commonPath, sizeof(commonPath), "%s__common", deviceMountpoint);
-  if (!strcmp(partitionPath, commonPath)) {
+  if (strstr(partitionPath, ":__common")) {
+    // Append /OPL for __common partition
     dev->mountpoint = malloc(strlen(pfsMount) + 5);
     if (dev->mountpoint) {
       strcpy(dev->mountpoint, pfsMount);
@@ -160,14 +103,13 @@ static struct BackendDevice *createMetadataEntry(const char *deviceMountpoint, c
 
 // Mounts PFS partition with OPL metadata for the given HDL device.
 // pfsNumber might be overridden if partition is already mounted as NHDDL root
-static struct BackendDevice *mountPFS(const char *deviceMountpoint, int pfsNumber) {
-  char partitionBuf[32];
+static struct BackendDevice *mountMetadataPartition(const char *deviceMountpoint) {
   char *pfsMount = NULL;
 
   // Attempt to get OPL partition from OPL config
   char *oplPartition = readOPLConfig(deviceMountpoint);
   if (oplPartition) {
-    pfsMount = mountPFSPartition(oplPartition, pfsNumber, FIO_MT_RDWR);
+    pfsMount = mountPFSPartition(oplPartition, FIO_MT_RDWR);
     if (!pfsMount)
       DPRINTF("backends/hdl: warning: failed to mount %s, will try fallbacks\n", oplPartition);
     else {
@@ -181,8 +123,9 @@ static struct BackendDevice *mountPFS(const char *deviceMountpoint, int pfsNumbe
   }
 
   // Try to fallback to +OPL
+  char partitionBuf[16];
   snprintf(partitionBuf, sizeof(partitionBuf), "%s+OPL", deviceMountpoint);
-  pfsMount = mountPFSPartition(partitionBuf, pfsNumber, FIO_MT_RDWR);
+  pfsMount = mountPFSPartition(partitionBuf, FIO_MT_RDWR);
   if (pfsMount) {
     DPRINTF("backends/hdl: mounted %s as %s\n", partitionBuf, pfsMount);
     struct BackendDevice *dev = createMetadataEntry(deviceMountpoint, partitionBuf, pfsMount);
@@ -192,7 +135,7 @@ static struct BackendDevice *mountPFS(const char *deviceMountpoint, int pfsNumbe
 
   // Fallback to __common
   snprintf(partitionBuf, sizeof(partitionBuf), "%s__common", deviceMountpoint);
-  pfsMount = mountPFSPartition(partitionBuf, pfsNumber, FIO_MT_RDWR);
+  pfsMount = mountPFSPartition(partitionBuf, FIO_MT_RDWR);
   if (pfsMount) {
     DPRINTF("backends/hdl: mounted %s as %s\n", partitionBuf, pfsMount);
     struct BackendDevice *dev = createMetadataEntry(deviceMountpoint, partitionBuf, pfsMount);
@@ -203,7 +146,7 @@ static struct BackendDevice *mountPFS(const char *deviceMountpoint, int pfsNumbe
 }
 
 static void syncHDL(struct BackendDevice *device) {
-  char pfsBase[5];
+  char pfsBase[6];
   if (!device || !device->metadev || !device->metadev->mountpoint || getMountpointFromPath(device->metadev->mountpoint, pfsBase, sizeof(pfsBase)))
     return;
   fileXioDevctl("pfs:", PDIOC_CLOSEALL, NULL, 0, NULL, 0);
@@ -211,7 +154,7 @@ static void syncHDL(struct BackendDevice *device) {
 }
 
 static void cleanupHDL(struct BackendDevice *device) {
-  char pfsBase[5];
+  char pfsBase[6];
   if (!device || !device->metadev || !device->metadev->mountpoint || getMountpointFromPath(device->metadev->mountpoint, pfsBase, sizeof(pfsBase)))
     return;
   // Refuse to unmount if the PFS mount is used as Neutrino path or NHDDL root
@@ -220,12 +163,7 @@ static void cleanupHDL(struct BackendDevice *device) {
     DPRINTF("backends/hdl: not unmounting %s\n", pfsBase);
     return;
   }
-  path = getNHDDLRoot();
-  if (path && !strncmp(path, pfsBase, 4)) {
-    DPRINTF("backends/hdl: not unmounting %s\n", pfsBase);
-    return;
-  }
-  fileXioUmount(pfsBase);
+  unmountPFSPartition(pfsBase);
 }
 
 // Initializes one backend device slot for APA-formatted HDL.
@@ -269,7 +207,7 @@ int initHDL(struct BackendDevice *slot) {
     slot->sync = &syncHDL;
     slot->cleanup = &cleanupHDL;
     slot->titles = NULL;
-    slot->metadev = mountPFS(path, i);
+    slot->metadev = mountMetadataPartition(path);
     if (!slot->metadev) {
       DPRINTF("backends/hdl: failed to mount PFS partition on %s\n", path);
       free(slot->mountpoint);

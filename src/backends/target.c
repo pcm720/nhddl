@@ -41,8 +41,8 @@ Target *copyTarget(Target *src) {
   copy->idx = src->idx;
 
   copy->path = src->path ? strdup(src->path) : NULL;
-  copy->name = strdup(src->name);
-  copy->id = strdup(src->id);
+  copy->name = src->name ? strdup(src->name) : NULL;
+  copy->id = src->id ? strdup(src->id) : NULL;
   copy->flags = src->flags;
   copy->device = src->device;
 
@@ -110,11 +110,11 @@ void insertIntoTargetList(TargetList *result, Target *title) {
 // Completely frees Target and returns pointer to the next target in the list
 Target *freeTarget(TargetList *targetList, Target *target) {
   // Update target list if target is the first or the last element
-  if (targetList->first == target) {
-    targetList->first = target->next;
-  }
-  if (targetList->last == target) {
-    targetList->last = target->prev;
+  if (targetList) {
+    if (targetList->first == target)
+      targetList->first = target->next;
+    if (targetList->last == target)
+      targetList->last = target->prev;
   }
 
   Target *next = NULL;

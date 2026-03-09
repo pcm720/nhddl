@@ -48,11 +48,12 @@ void updateTargetFlagsAndPersist(struct BackendDevice *device, Target *target, u
 // Initializes backend for the given device type (loads device modules, removes conflicting backends, runs backend init).
 // device must be a single type (e.g. Device_MMCE or Device_HDD), not a mask. Call once per type.
 // Returns number of devices added, or negative on error.
+// If skipDeviceInit is 1, will skip initializing device modules
 // If the device list was invalidated (e.g. conflict reinit), the high bit is set so UI can reload views (e.g. return value & LIST_INVALIDATED).
-int initBackend(DeviceType device);
-// Initializes backend for the given image path. If noinit is set, adds only that device without loading modules; otherwise inits the device type
-// derived from the path. Returns devices added or negative on error.
-int initBackendForImage(const char *image);
+int initBackend(DeviceType device, int skipDeviceInit);
+// Initializes device, backend and target for the given image path for forwarder boot and returns target.
+// Returns NULL on error.
+Target *initializeTargetForImage(const char *image);
 // Returns the backend device whose mountpoint is a prefix of path, or NULL if none.
 struct BackendDevice *getBackendDeviceForPath(const char *path);
 // Copies the mountpoint prefix of path (up to and including the first ':'). Returns 0 on success.
