@@ -21,6 +21,7 @@ static char bsdfsArgument[] = "bsdfs";
 #define BSD_USB "usb"
 #define BSD_ILINK "ilink"
 #define BSD_MMCE "mmce"
+#define BSD_ATA_NET "ata-net"
 
 // Neutrino bsdfs values
 #define BSDFS_HDL "hdl"
@@ -76,7 +77,7 @@ int launchTarget(Target *target, ArgumentList *arguments) {
     // Disable quickboot for HDL, BSD is set by Device_ATA case
     appendArgument(arguments, newArgument(bsdfsArgument, BSDFS_HDL));
   case Device_ATA:
-    bsdValue = BSD_ATA;
+    bsdValue = ((target->flags & TitleFlag_FakeDEV9) || getFakeDEV9()) ? BSD_ATA_NET : BSD_ATA;
     break;
   case Device_MX4SIO:
     bsdValue = BSD_MX4SIO;
