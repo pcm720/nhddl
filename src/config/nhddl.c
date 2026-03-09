@@ -27,7 +27,7 @@ const char optionsFile[] = "nhddl.cnf";
 #define FMT_OPTION_INT "-%s=%d\n"
 #define FMT_OPTION_FLAG "-%s\n"
 
-// Parses mode string into DeviceType
+// Parses device string into DeviceType
 DeviceType parseDevice(const char *val) {
   if (!strncmp(val, "ata", 3))
     return Device_ATA;

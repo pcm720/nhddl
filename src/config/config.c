@@ -1,4 +1,5 @@
 #include "config/config.h"
+#include "devices/hdd.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -15,11 +16,16 @@ const char *getImage(void) { return config.image; }
 
 int getNoInit(void) { return config.noInit; }
 
-int getProbeDelay(void) { return config.probeDelay; }
+int getProbeDelay(void) { return (!config.probeDelay) ? config.probeDelay : 10; }
 
-const Device *getBootDevice(void) { return &config.bootDevice; }
+const char *getNHDDLRawRoot(void) { return config.rootPath; }
 
-const char *getNHDDLRoot(void) { return config.rootPath; }
+const char *getNHDDLRoot(void) {
+  if (!strncmp(config.rootPath, "hdd0", 4))
+    return getNHDDLHDDRoot();
+
+  return config.rootPath;
+}
 
 const char *getNeutrinoPath(void) { return config.neutrinoPath; }
 
@@ -43,16 +49,6 @@ void setImage(const char *v) {
 void setNoInit(int v) { config.noInit = v; }
 
 void setProbeDelay(int v) { config.probeDelay = v; }
-
-void setBootDevice(const Device *v) {
-  if (v) {
-    if (config.bootDevice.mountpoint)
-      free(config.bootDevice.mountpoint);
-    config.bootDevice.mountpoint = v->mountpoint ? strdup(v->mountpoint) : NULL;
-    config.bootDevice.type = v->type;
-    config.bootDevice.index = v->index;
-  }
-}
 
 void setNHDDLRoot(const char *v) {
   if (v)

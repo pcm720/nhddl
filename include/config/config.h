@@ -23,7 +23,6 @@ typedef struct {
   char *image; // Used along with the mode argument to turn NHDDL into a simple Neutrino forwarder
   int noInit;
   int probeDelay;
-  Device bootDevice;
   char rootPath[PATH_MAX + 1];
   char neutrinoPath[PATH_MAX + 1]; // Can be set via nhddl.cnf (-neutrino=<path>)
 } Config;
@@ -37,6 +36,8 @@ int getNoInit(void);
 int getProbeDelay(void);
 const Device *getBootDevice(void);
 const char *getNHDDLRoot(void);
+// Raw stored root (for internal use). When root is HDD, getNHDDLRoot() returns the I/O path (pfs2:/path) instead.
+const char *getNHDDLRawRoot(void);
 const char *getNeutrinoPath(void);
 
 // Setters
