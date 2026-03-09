@@ -28,6 +28,9 @@ static int initDevice(struct BackendDevice *slot, DeviceType type, int probeAtte
   int deviceCount = 0;
 
   for (int i = 0; i < maxDevices; i++) {
+    if (i > 0)
+      probeAttempts = 1;
+
     path[baseLen] = '0' + (char)i;
     path[baseLen + 1] = ':';
     path[baseLen + 2] = '\0';
