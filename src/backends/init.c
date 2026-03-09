@@ -107,7 +107,7 @@ int initBackend(DeviceType device, int skipDeviceInit) {
     if (n > 0)
       added = n;
   } else {
-    added = initDevice(slot, device, (skipDeviceInit) ? 1 : getProbeDelay());
+    added = initDevice(slot, device, (skipDeviceInit) ? 1 : getProbeDelayWithDefaults());
   }
 
   if (added < 0)

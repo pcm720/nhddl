@@ -177,12 +177,15 @@ int initHDL(struct BackendDevice *slot) {
   slot->type = Device_None;
 
   char path[12];
+  int probeAttempts = getProbeDelayWithDefaults();
   for (int i = 0; i < maxDevices; i++) {
+    if (i > 0)
+      probeAttempts = 1;
+
     snprintf(path, sizeof(path), "%s%d:", baseMountpoint, i);
 
-    int maxAttempts = getProbeDelay() > 0 ? getProbeDelay() : 1;
     DIR *directory = NULL;
-    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+    for (int attempt = 0; attempt < probeAttempts; attempt++) {
       directory = opendir(path);
       if (directory != NULL) {
         closedir(directory);
