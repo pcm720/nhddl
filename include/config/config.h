@@ -33,6 +33,7 @@ DeviceType getEnabledDevices(void);
 const char *getIPAddress(void);
 const char *getImage(void);
 int getNoInit(void);
+int getProbeDelayWithDefaults(void);
 int getProbeDelay(void);
 const Device *getBootDevice(void);
 const char *getNHDDLRoot(void);

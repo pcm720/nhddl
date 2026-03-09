@@ -16,7 +16,8 @@ const char *getImage(void) { return config.image; }
 
 int getNoInit(void) { return config.noInit; }
 
-int getProbeDelay(void) { return (config.probeDelay) ? config.probeDelay : 10; }
+int getProbeDelayWithDefaults(void) { return (config.probeDelay) ? config.probeDelay : 10; }
+int getProbeDelay(void) { return config.probeDelay; }
 
 const char *getNHDDLRawRoot(void) { return config.rootPath; }
 
