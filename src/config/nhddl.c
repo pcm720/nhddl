@@ -17,10 +17,12 @@ const char optionsFile[] = "nhddl.cnf";
 #define OPTION_VMODE "video"
 #define OPTION_DEVICE "device"
 #define OPTION_IP_ADDRESS "ip_addr"
-#define OPTION_IMAGE "dvd"
-#define OPTION_NO_INIT "noinit"
 #define OPTION_PROBE_DELAY "probe_delay"
 #define OPTION_NEUTRINO "neutrino"
+// Forwarder mode-exclusive flags
+#define OPTION_IMAGE "dvd"
+#define OPTION_NO_INIT "noinit"
+#define OPTION_FAKEDEV9 "dev9f"
 
 // Config file line formats
 #define FMT_OPTION_STR "-%s=%s\n"
@@ -151,6 +153,9 @@ void parseArgv(int argc, char *argv[]) {
     } else if (!strcmp(OPTION_NO_INIT, arg)) {
       DPRINTF("config/nhddl: skipping IOP init\n");
       setNoInit(1);
+    } else if (!strcmp(OPTION_FAKEDEV9, arg)) {
+      DPRINTF("config/nhddl: will fake DEV9\n");
+      setFakeDEV9(1);
     } else if (!strcmp(OPTION_PROBE_DELAY, arg)) {
       DPRINTF("config/nhddl: using probe delay %d\n", val);
       setProbeDelay(val ? atoi(val) : 0);
