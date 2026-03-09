@@ -69,7 +69,7 @@ int getDeviceIndex(char *path) {
 
   // Check the last char
   mountpoint -= 1;
-  if ((*mountpoint >= '0' || *mountpoint <= '9'))
+  if ((*mountpoint >= '0' && *mountpoint <= '9'))
     // Return device index
     return *mountpoint - '0';
 
@@ -254,7 +254,7 @@ char *probeCanonicalPath(const char *path, DeviceType type) {
     return NULL;
   }
 
-  for (int i; i < deviceCount; i++) {
+  for (int i = 0; i < deviceCount; i++) {
     snprintf(buf, bufSize, "%s%d:%s", mountpoint, i, relPath);
     // For the first device, probe with delay
     DPRINTF("devices: probing %s\n", buf);
