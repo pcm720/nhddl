@@ -44,12 +44,42 @@ static int checkAPAHeader(const char *mountpoint) {
   return result;
 }
 
+// Mounts partition and returns PFS mountpoint
+// Returned string must be freed by the caller
+char *mountPFSPartition(const char *partitionPath, int pfsNumber, int mountFlag) {
+  char *pfsMount = (char *)malloc(6);
+  if (!pfsMount)
+    return NULL;
+  pfsMount[0] = '\0';
+  pfsMount[5] = '\0';
+
+  // Check if __common is already mounted as NHDDL root
+  // getNHDDLRoot forces the root to be mounted
+  const char *nhddlRoot = getNHDDLRoot();
+  int isMounted = (nhddlRoot) ? !strncmp(getNHDDLRawRoot(), partitionPath, strlen(partitionPath)) : 0;
+
+  if (isMounted) {
+    strncpy(pfsMount, nhddlRoot, 5);
+    return pfsMount;
+  }
+
+  snprintf(pfsMount, 6, "pfs%d:", pfsNumber);
+  if (fileXioMount(pfsMount, partitionPath, mountFlag)) {
+    free(pfsMount);
+    return NULL;
+  }
+  return pfsMount;
+}
+
 // Parses OPL config file for partition name from __common/OPL/conf_hdd.cfg. Returns NULL if invalid or missing.
-// deviceMountpoint is the HDL device (e.g. "hdd0:"). pfsMount is the PFS mount to use (e.g. "pfs0:").
-static char *readOPLConfig(const char *deviceMountpoint, const char *pfsMount) {
+// deviceMountpoint is the HDL device (e.g. "hdd0:").
+static char *readOPLConfig(const char *deviceMountpoint) {
   char commonPath[32];
   snprintf(commonPath, sizeof(commonPath), "%s__common", deviceMountpoint);
-  if (fileXioMount(pfsMount, commonPath, FIO_MT_RDONLY))
+
+  // Mount __common (or use NHDDL root if same partition); use temporary pfs3 for read
+  char *pfsMount = mountPFSPartition(commonPath, 3, FIO_MT_RDONLY);
+  if (!pfsMount)
     return NULL;
 
   char buf[PATH_MAX];
@@ -59,7 +89,9 @@ static char *readOPLConfig(const char *deviceMountpoint, const char *pfsMount) {
   snprintf(cfgPath, sizeof(cfgPath), "%s/OPL/conf_hdd.cfg", pfsMount);
   FILE *fd = fopen(cfgPath, "rb");
   if (!fd) {
-    fileXioUmount(pfsMount);
+    if (pfsMount[3] == '3')
+      fileXioUmount(pfsMount);
+    free(pfsMount);
     return NULL;
   }
 
@@ -69,7 +101,9 @@ static char *readOPLConfig(const char *deviceMountpoint, const char *pfsMount) {
     buf[0] = '\0';
   }
   fclose(fd);
-  fileXioUmount(pfsMount);
+  if (pfsMount[3] == '3')
+    fileXioUmount(pfsMount);
+  free(pfsMount);
 
   if (buf[0] == '\0')
     return NULL;
@@ -124,32 +158,46 @@ static struct BackendDevice *createMetadataEntry(const char *deviceMountpoint, c
   return dev;
 }
 
-// Mounts PFS partition with OPL metadata for the given HDL device. pfsMount is the PFS mount to use (e.g. "pfs0:"). Returns BackendDevice or NULL.
-static struct BackendDevice *mountPFS(const char *deviceMountpoint, const char *pfsMount) {
+// Mounts PFS partition with OPL metadata for the given HDL device.
+// pfsNumber might be overridden if partition is already mounted as NHDDL root
+static struct BackendDevice *mountPFS(const char *deviceMountpoint, int pfsNumber) {
   char partitionBuf[32];
+  char *pfsMount = NULL;
 
-  char *oplPartition = readOPLConfig(deviceMountpoint, pfsMount);
+  // Attempt to get OPL partition from OPL config
+  char *oplPartition = readOPLConfig(deviceMountpoint);
   if (oplPartition) {
-    if (fileXioMount(pfsMount, oplPartition, FIO_MT_RDWR))
+    pfsMount = mountPFSPartition(oplPartition, pfsNumber, FIO_MT_RDWR);
+    if (!pfsMount)
       DPRINTF("backends/hdl: warning: failed to mount %s, will try fallbacks\n", oplPartition);
     else {
       DPRINTF("backends/hdl: mounted %s as %s\n", oplPartition, pfsMount);
       struct BackendDevice *dev = createMetadataEntry(deviceMountpoint, oplPartition, pfsMount);
+      free(pfsMount);
       free(oplPartition);
       return dev;
     }
     free(oplPartition);
   }
 
+  // Try to fallback to +OPL
   snprintf(partitionBuf, sizeof(partitionBuf), "%s+OPL", deviceMountpoint);
-  if (!fileXioMount(pfsMount, partitionBuf, FIO_MT_RDWR)) {
+  pfsMount = mountPFSPartition(partitionBuf, pfsNumber, FIO_MT_RDWR);
+  if (pfsMount) {
     DPRINTF("backends/hdl: mounted %s as %s\n", partitionBuf, pfsMount);
-    return createMetadataEntry(deviceMountpoint, partitionBuf, pfsMount);
+    struct BackendDevice *dev = createMetadataEntry(deviceMountpoint, partitionBuf, pfsMount);
+    free(pfsMount);
+    return dev;
   }
+
+  // Fallback to __common
   snprintf(partitionBuf, sizeof(partitionBuf), "%s__common", deviceMountpoint);
-  if (!fileXioMount(pfsMount, partitionBuf, FIO_MT_RDWR)) {
+  pfsMount = mountPFSPartition(partitionBuf, pfsNumber, FIO_MT_RDWR);
+  if (pfsMount) {
     DPRINTF("backends/hdl: mounted %s as %s\n", partitionBuf, pfsMount);
-    return createMetadataEntry(deviceMountpoint, partitionBuf, pfsMount);
+    struct BackendDevice *dev = createMetadataEntry(deviceMountpoint, partitionBuf, pfsMount);
+    free(pfsMount);
+    return dev;
   }
   return NULL;
 }
@@ -166,12 +214,16 @@ static void cleanupHDL(struct BackendDevice *device) {
   char pfsBase[5];
   if (!device || !device->metadev || !device->metadev->mountpoint || getMountpointFromPath(device->metadev->mountpoint, pfsBase, sizeof(pfsBase)))
     return;
-  const char *neutrinoPath = getNeutrinoPath();
-  if (neutrinoPath) {
-    if (!strncmp(neutrinoPath, pfsBase, 4)) {
-      DPRINTF("backends/hdl: not unmounting %s\n", pfsBase);
-      return;
-    }
+  // Refuse to unmount if the PFS mount is used as Neutrino path or NHDDL root
+  const char *path = getNeutrinoPath();
+  if (path && !strncmp(path, pfsBase, 4)) {
+    DPRINTF("backends/hdl: not unmounting %s\n", pfsBase);
+    return;
+  }
+  path = getNHDDLRoot();
+  if (path && !strncmp(path, pfsBase, 4)) {
+    DPRINTF("backends/hdl: not unmounting %s\n", pfsBase);
+    return;
   }
   fileXioUmount(pfsBase);
 }
@@ -217,9 +269,7 @@ int initHDL(struct BackendDevice *slot) {
     slot->sync = &syncHDL;
     slot->cleanup = &cleanupHDL;
     slot->titles = NULL;
-    char pfsMount[12];
-    snprintf(pfsMount, sizeof(pfsMount), "pfs%d:", i);
-    slot->metadev = mountPFS(path, pfsMount);
+    slot->metadev = mountPFS(path, i);
     if (!slot->metadev) {
       DPRINTF("backends/hdl: failed to mount PFS partition on %s\n", path);
       free(slot->mountpoint);

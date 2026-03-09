@@ -13,6 +13,8 @@
 #include <fileXio_rpc.h>
 #include <io_common.h>
 
+// pfs0 and pfs1 are used by HDL backend for hdd0 and hdd1 metadata
+// pfs3 can be used as a temporary partition and should always be unmounted immediately after use
 #define NHDDL_ROOT_MOUNTPOINT "pfs2:"
 static char pfsPath[PATH_MAX] = {0};
 
