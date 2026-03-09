@@ -45,7 +45,7 @@ IRX_DEFINE(mx4sio_bd_mini);
 IRX_DEFINE(iLinkman);
 IRX_DEFINE(IEEE1394_bd_mini);
 IRX_DEFINE(udpfs_ioman);
-IRX_DEFINE(ps2hdd_bdm);
+IRX_DEFINE(ps2hdd_osd);
 IRX_DEFINE(ps2fs);
 #ifdef ENABLE_PRINTF
 IRX_DEFINE(ppctty);
@@ -99,13 +99,13 @@ static ModuleListEntry moduleList[] = {
     // DEV9
     INT_MODULE(ps2dev9, Device_ATA | Device_HDD | Device_UDPFS | Device_iLink, NULL, Device_None),
     // BDM
-    INT_MODULE(bdm, Device_ATA | Device_USB | Device_MX4SIO | Device_iLink, NULL, Device_None),
+    INT_MODULE(bdm, Device_ATA | Device_HDD | Device_USB | Device_MX4SIO | Device_iLink, NULL, Device_None),
     // FAT/exFAT
-    INT_MODULE(bdmfs_fatfs, Device_ATA | Device_USB | Device_MX4SIO | Device_iLink, NULL, Device_None),
+    INT_MODULE(bdmfs_fatfs, Device_ATA | Device_HDD | Device_USB | Device_MX4SIO | Device_iLink, NULL, Device_None),
     // SMAP UDPFS driver, includes small IP stack and UDPTTY
     INT_MODULE(udpfs_ioman, Device_UDPFS, &initSMAPArguments, Device_None),
     // exFAT on internal HDD
-    INT_MODULE(ata_bd, Device_ATA, NULL, Device_None),
+    INT_MODULE(ata_bd, Device_ATA | Device_HDD, NULL, Device_None),
     // USBD
     INT_MODULE(usbd_mini, Device_USB, NULL, Device_None),
     // USB Mass Storage
@@ -117,7 +117,7 @@ static ModuleListEntry moduleList[] = {
     // iLink Mass Storage
     INT_MODULE(IEEE1394_bd_mini, Device_iLink, NULL, Device_None),
     // PS2HDD driver
-    INT_MODULE(ps2hdd_bdm, Device_HDD, &initPS2HDDArguments, Device_None),
+    INT_MODULE(ps2hdd_osd, Device_HDD, &initPS2HDDArguments, Device_None),
     // PFS driver
     INT_MODULE(ps2fs, Device_HDD, &initPS2FSArguments, Device_None),
 };
@@ -140,7 +140,9 @@ int loadModule(ModuleListEntry *mod);
 // Reboots IOP and initializes basic devices
 int rebootIOP() {
   DPRINTF("devices: rebooting IOP\n");
-  cleanupRootMount();
+  if (loadedModules != -1)
+    cleanupRootMount();
+
   fileXioExit();
   while (!SifIopReset("", 0)) {
   };
@@ -170,6 +172,7 @@ int rebootIOP() {
     if (rootType != Device_None && rootType != Device_Basic)
       loadDeviceModules(rootType);
   }
+  return 0;
 }
 
 // Loads device modules

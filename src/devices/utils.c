@@ -213,7 +213,7 @@ int probePathPrefix(char *path, int noDelay) {
   if (!relPath)
     return -1;
   char saved = *(++relPath);
-  relPath = '\0';
+  *relPath = '\0';
 
   for (int attempt = 0; attempt < getProbeDelay(); attempt++) {
     DIR *dir = opendir(path);
@@ -222,8 +222,10 @@ int probePathPrefix(char *path, int noDelay) {
       *relPath = saved;
       return 0;
     }
-    if (noDelay)
+    if (noDelay) {
+      *relPath = saved;
       return -1;
+    }
 
     sleep(1);
   }
@@ -232,7 +234,7 @@ int probePathPrefix(char *path, int noDelay) {
 }
 
 // Probes and builds canonical path for any given path and device type.
-// Expects the path to be path to directory (e.g. CWD)
+// Expects the path to be a file path. Caller must free the returned string after use.
 char *probeCanonicalPath(const char *path, DeviceType type) {
   char *relPath = strchr(path, ':');
   if (!relPath)
@@ -246,17 +248,24 @@ char *probeCanonicalPath(const char *path, DeviceType type) {
 
   // Extract relative path
   char mountpoint[10] = {0};
-  int deviceCount = getDeviceInfo(type, buf, bufSize);
+  int deviceCount = getDeviceInfo(type, mountpoint, sizeof(mountpoint));
   if (!deviceCount) {
     free(buf);
     return NULL;
   }
 
   for (int i; i < deviceCount; i++) {
-    snprintf(buf, bufSize, "%s%d:%s%s", mountpoint, i, relPath);
+    snprintf(buf, bufSize, "%s%d:%s", mountpoint, i, relPath);
     // For the first device, probe with delay
-    if (!probePathPrefix(buf, i))
+    DPRINTF("devices: probing %s\n", buf);
+    if (probePathPrefix(buf, i))
+      continue;
+
+    int fd = open(buf, O_RDONLY);
+    if (fd >= 0) {
+      close(fd);
       return buf;
+    }
   }
   free(buf);
   return NULL;

@@ -19,7 +19,7 @@ int getRelativePathIdx(char *path);
 void mmceMountVMC(char *titleID);
 
 // Probes and builds canonical path for any given path and device type.
-// Expects the path to be path to directory (e.g. CWD)
+// Expects the path to be a file path. Caller must free the returned string after use.
 char *probeCanonicalPath(const char *path, DeviceType type);
 
 // Converts massN: path into canonical path by resolving the underlying driver and device number via fileXio.

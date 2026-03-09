@@ -16,7 +16,7 @@ set(IRX_FILES
     mx4sio_bd_mini
     iLinkman
     IEEE1394_bd_mini
-    ps2hdd-bdm
+    ps2hdd-osd
     ps2fs
 )
 

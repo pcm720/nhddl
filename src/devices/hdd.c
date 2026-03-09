@@ -25,11 +25,11 @@ static int mountRootPartition(char *path) {
   // Temporarily truncate path at ":pfs:" to get partition path
   *pfs = '\0';
   // Mount the partition and restore the path
-  int ret = (fileXioMount(NHDDL_ROOT_MOUNTPOINT, path, FIO_MT_RDWR) != 0) ? -1 : 0;
-  *pfs = ':';
+  int ret = fileXioMount(NHDDL_ROOT_MOUNTPOINT, path, FIO_MT_RDWR);
+  if (ret)
+    DPRINTF("devices: failed to mount %s to %s: %d\n", path, NHDDL_ROOT_MOUNTPOINT, ret);
 
-  if (ret != 0)
-    DPRINTF("devices: failed to mount %s to %s\n", path, NHDDL_ROOT_MOUNTPOINT);
+  *pfs = ':';
   return ret;
 }
 
@@ -50,7 +50,6 @@ const char *getNHDDLHDDRoot(void) {
   // Build the path
   strcpy(pfsPath, NHDDL_ROOT_MOUNTPOINT);
   strcat(pfsPath, pfs + 5);
-  strcat(pfsPath, "/");
 
   // Make sure the root is mounted
   DIR *d = opendir(NHDDL_ROOT_MOUNTPOINT);
@@ -66,7 +65,7 @@ const char *getNHDDLHDDRoot(void) {
 // Unmounts pfs2: when root is hdd0. Call before IOP reboot, before booting Neutrino, and on exit.
 void cleanupRootMount(void) {
   const char *root = getNHDDLRawRoot();
-  if (!root || strncmp(root, "hdd0", 4))
+  if (!root || strncmp(root, "hdd", 3))
     return;
 
   // "Clear" the path and unmount the partition
