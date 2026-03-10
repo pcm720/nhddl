@@ -17,20 +17,22 @@ typedef enum {
 
 // Launcher configuration. Use getters/setters instead of accessing fields directly.
 typedef struct {
-  VModeType vmode;
   DeviceType enabledDevices; // Bit mask of Device_* flags
   char ipAddr[16];
   int probeDelay;
   char rootPath[PATH_MAX + 1];
-  char neutrinoPath[PATH_MAX + 1]; // Can be set via nhddl.cnf (-neutrino=<path>)
+  char neutrinoPath[PATH_MAX + 1];
   // Forwarder mode-exclusive flags:
   char *image;  // Used along with the device argument to turn NHDDL into a simple Neutrino forwarder
   int noInit;   // If set, will skip module initializaton and rely on already loaded modules
   int fakeDEV9; // If set, will enable DEV9 faking
+  // UI flags:
+  VModeType vmode;       // Video mode
+  int widescreen;        // If 1, UI will be scaled for widescreen. Not applicable in 720p.
+  int autolaunchTimeout; // If >0, UI will auto-launch the last title after autolaunchTimeout seconds
 } Config;
 
 // Getters
-VModeType getVMode(void);
 DeviceType getEnabledDevices(void);
 const char *getIPAddress(void);
 int getProbeDelayWithDefaults(void);
@@ -43,9 +45,11 @@ const char *getNeutrinoPath(void);
 const char *getImage(void);
 int getNoInit(void);
 int getFakeDEV9(void);
+VModeType getVMode(void);
+int getWidescreen(void);
+int getAutolaunchTimeout(void);
 
 // Setters
-void setVMode(VModeType v);
 void setEnabledDevices(DeviceType v);
 void setIPAddress(const char *v);
 void setProbeDelay(int v);
@@ -55,5 +59,8 @@ void setNeutrinoPath(const char *v);
 void setImage(const char *v);
 void setNoInit(int v);
 void setFakeDEV9(int v);
+void setVMode(VModeType v);
+void setWidescreen(int v);
+void setAutolaunchTimeout(int v);
 
 #endif

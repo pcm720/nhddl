@@ -6,7 +6,6 @@
 Config config = {0};
 
 // Getters
-VModeType getVMode(void) { return config.vmode; }
 DeviceType getEnabledDevices(void) { return config.enabledDevices; }
 const char *getIPAddress(void) { return config.ipAddr; }
 int getProbeDelayWithDefaults(void) { return (config.probeDelay) ? config.probeDelay : 10; }
@@ -22,9 +21,11 @@ const char *getNeutrinoPath(void) { return config.neutrinoPath; }
 const char *getImage(void) { return config.image; }
 int getNoInit(void) { return config.noInit; }
 int getFakeDEV9(void) { return config.fakeDEV9; }
+VModeType getVMode(void) { return config.vmode; }
+int getWidescreen(void) { return config.widescreen; }
+int getAutolaunchTimeout(void) { return config.autolaunchTimeout; }
 
 // Setters
-void setVMode(VModeType v) { config.vmode = v; }
 void setEnabledDevices(DeviceType v) { config.enabledDevices = v; }
 void setIPAddress(const char *v) {
   if (v)
@@ -49,3 +50,6 @@ void setImage(const char *v) {
 }
 void setNoInit(int v) { config.noInit = v; }
 void setFakeDEV9(int v) { config.fakeDEV9 = v; }
+void setVMode(VModeType v) { config.vmode = v; }
+void setWidescreen(int v) { config.widescreen = v; }
+void setAutolaunchTimeout(int v) { config.autolaunchTimeout = v; }

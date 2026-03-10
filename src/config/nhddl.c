@@ -14,7 +14,6 @@
 const char optionsFile[] = "nhddl.cnf";
 
 // Supported options
-#define OPTION_VMODE "video"
 #define OPTION_DEVICE "device"
 #define OPTION_IP_ADDRESS "ip_addr"
 #define OPTION_PROBE_DELAY "probe_delay"
@@ -23,6 +22,10 @@ const char optionsFile[] = "nhddl.cnf";
 #define OPTION_IMAGE "dvd"
 #define OPTION_NO_INIT "noinit"
 #define OPTION_FAKEDEV9 "dev9f"
+// UI flags
+#define OPTION_VMODE "video"
+#define OPTION_WIDESCREEN "widescreen"
+#define OPTION_AUTOLAUNCH "autolaunch"
 
 // Config file line formats
 #define FMT_OPTION_STR "-%s=%s\n"
@@ -139,7 +142,7 @@ void parseArgv(int argc, char *argv[]) {
     arg++;
 
     if (val && !strcmp(OPTION_VMODE, arg)) {
-      DPRINTF("config/nhddl: using VMode %s\n", val);
+      DPRINTF("config/nhddl: using video mode %s\n", val);
       setVMode(parseVMode(val));
     } else if (val && !strcmp(OPTION_DEVICE, arg)) {
       DPRINTF("config/nhddl: enabling device %s\n", val);
@@ -157,11 +160,17 @@ void parseArgv(int argc, char *argv[]) {
       DPRINTF("config/nhddl: will fake DEV9\n");
       setFakeDEV9(1);
     } else if (!strcmp(OPTION_PROBE_DELAY, arg)) {
-      DPRINTF("config/nhddl: using probe delay %d\n", val);
+      DPRINTF("config/nhddl: using probe delay %s\n", val);
       setProbeDelay(val ? atoi(val) : 0);
     } else if (!strcmp(OPTION_NEUTRINO, arg)) {
       DPRINTF("config/nhddl: using custom Neutrino path: %s\n", val);
       setNeutrinoPath(val);
+    } else if (!strcmp(OPTION_WIDESCREEN, arg)) {
+      DPRINTF("config/nhddl: using widescreen\n", val);
+      setWidescreen(1);
+    } else if (!strcmp(OPTION_AUTOLAUNCH, arg)) {
+      DPRINTF("config/nhddl: using autolaunch timeout %s\n", val);
+      setAutolaunchTimeout(val ? atoi(val) : 0);
     }
   }
 }
@@ -195,6 +204,10 @@ int loadOptions(void) {
         setProbeDelay(arg->value ? atoi(arg->value) : 0);
       } else if (!strcmp(OPTION_NEUTRINO, arg->arg) && arg->value && arg->value[0] != '\0') {
         setNeutrinoPath(arg->value);
+      } else if (!strcmp(OPTION_WIDESCREEN, arg->arg)) {
+        setWidescreen(1);
+      } else if (!strcmp(OPTION_AUTOLAUNCH, arg->arg)) {
+        setAutolaunchTimeout(arg->value ? atoi(arg->value) : 0);
       }
     }
     arg = arg->next;
@@ -241,6 +254,14 @@ int saveOptions(void) {
   }
   if (getNoInit()) {
     if (fprintf(f, FMT_OPTION_FLAG, OPTION_NO_INIT) < 0)
+      err = -EIO;
+  }
+  if (getWidescreen()) {
+    if (fprintf(f, FMT_OPTION_FLAG, OPTION_WIDESCREEN) < 0)
+      err = -EIO;
+  }
+  if (getAutolaunchTimeout() > 0) {
+    if (fprintf(f, FMT_OPTION_INT, OPTION_AUTOLAUNCH, getAutolaunchTimeout()) < 0)
       err = -EIO;
   }
   if (fclose(f))
