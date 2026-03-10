@@ -48,6 +48,7 @@ void updateTargetFlagsAndPersist(struct BackendDevice *device, Target *target, u
 // Initializes backend for the given device type (loads device modules, removes conflicting backends, runs backend init).
 // device must be a single type (e.g. Device_MMCE or Device_HDD), not a mask. Call once per type.
 // Returns number of devices added, or negative on error.
+// If the backend for this type is already initialized, returns 0 without adding duplicate devices.
 // If skipDeviceInit is 1, will skip initializing device modules
 // If the device list was invalidated (e.g. conflict reinit), the high bit is set so UI can reload views (e.g. return value & LIST_INVALIDATED).
 int initBackend(DeviceType device, int skipDeviceInit);
@@ -60,6 +61,8 @@ struct BackendDevice *getBackendDeviceForPath(const char *path);
 int getMountpointFromPath(const char *path, char *buf, size_t bufSize);
 void freeBackendDeviceTitles(struct BackendDevice *device);
 void freeAllBackendTitles(void);
+// Fills out[] with each DeviceType bit set in config (getEnabledDevices()), up to maxCount. Returns count.
+int getEnabledDeviceTypesArray(DeviceType *out, int maxCount);
 // Runs cleanup on all backend devices (unmount PFS, etc.). Call before launch, exit, or IOP reboot.
 void cleanupAllBackends(void);
 

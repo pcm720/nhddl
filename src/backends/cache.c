@@ -14,8 +14,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define CACHE_MAGIC "NIDC"
 #define CACHE_VERSION 3
+char CACHE_MAGIC[] = { 'N', 'I', 'D', 'C' };
 
 const char titleIDCacheFile[] = "/cache.bin";
 static const char lastTitleFile[] = "/lastTitle.bin";
@@ -191,7 +191,7 @@ int loadTitleIDCache(TitleIDCache *cache, struct BackendDevice *device) {
   }
 
   // Make sure header is valid
-  if (strcmp(meta.magic, CACHE_MAGIC)) {
+  if (memcmp(meta.magic, CACHE_MAGIC, 4)) {
     DPRINTF("backends/cache: error: cache magic doesn't match, refusing to load\n");
     fclose(file);
     return -EINVAL;

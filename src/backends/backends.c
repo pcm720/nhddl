@@ -16,6 +16,18 @@
 // Contains all available backend devices. Device must be ignored if type is Device_None
 struct BackendDevice backendDevices[MAX_DEVICES];
 
+// Device types that can be enabled in config (one bit each). Order determines iteration.
+static const DeviceType enabledDeviceTypeBits[] = {
+  Device_MMCE,
+  Device_ATA,
+  Device_HDD,
+  Device_USB,
+  Device_UDPFS,
+  Device_MX4SIO,
+};
+static const int numEnabledDeviceTypeBits =
+    (int)(sizeof(enabledDeviceTypeBits) / sizeof(enabledDeviceTypeBits[0]));
+
 int getBackendDeviceCount(void) {
   int i = 0;
   while (i < MAX_DEVICES && backendDevices[i].type != Device_None)
@@ -105,4 +117,18 @@ void rescanAllBackendDevices(void) {
   for (int i = 0; i < MAX_DEVICES && backendDevices[i].type != Device_None; i++)
     if (backendDevices[i].scan)
       backendDevices[i].scan(&backendDevices[i]);
+}
+
+// Fills out[] with each DeviceType bit set in getEnabledDevices(), up to maxCount.
+// Returns the number of types written. UI uses this to know which device types to init/offer.
+int getEnabledDeviceTypesArray(DeviceType *out, int maxCount) {
+  if (!out || maxCount <= 0)
+    return 0;
+  DeviceType mask = getEnabledDevices();
+  int n = 0;
+  for (int i = 0; i < numEnabledDeviceTypeBits && n < maxCount; i++) {
+    if (mask & enabledDeviceTypeBits[i])
+      out[n++] = enabledDeviceTypeBits[i];
+  }
+  return n;
 }

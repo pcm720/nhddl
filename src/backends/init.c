@@ -64,11 +64,15 @@ static int initDevice(struct BackendDevice *slot, DeviceType type, int probeAtte
 // Initializes backend for the given device type (loads device modules, removes conflicting backends, runs backend init).
 // device must be a single type (e.g. Device_MMCE or Device_HDD), not a mask. Call once per type.
 // Returns number of devices added, or negative on error.
+// If the backend for this type is already initialized, returns 0 without adding duplicate devices.
 // If skipDeviceInit is 1, will skip initializing device modules
 // If the device list was invalidated (e.g. conflict reinit), the high bit is set so UI can reload views (e.g. return value & LIST_INVALIDATED).
 int initBackend(DeviceType device, int skipDeviceInit) {
   if (device == Device_None)
     return 0;
+
+  if (getBackendDeviceCountByType(device) > 0)
+    return 0;  // Already initialized for this type; ignore to avoid duplicate devices
 
   int listInvalidated = 0;
   if (!skipDeviceInit) {
