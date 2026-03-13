@@ -1,5 +1,6 @@
 #include "backends/backends.h"
 #include "backends/cache.h"
+#include "backends/target.h"
 #include "config/config.h"
 #include "devices/devices.h"
 #include "devices/utils.h"
@@ -64,6 +65,25 @@ struct BackendDevice *getBackendDeviceOfType(DeviceType type, int index) {
   return NULL;
 }
 
+// Returns the target that was last launched across all devices (by lastTitle.bin timestamp).
+Target *getLastLaunchedTarget(void) {
+  struct BackendDevice *bestDevice = NULL;
+  uint32_t bestTs = 0;
+  int n = getBackendDeviceCount();
+  for (int i = 0; i < n; i++) {
+    struct BackendDevice *d = getBackendDeviceAt(i);
+    if (!d || d->lastLaunchedTitleIdx < 0 || d->lastLaunchedTimestamp == 0 || !d->titles)
+      continue;
+    if (d->lastLaunchedTimestamp > bestTs) {
+      bestTs = d->lastLaunchedTimestamp;
+      bestDevice = d;
+    }
+  }
+  if (!bestDevice)
+    return NULL;
+  return getTargetByIdx(bestDevice->titles, bestDevice->lastLaunchedTitleIdx);
+}
+
 // Remove backends whose type is in the conflict mask; compact array so no holes
 void removeConflictingBackends(DeviceType conflictMask) {
   int write = 0;
@@ -79,6 +99,7 @@ void removeConflictingBackends(DeviceType conflictMask) {
       backendDevices[read].cleanup = NULL;
       backendDevices[read].metadev = NULL;
       backendDevices[read].lastLaunchedTitleIdx = -1;
+      backendDevices[read].lastLaunchedTimestamp = 0;
       continue;
     }
     if (write != read) {
@@ -90,6 +111,7 @@ void removeConflictingBackends(DeviceType conflictMask) {
       backendDevices[read].cleanup = NULL;
       backendDevices[read].metadev = NULL;
       backendDevices[read].lastLaunchedTitleIdx = -1;
+      backendDevices[read].lastLaunchedTimestamp = 0;
     }
     write++;
   }

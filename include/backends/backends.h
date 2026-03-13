@@ -28,6 +28,7 @@ struct BackendDevice {
   uint8_t index;            // BDM internal device driver number, must be used for passing paths to Neutrino
   TargetList *titles;       // Per-device title list (owned by backend; UI read-only)
   int lastLaunchedTitleIdx; // Index into titles of last launched title; -1 if none or not found
+  uint32_t lastLaunchedTimestamp; // From lastTitle.bin when loaded; 0 = none/invalid. Used by getLastLaunchedTarget().
 };
 
 //
@@ -38,6 +39,8 @@ struct BackendDevice *getBackendDeviceAt(int index);
 TargetList *getBackendDeviceTitles(struct BackendDevice *device);
 int getBackendDeviceCountByType(DeviceType type);
 struct BackendDevice *getBackendDeviceOfType(DeviceType type, int index);
+// Returns the target that was last launched across all devices (by lastTitle.bin timestamp). NULL if none.
+Target *getLastLaunchedTarget(void);
 
 //
 // Setters
@@ -61,6 +64,8 @@ struct BackendDevice *getBackendDeviceForPath(const char *path);
 int getMountpointFromPath(const char *path, char *buf, size_t bufSize);
 void freeBackendDeviceTitles(struct BackendDevice *device);
 void freeAllBackendTitles(void);
+// Rescans all backend devices (rebuilds device->titles). Call before rebuilding the title list view.
+void rescanAllBackendDevices(void);
 // Fills out[] with each DeviceType bit set in config (getEnabledDevices()), up to maxCount. Returns count.
 int getEnabledDeviceTypesArray(DeviceType *out, int maxCount);
 // Runs cleanup on all backend devices (unmount PFS, etc.). Call before launch, exit, or IOP reboot.

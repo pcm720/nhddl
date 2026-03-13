@@ -289,9 +289,10 @@ void freeTitleCache(TitleIDCache *cache) {
   free(cache);
 }
 
-// Reads lastTitle.bin for device and sets device->lastLaunchedTitleIdx to the matching index in device->titles.
+// Reads lastTitle.bin for device and sets device->lastLaunchedTitleIdx and device->lastLaunchedTimestamp.
 void loadLastLaunchedIndex(struct BackendDevice *device) {
   device->lastLaunchedTitleIdx = -1;
+  device->lastLaunchedTimestamp = 0;
   if (!device || device->type == Device_None || !device->mountpoint || !device->titles)
     return;
   struct BackendDevice *configDevice = device->metadev ? device->metadev : device;
@@ -305,6 +306,7 @@ void loadLastLaunchedIndex(struct BackendDevice *device) {
     close(fd);
     return;
   }
+  device->lastLaunchedTimestamp = timestamp;
   size_t fsize = (size_t)(lseek(fd, 0, SEEK_END) - sizeof(timestamp));
   lseek(fd, sizeof(timestamp), SEEK_SET);
   if (fsize == 0 || fsize >= PATH_MAX) {
@@ -361,6 +363,7 @@ int updateLastLaunchedTitle(Target *target) {
   }
   close(fd);
   device->lastLaunchedTitleIdx = -1;
+  device->lastLaunchedTimestamp = ts;
   if (device->titles) {
     int idx = 0;
     for (Target *t = device->titles->first; t; t = t->next, idx++) {
@@ -370,5 +373,17 @@ int updateLastLaunchedTitle(Target *target) {
       }
     }
   }
+  return 0;
+}
+
+// Removes the title ID cache file on the device so the next scan will rebuild from storage.
+int invalidateTitleIDCache(struct BackendDevice *device) {
+  if (!device || device->type == Device_None || !device->mountpoint)
+    return -1;
+  struct BackendDevice *configDevice = device->metadev ? device->metadev : device;
+  char cachePath[PATH_MAX];
+  buildConfigFilePath(cachePath, configDevice->mountpoint, titleIDCacheFile);
+  if (remove(cachePath) != 0)
+    return -1;
   return 0;
 }

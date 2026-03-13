@@ -44,4 +44,8 @@ void loadLastLaunchedIndex(struct BackendDevice *device);
 // Writes last launched title (target->path) into lastTitle file on device and sets device->lastLaunchedTitleIdx.
 int updateLastLaunchedTitle(Target *target);
 
+// Removes the title ID cache file on the device so the next scan will rebuild from storage.
+// Returns 0 on success, -1 if file did not exist or could not be removed.
+int invalidateTitleIDCache(struct BackendDevice *device);
+
 #endif
