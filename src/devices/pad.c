@@ -63,3 +63,6 @@ int waitForInput(int button) {
 
 // Returns inputs on both gamepads
 int pollInput() { return (pollPad(0, 0) | pollPad(1, 0)); }
+
+// Returns input changes
+int readInput() { return (readPad(0, 0) | readPad(1, 0)); }

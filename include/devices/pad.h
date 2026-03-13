@@ -14,4 +14,7 @@ int waitForInput(int button);
 // Returns inputs on both gamepads
 int pollInput();
 
+// Returns input changes
+int readInput();
+
 #endif
