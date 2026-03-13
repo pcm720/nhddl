@@ -77,3 +77,30 @@ foreach(IRX_FILE ${LOCAL_IRX_FILES})
 
     list(APPEND SOURCES "${CMAKE_CURRENT_BINARY_DIR}/${IRX_FILE}_irx.c")
 endforeach()
+
+# Embedded UI font
+set(FONT_TTF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/res/font/font.ttf")
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/font_ttf.c"
+    COMMAND ${PS2SDK}/bin/bin2c ${FONT_TTF_PATH}
+            "${CMAKE_CURRENT_BINARY_DIR}/font_ttf.c"
+            font_ttf
+    DEPENDS ${FONT_TTF_PATH}
+    COMMENT "Embedding default font (font.ttf)"
+)
+list(APPEND SOURCES "${CMAKE_CURRENT_BINARY_DIR}/font_ttf.c")
+
+# Embedded UI icons
+set(ICON_NAMES circle cross square triangle L1 R1 select start splash)
+foreach(ICON_NAME ${ICON_NAMES})
+  add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/icon_${ICON_NAME}.c"
+    COMMAND ${PS2SDK}/bin/bin2c "${CMAKE_CURRENT_SOURCE_DIR}/res/icons/${ICON_NAME}.png"
+            "${CMAKE_CURRENT_BINARY_DIR}/icon_${ICON_NAME}.c"
+            icon_${ICON_NAME}
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/res/icons/${ICON_NAME}.png"
+    COMMENT "Embedding icon ${ICON_NAME}.png"
+  )
+  list(APPEND SOURCES "${CMAKE_CURRENT_BINARY_DIR}/icon_${ICON_NAME}.c")
+  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/icon_${ICON_NAME}.c" PROPERTIES GENERATED 1)
+endforeach()

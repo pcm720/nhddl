@@ -52,7 +52,7 @@ set(SOURCES
     src/backends/hdl.c
     src/backends/title_id.c
 )
-include(irx.cmake)
+include(embed.cmake)
 
 # Get git version for build info
 find_package(Git QUIET)
