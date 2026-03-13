@@ -146,7 +146,7 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
     }
     result = fwrite(curTitle->path, header.pathLength, 1, file);
     if (!result) {
-      DPRINTF("backends/cache: error: %s: failed to write full path: %d\n", curTitle->name, errno);
+      DPRINTF("backends/cache: error: %s: failed to write ISO path: %d\n", curTitle->name, errno);
       fclose(file);
       remove(cachePath);
       return -EIO;

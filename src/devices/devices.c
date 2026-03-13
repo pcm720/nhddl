@@ -44,6 +44,8 @@ IRX_DEFINE(usbmass_bd_mini);
 IRX_DEFINE(mx4sio_bd_mini);
 IRX_DEFINE(iLinkman);
 IRX_DEFINE(IEEE1394_bd_mini);
+IRX_DEFINE(smap);
+IRX_DEFINE(ministack);
 IRX_DEFINE(udpfs_ioman);
 IRX_DEFINE(ps2hdd_osd);
 IRX_DEFINE(ps2fs);
@@ -102,8 +104,10 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(bdm, Device_ATA | Device_HDD | Device_USB | Device_MX4SIO | Device_iLink, NULL, Device_None),
     // FAT/exFAT
     INT_MODULE(bdmfs_fatfs, Device_ATA | Device_HDD | Device_USB | Device_MX4SIO | Device_iLink, NULL, Device_None),
-    // SMAP UDPFS driver, includes small IP stack and UDPTTY
-    INT_MODULE(udpfs_ioman, Device_UDPFS, &initSMAPArguments, Device_None),
+    // UDPFS
+    INT_MODULE(smap, Device_UDPFS, NULL, Device_None),
+    INT_MODULE(ministack, Device_UDPFS, &initSMAPArguments, Device_None),
+    INT_MODULE(udpfs_ioman, Device_UDPFS, NULL, Device_None),
     // exFAT on internal HDD
     INT_MODULE(ata_bd, Device_ATA | Device_HDD, NULL, Device_None),
     // USBD
