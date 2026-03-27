@@ -1,0 +1,18 @@
+# Clangd config for Zed and other clangd-based editors.
+# Run cmake (e.g. cmake -B build) so compile_commands.json is generated,
+# and use .zed/settings.json (for Zed) so clangd can query the PS2 gcc
+# (--query-driver) for include paths.
+CompileFlags:
+  Add:
+    - "-Iinclude"
+    - "-D_EE"
+  Remove:
+    # Remove PS2/MIPS-only flags so clangd (running on host) can parse without
+    # "Unsupported option '-G'".
+    - "-G*"
+    - "-Wl,*"
+  CompilationDatabase: build
+Diagnostics:
+  Suppress:
+    # Suppress SDK vs host typedef clash (socklen_t vs __socklen_t) when mixing headers.
+    - redefinition_different_typedef
