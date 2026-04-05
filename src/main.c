@@ -231,21 +231,21 @@ int init(char *elfPath) {
 
 // Parses mode string into enum
 ModeType parseMode(const char *modeStr) {
-  if (!strcmp(modeStr, "ata"))
+  if (!strncmp(modeStr, "ata", 3))
     return MODE_ATA;
-  if (!strcmp(modeStr, "mx4sio"))
+  if (!strncmp(modeStr, "mx4sio", 6))
     return MODE_MX4SIO;
-  if (!strcmp(modeStr, "udpfs"))
+  if (!strncmp(modeStr, "udpfs", 5))
     return MODE_UDPFS;
-  if (!strcmp(modeStr, "usb"))
+  if (!strncmp(modeStr, "usb", 3))
     return MODE_USB;
-  if (!strcmp(modeStr, "ilink"))
+  if (!strncmp(modeStr, "ilink", 5))
     return MODE_ILINK;
-  if (!strcmp(modeStr, "mmce"))
+  if (!strncmp(modeStr, "mmce", 4))
     return MODE_MMCE;
-  if (!strcmp(modeStr, "hdl"))
+  if (!strncmp(modeStr, "hdl", 3))
     return MODE_HDL;
-  return MODE_ALL;
+  return MODE_NONE;
 }
 
 // Parses argv[0] for mode postfix
@@ -360,10 +360,13 @@ int loadOptions(char *cwdPath) {
   while (arg != NULL) {
     if (!arg->isDisabled) {
       if (strcmp(OPTION_VMODE, arg->arg) == 0) {
+        printf("Using VMode %s\n", arg->value);
         LAUNCHER_OPTIONS.vmode = parseVMode(arg->value);
       } else if (strcmp(OPTION_MODE, arg->arg) == 0) {
+        printf("Using mode %s\n", arg->value);
         LAUNCHER_OPTIONS.mode |= parseMode(arg->value);
       } else if (strcmp(OPTION_UDPFS_IP, arg->arg) == 0) {
+        printf("Using UDPFS IP %s\n", arg->value);
         strlcpy(LAUNCHER_OPTIONS.udpfsIp, arg->value, sizeof(LAUNCHER_OPTIONS.udpfsIp));
       }
     }

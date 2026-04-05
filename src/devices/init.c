@@ -172,7 +172,6 @@ int initModules(ModeType modeType) {
   // Load modules
   for (int i = 0; i < MODULE_COUNT; i++) {
     if ((moduleList[i].mode != MODE_ALL) && !(modeType & moduleList[i].mode)) {
-      DPRINTF("Skipping %s\n", moduleList[i].name);
       continue;
     }
 
