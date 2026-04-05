@@ -13,9 +13,9 @@ int forwardBoot() {
   int res;
   // Forward to Neutrino without loading the UI
   if (!LAUNCHER_OPTIONS.noInit)
-    res = initModules(INIT_TYPE_FULL);
+    res = initModules(LAUNCHER_OPTIONS.mode);
   else
-    res = initModules(INIT_TYPE_NOINIT);
+    res = initModules(MODE_NONE);
   if (res) {
     DPRINTF("Failed to init modules: %d\n", res);
     return res;
@@ -32,7 +32,7 @@ int forwardBoot() {
     return -ENOENT;
   }
 
-  if (findNeutrinoELF(NULL, INIT_TYPE_FULL)) {
+  if (findNeutrinoELF(NULL)) {
     DPRINTF("Failed to find Neutrino\n");
     return -ENOENT;
   }

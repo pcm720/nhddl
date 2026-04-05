@@ -9,6 +9,7 @@
 #include <loadfile.h>
 #include <sbv_patches.h>
 #include <sifrpc.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +24,7 @@
   extern uint32_t size_##mod##_irx
 
 // Defines moduleList entry for embedded module
-#define INT_MODULE(mod, mode, argFunc, initType) {#mod, mod##_irx, &size_##mod##_irx, 0, NULL, argFunc, mode, 0, initType}
+#define INT_MODULE(mod, mode, argFunc) {#mod, mod##_irx, &size_##mod##_irx, 0, NULL, argFunc, mode}
 
 // Embedded IOP modules
 IRX_DEFINE(iomanX);
@@ -61,8 +62,6 @@ typedef struct ModuleListEntry {
   char *argStr;                   // Module arguments
   moduleArgFunc argumentFunction; // Function used to initialize module arguments
   ModeType mode;                  // Used to ignore modules not required for target mode
-  uint8_t loaded;
-  ModuleInitType initType;
 } ModuleListEntry;
 
 // Initializes SMAP arguments
@@ -77,59 +76,84 @@ static ModuleListEntry moduleList[] = {
     //
     // Base modules
     //
-    INT_MODULE(iomanX, MODE_ALL, NULL, INIT_TYPE_BASIC),
-    INT_MODULE(fileXio, MODE_ALL, NULL, INIT_TYPE_BASIC),
-    INT_MODULE(sio2man, MODE_ALL, NULL, INIT_TYPE_BASIC),
-    INT_MODULE(mcman, MODE_ALL, NULL, INIT_TYPE_BASIC),
-    INT_MODULE(mcserv, MODE_ALL, NULL, INIT_TYPE_BASIC),
-    INT_MODULE(freepad, MODE_ALL, NULL, INIT_TYPE_EXTENDED),
-    INT_MODULE(mmceman, MODE_ALL, NULL, INIT_TYPE_EXTENDED), // MMCE driver
+    INT_MODULE(iomanX, MODE_ALL, NULL),
+    INT_MODULE(fileXio, MODE_ALL, NULL),
+    INT_MODULE(sio2man, MODE_ALL, NULL),
+    INT_MODULE(mcman, MODE_ALL, NULL),
+    INT_MODULE(mcserv, MODE_ALL, NULL),
+    INT_MODULE(freepad, MODE_ALL, NULL),
+    INT_MODULE(mmceman, MODE_ALL, NULL), // MMCE driver
     //
     // Backend modules
     //
     // DEV9
-    INT_MODULE(ps2dev9, MODE_UDPFS | MODE_ATA | MODE_HDL, NULL, INIT_TYPE_FULL),
+    INT_MODULE(ps2dev9, MODE_UDPFS | MODE_ATA | MODE_HDL, NULL),
     // BDM
-    INT_MODULE(bdm, MODE_BDM, NULL, INIT_TYPE_FULL),
+    INT_MODULE(bdm, MODE_BDM, NULL),
     // FAT/exFAT
-    INT_MODULE(bdmfs_fatfs, MODE_BDM, NULL, INIT_TYPE_FULL),
+    INT_MODULE(bdmfs_fatfs, MODE_BDM, NULL),
     // UDPFS
-    INT_MODULE(smap, MODE_UDPFS, NULL, INIT_TYPE_FULL),
-    INT_MODULE(ministack, MODE_UDPFS, &initSMAPArguments, INIT_TYPE_FULL),
-    INT_MODULE(udpfs_ioman, MODE_UDPFS, NULL, INIT_TYPE_FULL),
+    INT_MODULE(smap, MODE_UDPFS, NULL),
+    INT_MODULE(ministack, MODE_UDPFS, &initSMAPArguments),
+    INT_MODULE(udpfs_ioman, MODE_UDPFS, NULL),
     // ATA
-    INT_MODULE(ata_bd, MODE_ATA | MODE_HDL, NULL, INIT_TYPE_FULL),
+    INT_MODULE(ata_bd, MODE_ATA | MODE_HDL, NULL),
     // USBD
-    INT_MODULE(usbd_mini, MODE_USB, NULL, INIT_TYPE_FULL),
+    INT_MODULE(usbd_mini, MODE_USB, NULL),
     // USB Mass Storage
-    INT_MODULE(usbmass_bd_mini, MODE_USB, NULL, INIT_TYPE_FULL),
+    INT_MODULE(usbmass_bd_mini, MODE_USB, NULL),
     // MX4SIO
-    INT_MODULE(mx4sio_bd_mini, MODE_MX4SIO, NULL, INIT_TYPE_FULL),
+    INT_MODULE(mx4sio_bd_mini, MODE_MX4SIO, NULL),
     // iLink
-    INT_MODULE(iLinkman, MODE_ILINK, NULL, INIT_TYPE_FULL),
+    INT_MODULE(iLinkman, MODE_ILINK, NULL),
     // iLink Mass Storage
-    INT_MODULE(IEEE1394_bd_mini, MODE_ILINK, NULL, INIT_TYPE_FULL),
+    INT_MODULE(IEEE1394_bd_mini, MODE_ILINK, NULL),
     // PS2HDD driver
-    INT_MODULE(ps2hdd_bdm, MODE_HDL, &initPS2HDDArguments, INIT_TYPE_FULL),
+    INT_MODULE(ps2hdd_bdm, MODE_HDL, &initPS2HDDArguments),
     // PFS driver
-    INT_MODULE(ps2fs, MODE_HDL, &initPS2FSArguments, INIT_TYPE_FULL),
+    INT_MODULE(ps2fs, MODE_HDL, &initPS2FSArguments),
 };
 #define MODULE_COUNT sizeof(moduleList) / sizeof(ModuleListEntry)
 
 // Loads module, executing argument function if it's present
 int loadModule(ModuleListEntry *mod);
 
+uint32_t loadedModules = 0;
+
 // Initializes IOP modules
-int initModules(ModuleInitType initType) {
-  if (initType == INIT_TYPE_NOINIT) {
+int initModules(ModeType modeType) {
+  switch (modeType) {
+  case MODE_NONE:
+    // For MODE_NONE, only init RPC and fileXio
     sceSifInitRpc(0);
     fileXioInit();
     return 0;
+  case MODE_ALL:
+    // If MODE_ALL is received, clear state and force IOP reboot
+    loadedModules = 0;
+    LAUNCHER_OPTIONS.mode = 0;
+    break;
+  case MODE_MX4SIO:
+    // Force IOP reboot if MMCE is initialized
+    if (LAUNCHER_OPTIONS.mode & MODE_MMCE) {
+      loadedModules = 0;
+      LAUNCHER_OPTIONS.mode = 0;
+    }
+    break;
+  case MODE_MMCE:
+    // Force IOP reboot if MX4SIO is initialized
+    if (LAUNCHER_OPTIONS.mode & MODE_MX4SIO) {
+      loadedModules = 0;
+      LAUNCHER_OPTIONS.mode = 0;
+    }
+    break;
+  default:
+    break;
   }
   int ret = 0;
 
   // Skip rebooting IOP if modules were loaded previously
-  if (!moduleList[0].loaded) {
+  if (!loadedModules) {
     DPRINTF("Rebooting IOP\n");
     while (!SifIopReset("", 0)) {
     };
@@ -147,24 +171,26 @@ int initModules(ModuleInitType initType) {
 
   // Load modules
   for (int i = 0; i < MODULE_COUNT; i++) {
-    if (moduleList[i].initType > initType)
-      return 0; // Return if partial init is requested and current module is listed only for later init
+    if ((moduleList[i].mode != MODE_ALL) && !(modeType & moduleList[i].mode)) {
+      DPRINTF("Skipping %s\n", moduleList[i].name);
+      continue;
+    }
 
-    if ((LAUNCHER_OPTIONS.mode & MODE_MX4SIO) && !strcmp(moduleList[i].name, "mmceman"))
+    if ((modeType & MODE_MX4SIO) && !strcmp(moduleList[i].name, "mmceman"))
       continue; // Do not load mmceman if MX4SIO mode is enabled to avoid conflicts
 
-    if (moduleList[i].loaded) // Ignore already loaded modules
+    if (loadedModules & (1 << i)) // Ignore already loaded modules
       continue;
 
-    if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL) && (moduleList[i].mode & LAUNCHER_OPTIONS.mode)) {
+    if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL)) {
       if ((ret = loadModule(&moduleList[i]))) {
         uiSplashLogString(LEVEL_ERROR, "Failed to initialize module %s: %d\n", moduleList[i].name, ret);
         return ret;
       }
-      moduleList[i].loaded = 1;
+      loadedModules |= (1 << i);
 
       // Introduce delay to prevent ps2hdd module from hanging
-      if ((LAUNCHER_OPTIONS.mode & MODE_HDL) && !strcmp(moduleList[i].name, "ata_bd"))
+      if ((modeType & MODE_HDL) && !strcmp(moduleList[i].name, "ata_bd"))
         sleep(1);
 
       // Explicitly init fileXio
@@ -175,6 +201,8 @@ int initModules(ModuleInitType initType) {
     if (moduleList[i].argStr != NULL)
       free(moduleList[i].argStr);
   }
+
+  LAUNCHER_OPTIONS.mode |= modeType;
   return 0;
 }
 
@@ -187,11 +215,8 @@ int loadModule(ModuleListEntry *mod) {
   // If module has an arugment function, execute it
   if (mod->argumentFunction != NULL) {
     mod->argStr = mod->argumentFunction(&mod->argLength);
-    if (mod->argStr == NULL) {
-      // Ignore errors if module can fail
-      ret = -EINVAL;
-      goto failCheck;
-    }
+    if (mod->argStr == NULL)
+      return -EINVAL;
   }
 
   ret = SifExecModuleBuffer(mod->irx, *mod->size, mod->argLength, mod->argStr, &iopret);
@@ -199,18 +224,6 @@ int loadModule(ModuleListEntry *mod) {
     ret = 0;
   if (iopret == 1)
     ret = iopret;
-
-failCheck:
-  if ((ret != 0) &&                                                 // If module failed to initialize
-      (mod->mode != MODE_ALL) &&                                    // Module is not required
-      ((mod->mode & LAUNCHER_OPTIONS.mode) ^ LAUNCHER_OPTIONS.mode) // Module mode is not the only one enabled
-  ) {
-    // Exclude mode from target modes
-    uiSplashLogString(LEVEL_WARN, "Failed to load module %s\nSome modes might not be available\n", mod->name);
-    LAUNCHER_OPTIONS.mode ^= mod->mode;
-    return 0;
-  }
-
   return ret;
 }
 

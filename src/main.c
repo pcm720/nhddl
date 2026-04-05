@@ -15,16 +15,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 // Launcher options
-LauncherOptions LAUNCHER_OPTIONS;
+LauncherOptions LAUNCHER_OPTIONS = {0};
 // Options file name relative to CWD
 static const char optionsFile[] = "nhddl.yaml";
-// nhddl.yaml fallback paths
-static char *nhddlFallbackPaths[] = {
-    "mcX:/APP_NHDDL/nhddl.yaml",
-};
-static char nhddlStorageFallbackPath[] = "/nhddl/nhddl.yaml";
+static const char rootFallbackPath[] = "/nhddl/nhddl.yaml";
 
 // Supported options
 #define OPTION_VMODE "video"
@@ -40,9 +37,10 @@ static char nhddlStorageFallbackPath[] = "/nhddl/nhddl.yaml";
 // Does a quick init for options given in argv
 int argInit();
 // Initializes modules, NHDDL configuraton, Neutrino path and device map
-int init(ModeType mode);
+int init(char *elfPath);
+char *resolveRootDevice(char *argv0);
 // Loads NHDDL options from optionsFile
-int loadOptions(char *cwdPath, ModuleInitType initType);
+int loadOptions(char *cwdPath);
 // Attempts to parse argv into LAUNCHER_OPTIONS
 void parseArgv(int argc, char *argv[]);
 // Parses argv[0] for mode postfix
@@ -61,7 +59,7 @@ int main(int argc, char *argv[]) {
     parseArgv(argc, argv);
 
   int res;
-  if (LAUNCHER_OPTIONS.image && ((LAUNCHER_OPTIONS.mode != MODE_NONE) || LAUNCHER_OPTIONS.mode != MODE_HDL)) {
+  if (LAUNCHER_OPTIONS.image && ((LAUNCHER_OPTIONS.mode != MODE_NONE) && !(LAUNCHER_OPTIONS.mode & MODE_HDL))) {
     res = forwardBoot();
     init_scr();
     logString("\n\nERROR: Failed to forward to Neutrino: %d\n", res);
@@ -85,10 +83,10 @@ int main(int argc, char *argv[]) {
   if ((argc > 0 && argv[0][0] == '-') || (argc > 1 && argv[1][0] == '-'))
     // If argv contains arguments, use them for init
     res = argInit();
-  else if (argv && argv[0])
-    res = init(parseFilename(argv[0]));
-  else
-    res = init(MODE_NONE);
+  else {
+    LAUNCHER_OPTIONS.mode = parseFilename(argv[0]);
+    res = init(argv[0]);
+  }
 
   if (res)
     goto fail;
@@ -165,7 +163,7 @@ int argInit() {
   int res;
   char cwdPath[PATH_MAX + 1];
 
-  if ((res = initModules(INIT_TYPE_FULL)) != 0)
+  if ((res = initModules(LAUNCHER_OPTIONS.mode)) != 0)
     return res;
 
   // Initialize device map
@@ -174,7 +172,7 @@ int argInit() {
 
   // Search for neutrino.elf
   getcwd(cwdPath, PATH_MAX + 1);
-  if (findNeutrinoELF(cwdPath, INIT_TYPE_FULL)) {
+  if (findNeutrinoELF(cwdPath)) {
     uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
     return -ENOENT;
   }
@@ -184,76 +182,50 @@ int argInit() {
 }
 
 // Initializes modules, NHDDL configuraton, Neutrino path and device map
-int init(ModeType mode) {
-  // Initialize launcher options
-  LAUNCHER_OPTIONS.vmode = VMODE_NONE;
-  LAUNCHER_OPTIONS.mode = mode;
-  LAUNCHER_OPTIONS.udpfsIp[0] = '\0';
+int init(char *elfPath) {
+  uiSplashLogString(LEVEL_INFO_NODELAY, "Initializing...\n");
+  int initialModules = 0;
+  if (elfPath) {
+    // Guess root device
+    elfPath = resolveRootDevice(elfPath);
+    char *path = strrchr(elfPath, '/');
+    if (path)
+      *(++path) = '\0'; // Terminate the path at directory
 
-  int initType = INIT_TYPE_BASIC;
-  int optionsFileNotRead = -1;
-  int neutrinoNotFound = -1;
-  int res;
-  char cwdPath[PATH_MAX + 1];
-  if (LAUNCHER_OPTIONS.mode != MODE_NONE) {
-    // If specific mode is requested, skip CWD handling
-    initType = INIT_TYPE_FULL;
-    cwdPath[0] = '\0';
-  } else {
-    // Set initial init type to basic
-    initType = INIT_TYPE_BASIC;
-    LAUNCHER_OPTIONS.mode = MODE_ALL;
-    int fd;
+    initialModules = LAUNCHER_OPTIONS.mode;
 
-    // Get CWD and try to open it
-    if (getcwd(cwdPath, PATH_MAX + 1)) {
-      if (cwdPath[strlen(cwdPath) - 1] != '/') // Add path separator if cwd doesn't have one
-        strcat(cwdPath, "/");
-
-      if ((fd = open(cwdPath, O_RDONLY | O_DIRECTORY)) >= 0) {
-        close(fd);
-
-        // Try to load options from CWD
-        if ((optionsFileNotRead = loadOptions(cwdPath, INIT_TYPE_FULL)) >= 0)
-          initType = INIT_TYPE_FULL; // Set full level if options file was loaded
-      }
+    // Try to load options
+    if (loadOptions(elfPath)) {
+      DPRINTF("Failed to load options file, will use defaults\n");
+      // Default to loading all devices
+      LAUNCHER_OPTIONS.mode = MODE_ALL;
     }
   }
 
-  uiSplashLogString(LEVEL_INFO_NODELAY, "Loading modules...\n");
-
-  while (initType <= INIT_TYPE_FULL) {
-    if (LAUNCHER_OPTIONS.mode == MODE_ALL) // Exclude MX4SIO to avoid conflicts unless explicitly requested
-      LAUNCHER_OPTIONS.mode = MODE_ALL & ~MODE_MX4SIO;
-
-    // Load modules associated with target init type
-    if ((res = initModules(initType)) != 0)
+  int res = 0;
+  if (initialModules != LAUNCHER_OPTIONS.mode) {
+    // Load modules
+    if ((res = initModules(LAUNCHER_OPTIONS.mode)) != 0) {
+      free(elfPath);
       return res;
-
-    // Initialize device map after full init
-    if ((initType == INIT_TYPE_FULL) && (initDevices() < 0))
-      return -EIO;
-
-    // Try to init options
-    if ((optionsFileNotRead = loadOptions(cwdPath, initType)) < 0)
-      cwdPath[0] = '\0'; // Drop CWD if there was no options file
-
-    // Search for neutrino.elf
-    if ((neutrinoNotFound < 0) && !(neutrinoNotFound = findNeutrinoELF(cwdPath, initType)))
-      showNeutrinoSplash();
-
-    // If options file was read, advance init level to full
-    if ((optionsFileNotRead >= 0) && (initType != INIT_TYPE_FULL))
-      initType = INIT_TYPE_FULL;
-    else
-      initType += 1;
+    }
   }
 
-  if (neutrinoNotFound < 0) {
+  // Initialize device map
+  if (initDevices() < 0) {
+    free(elfPath);
+    return -EIO;
+  }
+
+  // Search for neutrino.elf
+  res = findNeutrinoELF(elfPath);
+  free(elfPath);
+  if (res < 0) {
     uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
     return -ENOENT;
   }
 
+  showNeutrinoSplash();
   return 0;
 }
 
@@ -354,66 +326,26 @@ void parseArgv(int argc, char *argv[]) {
 }
 
 // Loads NHDDL options from optionsFile
-int loadOptions(char *cwdPath, ModuleInitType initType) {
+int loadOptions(char *cwdPath) {
   char lineBuffer[PATH_MAX + sizeof(optionsFile) + 1];
   if (cwdPath[0] != '\0') {
     // If path is valid, try it
     strcpy(lineBuffer, cwdPath);
     strcat(lineBuffer, optionsFile);
-    if (!tryFile(lineBuffer))
-      // Skip fallbacks
-      goto fileExists;
-  }
-
-  if (initType == INIT_TYPE_FULL) {
-    // If config file doesn't exist in CWD and all modules are loaded, try fallback paths
-    struct DeviceMapEntry *device;
-    for (int i = 0; i < MAX_DEVICES; i++) {
-      lineBuffer[0] = '\0';
-      if (deviceModeMap[i].mode == MODE_NONE)
-        break;
-
-      if (deviceModeMap[i].metadev)
-        device = deviceModeMap[i].metadev;
-      else
-        device = &deviceModeMap[i];
-
-      if (device->mountpoint != NULL) {
-        strcpy(lineBuffer, device->mountpoint);
-        strcat(lineBuffer, nhddlStorageFallbackPath);
-        if (!tryFile(lineBuffer))
-          goto fileExists;
-      }
+    if (tryFile(lineBuffer)) {
+      DPRINTF("Trying device fallback path\n");
+      char *mountpoint = strchr(lineBuffer, '/');
+      if (mountpoint) {
+        *mountpoint = '\0';
+        strcat(lineBuffer, rootFallbackPath);
+        if (tryFile(lineBuffer))
+          return -ENOENT;
+      } else
+        return -ENOENT;
     }
-  }
-
-  if (initType > INIT_TYPE_BASIC) {
-    // Try MMCE if init type is EXTENDED or FULL
-    for (int i = 0; i < 2; i++) {
-      sprintf(lineBuffer, "mmce%d:%s", i, nhddlStorageFallbackPath);
-      if (!tryFile(lineBuffer))
-        break;
-    }
-  }
-
-  // Fallback to memory card paths
-  lineBuffer[0] = '\0';
-  for (int i = 0; i < 2; i++) {
-    for (int j = 0; j < (sizeof(nhddlFallbackPaths) / sizeof(char *)); j++) {
-      nhddlFallbackPaths[j][2] = i + '0';
-      if (!tryFile(nhddlFallbackPaths[j])) {
-        strcpy(lineBuffer, nhddlFallbackPaths[j]);
-        break;
-      }
-    }
-  }
-
-  if (lineBuffer[0] == '\0') {
-    DPRINTF("Can't load options file, will use defaults\n");
+  } else
     return -ENOENT;
-  }
 
-fileExists:
   // Load NHDDL options file into ArgumentList
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
   if (loadArgumentList(options, NULL, lineBuffer)) {
@@ -430,9 +362,6 @@ fileExists:
       if (strcmp(OPTION_VMODE, arg->arg) == 0) {
         LAUNCHER_OPTIONS.vmode = parseVMode(arg->value);
       } else if (strcmp(OPTION_MODE, arg->arg) == 0) {
-        // Reset MODE_ALL to MODE_NONE if mode flag exists
-        if (LAUNCHER_OPTIONS.mode == (MODE_ALL & ~MODE_MX4SIO))
-          LAUNCHER_OPTIONS.mode = MODE_NONE;
         LAUNCHER_OPTIONS.mode |= parseMode(arg->value);
       } else if (strcmp(OPTION_UDPFS_IP, arg->arg) == 0) {
         strlcpy(LAUNCHER_OPTIONS.udpfsIp, arg->value, sizeof(LAUNCHER_OPTIONS.udpfsIp));
@@ -443,4 +372,110 @@ fileExists:
   freeArgumentList(options);
 
   return 0;
+}
+
+// Attempts to guess device type from path
+ModeType guessDeviceType(const char *path) {
+  if (!strncmp(path, "mc", 2))
+    return MODE_BASIC;
+  if (!strncmp(path, "mmce", 4))
+    return MODE_MMCE;
+  if (!strncmp(path, "ata", 3))
+    return MODE_ATA;
+  if (!strncmp(path, "hdd", 3))
+    return MODE_HDL;
+  if (!strncmp(path, "udpfs", 5))
+    return MODE_UDPFS;
+  if (!strncmp(path, "usb", 3))
+    return MODE_USB;
+  if (!strncmp(path, "mx4sio", 6))
+    return MODE_MX4SIO;
+  if (!strncmp(path, "ilink", 5))
+    return MODE_ILINK;
+  if (!strncmp(path, "mass", 4))
+    return MODE_BDM;
+  return MODE_NONE;
+}
+
+int probePath(char *filePath, int probeAttempts) {
+  // Wait for IOP to initialize device driver
+  int res = 0;
+  for (int attempts = 0; attempts < probeAttempts; attempts++) {
+    res = open(filePath, O_RDONLY);
+    if (res >= 0) {
+      close(res);
+      return 0;
+    }
+    sleep(1);
+  }
+  return res;
+}
+
+// Attempts to detect root device and load device drivers required for accessing CWD
+// Returns root path to device ELF
+char *resolveRootDevice(char *argv0) {
+  char *result = strdup(argv0);
+  // Load device drivers for boot path
+  printf("Resolve root: argv[0] is %s, guessing device type\n", argv0);
+  ModeType device = guessDeviceType(argv0);
+  if (device == MODE_BASIC) {
+    printf("Resolve root: loading basic drivers\n");
+    initModules(MODE_BASIC);
+    return result;
+  } else if (device == MODE_MMCE) {
+    printf("Resolve root: loading MMCE drivers\n");
+    initModules(MODE_MMCE);
+    return result;
+  } else if (device == MODE_HDL) {
+    printf("Resolve root: loading HDD drivers\n");
+    initModules(MODE_HDL);
+    probePath(argv0, 10);
+    return result;
+  } else if (device == MODE_ATA) {
+    printf("Resolve root: loading ATA drivers\n");
+    initModules(MODE_ATA);
+    probePath(argv0, 10);
+    return result;
+  } else if (device == MODE_USB) {
+    printf("Resolve root: loading USB drivers\n");
+    initModules(MODE_USB);
+    probePath(argv0, 2);
+    return result;
+  } else if (device == MODE_MX4SIO) {
+    printf("Resolve root: loading MX4SIO drivers\n");
+    initModules(MODE_MX4SIO);
+    probePath(argv0, 2);
+    return result;
+  } else if (device == MODE_BDM) {
+    printf("Resolve root: probing root path for BDM device\n");
+    initModules(MODE_ATA | MODE_USB | MODE_MX4SIO);
+
+    if (argv0[4] == ':' || argv0[6] != '/') {
+      // argv[0] is "mass:" or doesn't have a trailing slash, fix it to "mass?:/"
+      int arglen = strlen(argv0) + 3;
+      free(result);
+      result = (char *)malloc(arglen);
+      int startPos = ((argv0[5] == '/') || (argv0[5] == ':')) ? 6 : 5;
+      snprintf(result, arglen, "mass?:/%s", &argv0[startPos]);
+    }
+
+    int fd = 0;
+    int attempts = 0;
+    for (int i = 0; i < 8; i++) {
+      result[4] = '0' + i;
+      printf("Resolve root: probing %s\n", result);
+      if (probePath(result, 2)) {
+        printf("Resolve root: failed to probe\n");
+        return result; // No BDM devices were found
+      }
+      fd = open(result, O_RDONLY);
+      if (fd >= 0) {
+        printf("Resolve root: found root path\n");
+        close(fd);
+        return result;
+      }
+    }
+  }
+
+  return result;
 }

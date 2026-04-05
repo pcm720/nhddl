@@ -6,7 +6,7 @@
 #include "target.h"
 
 // Attempts to find neutrino.elf at current path or one of fallback paths
-int findNeutrinoELF(char *cwdPath, ModuleInitType initType);
+int findNeutrinoELF(char *cwdPath);
 // Reads version.txt from NEUTRINO_ELF_PATH
 // Returns empty string if the file could not be read
 char *getNeutrinoVersion();

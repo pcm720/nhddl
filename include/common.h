@@ -14,8 +14,9 @@ typedef enum {
   MODE_ILINK = (1 << 4),
   MODE_MMCE = (1 << 5),
   MODE_HDL = (1 << 6),
+  MODE_BASIC = (1 << 7),
   MODE_BDM = MODE_ATA | MODE_MX4SIO | MODE_USB | MODE_ILINK | MODE_HDL, // Internal mode, used to avoid loading BDM modules
-  MODE_ALL = MODE_ATA | MODE_MX4SIO | MODE_UDPFS | MODE_USB | MODE_ILINK | MODE_MMCE | MODE_HDL,
+  MODE_ALL = MODE_ATA | MODE_MMCE | MODE_UDPFS | MODE_USB | MODE_HDL | MODE_ILINK | MODE_BASIC,
 } ModeType;
 
 // Supported video mode types

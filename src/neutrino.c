@@ -1,7 +1,7 @@
 #include "common.h"
 #include "devices/devices.h"
-#include "dprintf.h"
 #include "devices/init.h"
+#include "dprintf.h"
 #include "options.h"
 #include <debug.h>
 #include <kernel.h>
@@ -45,23 +45,23 @@ int launchELF(int argc, char *argv[]);
 
 // Assembles argument lists into argv for loader.elf.
 // Expects argv to be initialized with at least (arguments->total) elements.
-int assembleArgv(ArgumentList *arguments, char *argv[]) {
+int assembleArgv(ArgumentList *arguments, char **argv[]) {
   Argument *curArg = arguments->first;
   int argCount = 1; // argv[0] is always neutrino.elf
   int argSize = 0;
 
-  argv[0] = NEUTRINO_ELF_PATH;
+  *argv[0] = NEUTRINO_ELF_PATH;
   while (curArg != NULL) {
     if (!curArg->isDisabled) {
-      argSize = strlen(curArg->arg) + strlen(curArg->value) + 3; // + \0, = and -
+      argSize = strlen(curArg->arg) + (curArg->value ? strlen(curArg->value) : 0) + 3; // + \0, = and -
       char *value = calloc(sizeof(char), argSize);
 
-      if (!strlen(curArg->value))
+      if (!curArg->value || !strlen(curArg->value))
         snprintf(value, argSize, "-%s", curArg->arg);
       else
         snprintf(value, argSize, "-%s=%s", curArg->arg, curArg->value);
 
-      argv[argCount] = value;
+      (*argv)[argCount] = value;
       argCount++;
     }
     curArg = curArg->next;
@@ -69,7 +69,7 @@ int assembleArgv(ArgumentList *arguments, char *argv[]) {
 
   // Free unused memory
   if (argCount != arguments->total)
-    argv = realloc(argv, argCount * sizeof(char *));
+    *argv = realloc(*argv, argCount * sizeof(char *));
 
   return argCount;
 }
@@ -129,7 +129,7 @@ void launchTitle(Target *target, ArgumentList *arguments) {
 
   // Assemble argv
   char **argv = malloc(((arguments->total) + 1) * sizeof(char *));
-  int argCount = assembleArgv(arguments, argv);
+  int argCount = assembleArgv(arguments, &argv);
 
   DPRINTF("Launching %s (%s) with arguments:\n", target->name, target->id);
   for (int i = 0; i < argCount; i++) {
@@ -140,7 +140,7 @@ void launchTitle(Target *target, ArgumentList *arguments) {
 }
 
 // Attempts to find neutrino.elf at current path or one of fallback paths
-int findNeutrinoELF(char *cwdPath, ModuleInitType initType) {
+int findNeutrinoELF(char *cwdPath) {
   if (cwdPath && cwdPath[0] != '\0') {
     // If path is valid, try it
     strcpy(NEUTRINO_ELF_PATH, cwdPath);
@@ -149,35 +149,31 @@ int findNeutrinoELF(char *cwdPath, ModuleInitType initType) {
       return 0;
   }
 
-  if (initType == INIT_TYPE_FULL) {
-    // If neutrino.elf doesn't exist in CWD and all modules are loaded, try fallback paths on storage devices
-    struct DeviceMapEntry *device;
-    for (int i = 0; i < MAX_DEVICES; i++) {
-      NEUTRINO_ELF_PATH[0] = '\0';
-      if (deviceModeMap[i].mode == MODE_NONE)
-        break;
+  // If neutrino.elf doesn't exist in CWD and all modules are loaded, try fallback paths on storage devices
+  struct DeviceMapEntry *device;
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    NEUTRINO_ELF_PATH[0] = '\0';
+    if (deviceModeMap[i].mode == MODE_NONE)
+      break;
 
-      if (deviceModeMap[i].metadev)
-        device = deviceModeMap[i].metadev;
-      else
-        device = &deviceModeMap[i];
+    if (deviceModeMap[i].metadev)
+      device = deviceModeMap[i].metadev;
+    else
+      device = &deviceModeMap[i];
 
-      if (device->mountpoint != NULL) {
-        strcpy(NEUTRINO_ELF_PATH, device->mountpoint);
-        strcat(NEUTRINO_ELF_PATH, neutrinoStorageFallbackPath);
-        if (!tryFile(NEUTRINO_ELF_PATH))
-          return 0;
-      }
-    }
-  }
-
-  if (initType > INIT_TYPE_BASIC) {
-    // Try MMCE if init type is EXTENDED or FULL
-    for (int i = 0; i < 2; i++) {
-      sprintf(NEUTRINO_ELF_PATH, "mmce%d:%s", i, neutrinoStorageFallbackPath);
+    if (device->mountpoint != NULL) {
+      strcpy(NEUTRINO_ELF_PATH, device->mountpoint);
+      strcat(NEUTRINO_ELF_PATH, neutrinoStorageFallbackPath);
       if (!tryFile(NEUTRINO_ELF_PATH))
         return 0;
     }
+  }
+
+  // Try MMCE if init type is EXTENDED or FULL
+  for (int i = 0; i < 2; i++) {
+    sprintf(NEUTRINO_ELF_PATH, "mmce%d:%s", i, neutrinoStorageFallbackPath);
+    if (!tryFile(NEUTRINO_ELF_PATH))
+      return 0;
   }
 
   // Fallback to memory card paths

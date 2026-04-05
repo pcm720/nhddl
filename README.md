@@ -36,9 +36,11 @@ NHDDL requires a full [Neutrino](https://github.com/rickgaiser/neutrino) install
 By default, NHDDL tries to initialize all supported devices. You can override this behavior and reduce initialization times by setting specific mode in launcher configuration file.  
 See [this](#launcher-configuration-file) section for details on `nhddl.yaml`.  
 
-Note that if your ELF loader resets IOP (e.g. `PS2BBL` and recent versions of `wLE_ISR`), NHDDL will try loading `nhddl.yaml` from memory cards and MMCE devices first to avoid
-loading modules for all devices.  
-If `nhddl.yaml` is not present on any of the memory cards or MMCE devices, NHDDL will initialize all modules first and then will attempt to search for `nhddl.yaml` again.
+On startup, NHDDL attempts to detect its launch device from the ELF path and initializing only the necessary drivers for that device type.  
+It then searches for `nhddl.yaml` in the same directory or `/nhddl/nhddl.yaml` on that device.  
+If no configuration file is found, NHDDL defaults to loading all supported devices except MX4SIO.
+
+If Neutrino is running from a virtual memory card on an MMCE device, NHDDL will not mount the per-game virtual memory card.
 
 **Do not plug in any BDM storage devices while running NHDDL!**  
 Doing so might crash NHDDL and/or possibly corrupt the files on your target device due to how BDM drivers work.
@@ -81,9 +83,9 @@ To skip all other devices, `mode: ata` must be present in `nhddl.yaml`.
 #### MX4SIO
 
 MX4SIO support requires explicit configuration due to conflicts with memory cards and MMCE devices.  
-`mode: mx4sio` must be present in `nhddl.yaml` on __the memory card__ for MX4SIO to work.  
+`mode: mx4sio` must be present in `nhddl.yaml` for MX4SIO to work.
 
-Note that __MMCE devices will not be available__ when this mode is enabled.
+Note that __MMCE devices will not be available__ when this mode is enabled, regardless of how it's configured.
 
 #### USB
 
@@ -159,15 +161,25 @@ Be aware that passing any argument will cause NHDDL to completely skip loading l
 
 For example, to initialize NHDDL with UDPFS mode, you can run `nhddl.elf` with `-mode=udpfs` and `-udpfs_ip=192.168.1.6`.  
 
-If NHDDL receives `-mode` and `-dvd=<path to the image file>`, it will skip UI initialization and directly launch Neutrino while respecting all arguments specified in argument files.  
-Add `-noinit` argument to skip IOP initialization (make sure all required modules are already loaded).  
+When `-mode=` is provided, NHDDL initializes the UI first, then loads modules according to the specified mode before scanning for titles.
+
+Add `-noinit` to skip IOP module initialization entirely. Use this only when your bootloader or launcher has already loaded all required device drivers for the specified mode.
 
 See [this file](examples/nhddl.yaml) for a list of all supported arguments and their possible values.
 
+### Forward Boot Mode
+
+When NHDDL is launched with both `-mode=<type>` and `-dvd=<path_to_iso>` arguments, it enters **forward boot mode**, which bypasses the UI entirely and directly launches Neutrino. In this mode:
+
+- Device drivers for the specified mode are initialized automatically
+- The target image is located and launched without user interaction
+- Use `-noinit` only if your launcher already has the required modules loaded (see [Passing arguments](#passing-arguments))
+
+This behavior allows custom bootloaders or automated scenarios to skip the launcher interface entirely.
+
 ### Forcing a specific mode via the NHDDL ELF file name
 
-When loading NHDDL from APA or BDM, there is no reliable way to get modes from `nhddl.yaml` other than passing arguments. However, not a lot of launchers support this.  
-To work around this, you can add a postfix to `nhddl.elf` to force a specific mode:
+When loading NHDDL from APA or BDM without argument support, you can add a postfix to the ELF filename to force a specific mode:
 - `nhddl-ata.elf` — force ATA mode
 - `nhddl-mmce.elf` — force MMCE mode
 - `nhddl-hdl.elf` — force HDL mode
