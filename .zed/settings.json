@@ -1,0 +1,9 @@
+{
+  "lsp": {
+    "clangd": {
+      "binary": {
+        "arguments": ["--query-driver=*mips64r5900el-ps2-elf-gcc*"],
+      },
+    },
+  },
+}

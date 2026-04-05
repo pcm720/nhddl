@@ -1,0 +1,8 @@
+Language: Cpp
+BasedOnStyle: LLVM
+IndentWidth: 2
+UseTab: Never
+TabWidth: 2
+ColumnLimit: 150
+InsertNewlineAtEOF: true
+LineEnding: LF

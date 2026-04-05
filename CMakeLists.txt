@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.13)
 include($ENV{PS2SDK}/ps2dev.cmake)
 
 project(nhddl)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Executable name
 set(EE_BIN "nhddl_unc.elf")
 set(EE_BIN_PKD "nhddl.elf")
@@ -39,7 +40,7 @@ include(irx.cmake)
 # Get git version for build info
 find_package(Git QUIET)
 if(GIT_FOUND)
-    execute_process(
+  execute_process(
         COMMAND ${GIT_EXECUTABLE} describe --always --dirty --tags --exclude nightly
         OUTPUT_VARIABLE GIT_VERSION
         OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -47,14 +48,14 @@ if(GIT_FOUND)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
 else()
-    set(GIT_VERSION "unknown")
+  set(GIT_VERSION "unknown")
 endif()
 
 # Set compiler flags
 add_definitions(-DGIT_VERSION=\"${GIT_VERSION}\")
 
 if(ENABLE_PRINTF)
-    add_definitions(-DENABLE_PRINTF)
+  add_definitions(-DENABLE_PRINTF)
 endif()
 
 # Create the main executable
