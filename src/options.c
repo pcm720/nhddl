@@ -329,9 +329,9 @@ int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *de
     }
 
     char *newValue = NULL;
-    if (!device && (valuePtr[0] == '/' || valuePtr[0] == '\\')) {
+    if (device && (valuePtr[0] == '/' || valuePtr[0] == '\\')) {
       // Add device mountpoint to argument value if path starts with \ or /
-      char *newValue = calloc(sizeof(char), strlen(valuePtr) + 1 + strlen(device->mountpoint));
+      newValue = calloc(sizeof(char), strlen(valuePtr) + 1 + strlen(device->mountpoint));
       // Replace current mountpoint with device number.
       strcpy(newValue, device->mountpoint);
       strcat(newValue, valuePtr);
