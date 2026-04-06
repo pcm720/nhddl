@@ -9,9 +9,10 @@
 // Supported video mode types
 typedef enum {
   VMode_NONE = 0,
-  VMode_NTSC = GS_MODE_NTSC,
-  VMode_PAL = GS_MODE_PAL,
+  VMode_480i = GS_MODE_NTSC,
+  VMode_576i = GS_MODE_PAL,
   VMode_480p = GS_MODE_DTV_480P,
+  VMode_576p = GS_MODE_DTV_576P,
   VMode_720p = GS_MODE_DTV_720P,
 } VModeType;
 

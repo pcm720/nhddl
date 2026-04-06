@@ -1,5 +1,7 @@
 #include "config/common.h"
 #include <libcdvd.h>
+#include <limits.h>
+#include <stdio.h>
 #include <string.h>
 
 static const char BASE_CONFIG_PATH[] = "/nhddl";
@@ -7,13 +9,19 @@ static const char BASE_CONFIG_PATH[] = "/nhddl";
 // Writes full path to targetFileName into targetPath.
 // If targetFileName is NULL, will return path to config directory
 void buildConfigFilePath(char *targetPath, const char *targetMountpoint, const char *targetFileName) {
-  strcpy(targetPath, targetMountpoint);
-  strcat(targetPath, BASE_CONFIG_PATH);
-  if (targetFileName != NULL) {
-    if (targetFileName[0] != '/')
-      strcat(targetPath, "/");
-    strcat(targetPath, targetFileName);
+  if (!targetPath || !targetMountpoint) {
+    if (targetPath)
+      targetPath[0] = '\0';
+    return;
   }
+  if (targetFileName == NULL) {
+    snprintf(targetPath, (size_t)PATH_MAX, "%s%s", targetMountpoint, BASE_CONFIG_PATH);
+    return;
+  }
+  if (targetFileName[0] != '/')
+    snprintf(targetPath, (size_t)PATH_MAX, "%s%s/%s", targetMountpoint, BASE_CONFIG_PATH, targetFileName);
+  else
+    snprintf(targetPath, (size_t)PATH_MAX, "%s%s%s", targetMountpoint, BASE_CONFIG_PATH, targetFileName);
 }
 
 // Generates 32-bit timestamp from RTC. Will wrap around every 64th year

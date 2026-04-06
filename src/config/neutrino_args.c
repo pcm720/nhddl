@@ -82,6 +82,8 @@ int loadTitleNeutrinoArguments(ArgumentList *result, Target *target) {
 // Accepts only the title list; writes every argument in the list to the title .cnf.
 // CNF format: one argument per line as -name=value or -name; disabled entries as #-name=value or #-name.
 int saveTitleNeutrinoArguments(Target *target, ArgumentList *options) {
+  if (!target || !options)
+    return -EINVAL;
   if (!target->name)
     return -ENOENT;
 
@@ -109,6 +111,11 @@ int saveTitleNeutrinoArguments(Target *target, ArgumentList *options) {
   int ret = 0;
   Argument *tArg = options->first;
   while (tArg != NULL) {
+    if (!tArg->arg || !tArg->arg[0]) {
+      DPRINTF("config: warning: skipping argument with missing name\n");
+      tArg = tArg->next;
+      continue;
+    }
     len = 0;
     int relIdx = tArg->value ? getRelativePathIdx(tArg->value) : -1;
     const char *valStr = (tArg->value && relIdx > 0) ? &tArg->value[relIdx] : (tArg->value ? tArg->value : "");
@@ -126,9 +133,29 @@ out:
   return ret;
 }
 
+int saveTitleNeutrinoArgumentsDelta(Target *target, ArgumentList *merged, ArgumentList *global_baseline) {
+  if (!target || !merged || !global_baseline)
+    return -EINVAL;
+  ArgumentList delta = {0};
+  for (Argument *m = merged->first; m != NULL; m = m->next) {
+    if (!m->arg || !m->arg[0])
+      continue;
+    Argument *g = getArgument(global_baseline, m->arg);
+    const char *mv = m->value ? m->value : "";
+    const char *gv = (g && g->value) ? g->value : "";
+    if (!g || m->isDisabled != g->isDisabled || strcmp(mv, gv) != 0)
+      appendArgumentCopy(&delta, m);
+  }
+  int ret = saveTitleNeutrinoArguments(target, &delta);
+  freeArgumentListNodes(&delta);
+  return ret;
+}
+
 // Saves global Neutrino arguments to global.cnf on device.
 // Same CNF format as title save. Writes every argument in options.
 int saveGlobalNeutrinoArguments(struct BackendDevice *device, ArgumentList *options) {
+  if (!device || !options)
+    return -EINVAL;
   if (device->metadev)
     device = device->metadev;
 
@@ -156,6 +183,11 @@ int saveGlobalNeutrinoArguments(struct BackendDevice *device, ArgumentList *opti
   int ret = 0;
   Argument *tArg = options->first;
   while (tArg != NULL) {
+    if (!tArg->arg || !tArg->arg[0]) {
+      DPRINTF("config: warning: skipping argument with missing name\n");
+      tArg = tArg->next;
+      continue;
+    }
     len = 0;
     int relIdx = tArg->value ? getRelativePathIdx(tArg->value) : -1;
     const char *valStr = (tArg->value && relIdx > 0) ? &tArg->value[relIdx] : (tArg->value ? tArg->value : "");
@@ -173,19 +205,15 @@ out_global:
   return ret;
 }
 
-// Can be used to merge global and per-title Neutrino arguments for display or launch.
-// src is base; dst wins on duplicate names.
-ArgumentList *mergeNeutrinoArguments(ArgumentList *dst, ArgumentList *src) {
+// Global base; per-title entries replace same-named global entries.
+ArgumentList *mergeNeutrinoArguments(ArgumentList *global_list, ArgumentList *title_list) {
   ArgumentList *merged = calloc(sizeof(ArgumentList), 1);
   if (!merged) {
     displayFatalError("Failed to allocate memory for merged argument list\n");
     __builtin_trap();
   }
-  Argument *cur = src->first;
-  while (cur != NULL) {
+  for (Argument *cur = global_list->first; cur != NULL; cur = cur->next)
     appendArgumentCopy(merged, cur);
-    cur = cur->next;
-  }
-  mergeArgumentLists(merged, dst);
+  mergeArgumentLists(merged, title_list);
   return merged;
 }

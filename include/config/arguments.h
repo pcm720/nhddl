@@ -20,7 +20,11 @@ typedef struct {
   Argument *last;  // Last argument
 } ArgumentList;
 
-// Completely frees ArgumentList. Passed pointer will not be valid after this function executes
+// Frees all Argument nodes and clears first/last/total. Does not free the ArgumentList struct itself — use for
+// embedded lists (e.g. on stack or inside another struct). Safe after partial parse.
+void freeArgumentListNodes(ArgumentList *list);
+
+// Frees nodes then frees the list container. Use only when list was allocated with malloc/calloc.
 void freeArgumentList(ArgumentList *result);
 
 // Retrieves argument from the list
@@ -44,7 +48,10 @@ void appendArgumentCopy(ArgumentList *target, Argument *arg);
 void mergeArgumentLists(ArgumentList *dst, ArgumentList *src);
 
 // Parses a CNF-format file into ArgumentList. Overwrites options. device may be NULL (no path resolution).
-// Returns 0 on success; on error may leave options partially filled.
+// Returns 0 on success; on I/O or parse error returns negative errno, clears any partially built nodes (list head is not freed).
 int loadArgumentList(ArgumentList *options, struct BackendDevice *device, char *filePath);
+
+// Deep copy of all arguments into a new list. Caller must freeArgumentList the result.
+ArgumentList *duplicateArgumentList(const ArgumentList *src);
 
 #endif

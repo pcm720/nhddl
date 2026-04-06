@@ -19,13 +19,15 @@ int loadTitleNeutrinoArguments(ArgumentList *result, Target *target);
 // Accepts only the title list; writes every argument in the list to the title .cnf.
 int saveTitleNeutrinoArguments(Target *target, ArgumentList *title_list);
 
+// Writes only arguments that differ from global.cnf (per-title overrides). Empty file if merged matches global.
+int saveTitleNeutrinoArgumentsDelta(Target *target, ArgumentList *merged, ArgumentList *global_baseline);
+
 // Saves global Neutrino arguments to global.cnf on device.
 int saveGlobalNeutrinoArguments(struct BackendDevice *device, ArgumentList *options);
 
 // Merges global and per-title Neutrino arguments for display or launch.
-// Can be used to merge global and per-title Neutrino arguments for display or launch.
-// Semantic: dst ← src — per-title options (including overrides) are merged into global; per-title wins on duplicate names.
+// Copies global first, then merges title entries so per-title wins on duplicate names.
 // Caller must free the returned list with freeArgumentList.
-ArgumentList *mergeNeutrinoArguments(ArgumentList *dst, ArgumentList *src);
+ArgumentList *mergeNeutrinoArguments(ArgumentList *global_list, ArgumentList *title_list);
 
 #endif

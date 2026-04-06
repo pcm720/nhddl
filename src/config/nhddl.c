@@ -15,7 +15,7 @@ const char optionsFile[] = "nhddl.cnf";
 
 // Supported options
 #define OPTION_DEVICE "device"
-#define OPTION_IP_ADDRESS "ip_addr"
+#define OPTION_IP_ADDRESS "ip"
 #define OPTION_PROBE_DELAY "probe_delay"
 #define OPTION_NEUTRINO "neutrino"
 // Forwarder mode-exclusive flags
@@ -63,13 +63,15 @@ DeviceType parseFilename(const char *path) {
 
 // Parses video mode string into enum
 VModeType parseVMode(const char *modeStr) {
-  if (!strcmp(modeStr, "ntsc"))
-    return VMode_NTSC;
-  if (!strcmp(modeStr, "pal"))
-    return VMode_PAL;
-  if (!strcmp(modeStr, "480p"))
+  if (!strncmp(modeStr, "480i", 4))
+    return VMode_480i;
+  if (!strncmp(modeStr, "576i", 4))
+    return VMode_576i;
+  if (!strncmp(modeStr, "480p", 4))
     return VMode_480p;
-  if (!strcmp(modeStr, "720p"))
+  if (!strncmp(modeStr, "576p", 4))
+    return VMode_576p;
+  if (!strncmp(modeStr, "720p", 4))
     return VMode_720p;
   return VMode_NONE;
 }
@@ -77,16 +79,18 @@ VModeType parseVMode(const char *modeStr) {
 // Returns string for video mode for config file output
 static const char *vmodeToStr(VModeType v) {
   switch (v) {
-  case VMode_NTSC:
-    return "ntsc";
-  case VMode_PAL:
-    return "pal";
+  case VMode_480i:
+    return "480i";
+  case VMode_576i:
+    return "576i";
   case VMode_480p:
     return "480p";
+  case VMode_576p:
+    return "576p";
   case VMode_720p:
     return "720p";
   default:
-    return "ntsc";
+    return "480i";
   }
 }
 

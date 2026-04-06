@@ -22,16 +22,35 @@ Argument *freeArgument(Argument *arg) {
   return prev;
 }
 
-// Completely frees ArgumentList. Passed pointer will not be valid after this function executes
-void freeArgumentList(ArgumentList *result) {
-  Argument *tArg = result->last;
+void freeArgumentListNodes(ArgumentList *list) {
+  if (!list)
+    return;
+  Argument *tArg = list->last;
   while (tArg != NULL) {
     tArg = freeArgument(tArg);
   }
-  result->first = NULL;
-  result->last = NULL;
-  result->total = 0;
+  list->first = NULL;
+  list->last = NULL;
+  list->total = 0;
+}
+
+// Frees nodes then the container; list pointer must come from malloc/calloc.
+void freeArgumentList(ArgumentList *result) {
+  if (!result)
+    return;
+  freeArgumentListNodes(result);
   free(result);
+}
+
+ArgumentList *duplicateArgumentList(const ArgumentList *src) {
+  if (!src)
+    return NULL;
+  ArgumentList *dst = calloc(1, sizeof(ArgumentList));
+  if (!dst)
+    return NULL;
+  for (Argument *a = src->first; a != NULL; a = a->next)
+    appendArgumentCopy(dst, a);
+  return dst;
 }
 
 // Makes and returns a deep copy of src without prev/next pointers.
@@ -53,6 +72,8 @@ static void replaceArgument(Argument *dst, Argument *src) {
   if (dst->value)
     free(dst->value);
   dst->isDisabled = src->isDisabled;
+  dst->arg = NULL;
+  dst->value = NULL;
   if (src->arg)
     dst->arg = strdup(src->arg);
   if (src->value)
@@ -66,6 +87,8 @@ Argument *newArgument(const char *argName, char *value) {
   arg->isDisabled = 0;
   arg->prev = NULL;
   arg->next = NULL;
+  arg->arg = NULL;
+  arg->value = NULL;
   if (argName)
     arg->arg = strdup(argName);
   if (value)
@@ -122,11 +145,12 @@ void mergeArgumentLists(ArgumentList *dst, ArgumentList *src) {
 
 // Retrieves argument from the list
 Argument *getArgument(ArgumentList *target, const char *argumentName) {
+  if (!target || !argumentName)
+    return NULL;
   Argument *arg = target->first;
   while (arg != NULL) {
-    if (!strcmp(arg->arg, argumentName)) {
+    if (arg->arg && !strcmp(arg->arg, argumentName))
       return arg;
-    }
     arg = arg->next;
   }
   return NULL;
@@ -224,7 +248,7 @@ int loadArgumentList(ArgumentList *options, struct BackendDevice *device, char *
 
   if (parseConfigFile(options, device, file)) {
     fclose(file);
-    freeArgumentList(options);
+    freeArgumentListNodes(options);
     return -EIO;
   }
 
