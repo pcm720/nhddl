@@ -276,11 +276,11 @@ ModeType parseFilename(const char *path) {
 
 // Parses video mode string into enum
 VModeType parseVMode(const char *modeStr) {
-  if (!strcmp(modeStr, "ntsc"))
+  if (!strncmp(modeStr, "ntsc", 4))
     return VMODE_NTSC;
-  if (!strcmp(modeStr, "pal"))
+  if (!strncmp(modeStr, "pal", 3))
     return VMODE_PAL;
-  if (!strcmp(modeStr, "480p"))
+  if (!strncmp(modeStr, "480p", 4))
     return VMODE_480P;
   return VMODE_NONE;
 }

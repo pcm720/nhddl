@@ -322,7 +322,7 @@ int parseOptionsFile(ArgumentList *result, FILE *file, struct DeviceMapEntry *de
       *tempPtr = '\0';
       tempPtr--;
     }
-    tempPtr = valuePtr + strlen(valuePtr);
+    tempPtr = valuePtr + strlen(valuePtr) - 1;
     while (isspace((int)*tempPtr)) {
       *tempPtr = '\0';
       tempPtr--;
