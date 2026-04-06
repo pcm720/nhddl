@@ -53,3 +53,10 @@ int getMountpointFromPath(const char *path, char *buf, size_t bufSize) {
   buf[len] = '\0';
   return 0;
 }
+
+// Converts lowercase ASCII string into uppercase
+void toUppercase(char *str) {
+  for (int i = 0; i <= strlen(str); i++)
+    if (str[i] >= 0x61 && str[i] <= 0x7A)
+      str[i] -= 32;
+}

@@ -1,4 +1,5 @@
 #include "backends/target.h"
+#include "backends/internal.h"
 #include "backends/backends.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -22,15 +23,11 @@ void freeTargetList(TargetList *result) {
 
 // Finds target with given index in the list and returns a pointer to it
 Target *getTargetByIdx(TargetList *targets, int idx) {
-  Target *current = targets->first;
-  while (1) {
+  if (!targets)
+    return NULL;
+  for (Target *current = targets->first; current != NULL; current = current->next) {
     if (current->idx == idx)
       return current;
-
-    if (current->next == NULL)
-      break;
-
-    current = current->next;
   }
   return NULL;
 }
@@ -49,30 +46,37 @@ Target *copyTarget(Target *src) {
   return copy;
 }
 
-// Converts lowercase ASCII string into uppercase
-void toUppercase(char *str) {
-  for (int i = 0; i <= strlen(str); i++)
-    if (str[i] >= 0x61 && str[i] <= 0x7A)
-      str[i] -= 32;
-}
-
 // Inserts title in the list while keeping the alphabetical order
-void insertIntoTargetList(TargetList *result, Target *title) {
+int insertIntoTargetList(TargetList *result, Target *title) {
+  if (!result || !title)
+    return -1;
+  if (result->first == NULL) {
+    result->first = result->last = title;
+    title->prev = title->next = NULL;
+    return 0;
+  }
+
   // Traverse the list in reverse
   Target *curTitle = result->last;
 
-  // Covert title name to uppercase
-  char *curUppercase = strdup(title->name);
+  const char *newName = title->name ? title->name : "";
+  char *curUppercase = strdup(newName);
+  if (!curUppercase)
+    return -1;
   toUppercase(curUppercase);
 
   // Overall, title name should not exceed PATH_MAX
   char lastUppercase[PATH_MAX];
 
   while (1) {
+    if (!curTitle) {
+      free(curUppercase);
+      return -1;
+    }
     // Reset string buffer
     lastUppercase[0] = '\0';
     // Convert name of the last title to uppercase
-    strlcpy(lastUppercase, curTitle->name, PATH_MAX);
+    strlcpy(lastUppercase, curTitle->name ? curTitle->name : "", PATH_MAX);
     toUppercase(lastUppercase);
 
     // Compare new title name and the current title name
@@ -105,6 +109,7 @@ void insertIntoTargetList(TargetList *result, Target *title) {
     curTitle = curTitle->prev;
   }
   free(curUppercase);
+  return 0;
 }
 
 // Completely frees Target and returns pointer to the next target in the list

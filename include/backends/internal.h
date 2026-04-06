@@ -9,4 +9,8 @@ extern struct BackendDevice backendDevices[MAX_DEVICES];
 void removeConflictingBackends(DeviceType conflictMask);
 void rescanAllBackendDevices(void);
 
+// Implemented in utils.c
+// Converts lowercase ASCII string into uppercase
+void toUppercase(char *str);
+
 #endif

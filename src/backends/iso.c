@@ -1,6 +1,8 @@
 // Implements titleScanFunc for file-based devices (MMCE, BDM)
 #include "backends/backends.h"
 #include "backends/cache.h"
+#include "backends/internal.h"
+#include "backends/target.h"
 #include "backends/title_id.h"
 #include "devices/utils.h"
 #include "dprintf.h"
@@ -55,6 +57,11 @@ int findISO(struct BackendDevice *device) {
     return -ENOENT;
   }
   closedir(directory);
+
+  int actual = 0;
+  for (Target *t = result->first; t; t = t->next)
+    actual++;
+  result->total = actual;
 
   if (result->total == 0) {
     freeTargetList(device->titles);
@@ -141,7 +148,7 @@ int _findISO(DIR *directory, TargetList *result, struct BackendDevice *device) {
     default:
       // Make sure file has .iso extension
       fileext = strrchr(entry->d_name, '.');
-      if ((fileext != NULL) && (!strcmp(fileext, ".iso") || !strcmp(fileext, ".ISO"))) {
+      if (fileext && (!strcmp(fileext, ".iso") || !strcmp(fileext, ".ISO"))) {
         // Generate full path
         strcat(titlePath, entry->d_name);
 
@@ -154,20 +161,49 @@ int _findISO(DIR *directory, TargetList *result, struct BackendDevice *device) {
           relIdx = 0;
         title->path = strdup(titlePath + relIdx);
         title->device = device;
+        title->flags = 0;
+
+        // Process file name
+        // <OPL title ID>.<title name>.<compressed extension>.iso
+        char nameBuf[12] = {0};
+        char *nameStart = entry->d_name;
+        if ((strlen(entry->d_name) > 12) && (entry->d_name[4] == '_') && (entry->d_name[8] == '.') && (entry->d_name[11] == '.')) {
+          // d_name begins with title ID, extract it and advance nameStart to point the actual title name
+          strncpy(nameBuf, entry->d_name, 11);
+          title->id = strdup(nameBuf);
+          DPRINTF("backends/iso: OPL name format, using %s as the title ID\n", title->id);
+          nameStart = nameStart + 12;
+        }
+
+        // Check for compressed ISO extension
+        char *tmp = strchr(nameStart, '.');
+        if (tmp && (tmp != fileext)) {
+          strncpy(nameBuf, tmp + 1, 4);
+          nameBuf[4] = '\0';
+          toUppercase(nameBuf);
+          if (!strncmp(&nameBuf[1], "SO", 2) || !strncmp(&nameBuf[1], "ISO", 3)) {
+            fileext = tmp;
+            if (nameBuf[0] == 'C')
+              title->flags |= TitleFlag_CSO;
+            else if (nameBuf[0] == 'Z')
+              title->flags |= TitleFlag_ZSO;
+          } else if (!strncmp(nameBuf, "CHD", 3)) {
+            fileext = tmp;
+            title->flags |= TitleFlag_CHD;
+          }
+        }
 
         // Get file name without the extension
-        int nameLength = (int)(fileext - entry->d_name);
+        int nameLength = (int)(fileext - nameStart);
         title->name = calloc(sizeof(char), nameLength + 1);
-        strncpy(title->name, entry->d_name, nameLength);
+        strncpy(title->name, nameStart, nameLength);
 
-        // Increment title counter and update target list
-        result->total++;
         if (result->first == NULL) {
-          // If this is the first entry, update both pointers
           result->first = title;
           result->last = title;
-        } else {
-          insertIntoTargetList(result, title);
+          title->prev = title->next = NULL;
+        } else if (insertIntoTargetList(result, title) != 0) {
+          freeTarget(NULL, title);
         }
       }
     }
@@ -183,11 +219,13 @@ void processTitleID(TargetList *result, struct BackendDevice *device) {
     return;
 
   // Load title cache
-  TitleIDCache *cache = malloc(sizeof(TitleIDCache));
+  TitleIDCache *cache = calloc(1, sizeof(TitleIDCache));
   int isCacheUpdateNeeded = 0;
-  if (loadTitleIDCache(cache, device)) {
+  if (!cache) {
+    isCacheUpdateNeeded = 1;
+  } else if (loadTitleIDCache(cache, device)) {
     DPRINTF("backends/iso: all ISOs will be rescanned\n");
-    free(cache);
+    freeTitleCache(cache);
     cache = NULL;
   } else if (cache->total != result->total) {
     // Set flag if number of entries is different
@@ -204,12 +242,10 @@ void processTitleID(TargetList *result, struct BackendDevice *device) {
       continue;
     }
 
-    curTarget->flags = 0;
     char fullPathBuf[PATH_MAX];
     if (getTargetFullPath(curTarget, fullPathBuf, sizeof(fullPathBuf)) < 0) {
       DPRINTF("backends/iso: ignoring target (no full path) %s\n", curTarget->path);
       curTarget = freeTarget(result, curTarget);
-      result->total -= 1;
       continue;
     }
     CacheEntry *cached = (cache != NULL) ? getCachedEntry(curTarget->path, cache) : NULL;
@@ -222,25 +258,32 @@ void processTitleID(TargetList *result, struct BackendDevice *device) {
 
     if (cached != NULL && sizeMatches) {
       curTarget->id = strdup(cached->titleID);
-      curTarget->flags = cached->flags;
+      curTarget->flags |= cached->flags;
     } else {
       cacheMisses++;
       DPRINTF("backends/iso: cache miss for %s\n", fullPathBuf);
-      curTarget->id = getTitleID(fullPathBuf);
+
+      if (!curTarget->id)
+        curTarget->id = getTitleID(fullPathBuf);
+
       if (curTarget->id != NULL && cached != NULL)
-        curTarget->flags = cached->flags;
+        curTarget->flags |= cached->flags;
     }
 
     if (curTarget->id == NULL) {
       DPRINTF("backends/iso: failed to get title ID for %s\n", curTarget->path);
       curTarget = freeTarget(result, curTarget);
-      result->total -= 1;
       continue;
     }
 
     curTarget = curTarget->next;
   }
   freeTitleCache(cache);
+
+  int linked = 0;
+  for (Target *t = result->first; t; t = t->next)
+    linked++;
+  result->total = linked;
 
   if ((cacheMisses > 0) || (isCacheUpdateNeeded)) {
     DPRINTF("backends/iso: updating title ID cache...\n");

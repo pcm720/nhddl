@@ -45,13 +45,16 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
     return 0;
   }
 
-  // Get total number of valid cache entries
+  // Get total number of valid cache entries (must match filters in the write loop below)
   int total = 0;
   Target *curTitle = list->first;
   while (curTitle != NULL) {
-    if (curTitle->id != NULL && strlen(curTitle->id) == 11) {
-      total++;
+    if (curTitle->device != device) {
+      curTitle = curTitle->next;
+      continue;
     }
+    if (curTitle->id != NULL && strnlen(curTitle->id, 12) == 11)
+      total++;
     curTitle = curTitle->next;
   }
   if (total == 0) {
@@ -77,6 +80,10 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
 
   buildConfigFilePath(dirPath, configDevice->mountpoint, NULL);
   buildConfigFilePath(cachePath, configDevice->mountpoint, titleIDCacheFile);
+  if (dirPath[0] == '\0' || cachePath[0] == '\0') {
+    DPRINTF("backends/cache: error: config path overflow or invalid mountpoint\n");
+    return -EIO;
+  }
 
   // Get path to config directory and make sure it exists
   struct stat st;
@@ -109,13 +116,22 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
   curTitle = list->first;
   while (curTitle != NULL) {
     // Ignore empty entries or entries not belonging to the current device
-    if ((curTitle->id == NULL || strlen(curTitle->id) < 11) || (curTitle->device != device)) {
+    if ((curTitle->id == NULL || strnlen(curTitle->id, 12) < 11) || (curTitle->device != device)) {
+      curTitle = curTitle->next;
+      continue;
+    }
+    if (curTitle->path == NULL) {
       curTitle = curTitle->next;
       continue;
     }
 
     // Path is already relative to device mountpoint
-    size_t pathLen = strlen(curTitle->path) + 1;
+    size_t pl = strnlen(curTitle->path, PATH_MAX);
+    if (pl == 0 || pl >= PATH_MAX) {
+      curTitle = curTitle->next;
+      continue;
+    }
+    size_t pathLen = pl + 1;
     if (pathLen > 0xFFFFFFFFu) {
       curTitle = curTitle->next;
       continue;
@@ -134,19 +150,27 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
     memset(&header, 0, sizeof(header));
     header.pathLength = (uint32_t)pathLen;
     header.fileSize = (uint64_t)st.st_size;
-    header.flags = curTitle->flags;
-    memcpy(header.titleID, curTitle->id, sizeof(header.titleID));
+    header.flags = curTitle->flags & CachedTitleFlagsMask;
+    memset(header.titleID, 0, sizeof(header.titleID));
+    {
+      size_t idlen = strnlen(curTitle->id, 12);
+      if (idlen > 11)
+        idlen = 11;
+      memcpy(header.titleID, curTitle->id, idlen);
+    }
     header.titleID[11] = '\0';
     result = (fwrite(&header, 1, CACHE_ENTRY_HEADER_SIZE, file) == CACHE_ENTRY_HEADER_SIZE) ? 1 : 0;
     if (!result) {
-      DPRINTF("backends/cache: error: %s: failed to write header: %d\n", curTitle->name, errno);
+      DPRINTF("backends/cache: error: %s: failed to write header: %d\n", curTitle->name ? curTitle->name : "?",
+              errno);
       fclose(file);
       remove(cachePath);
       return -EIO;
     }
-    result = fwrite(curTitle->path, header.pathLength, 1, file);
+    result = (fwrite(curTitle->path, 1, pathLen, file) == pathLen) ? 1 : 0;
     if (!result) {
-      DPRINTF("backends/cache: error: %s: failed to write ISO path: %d\n", curTitle->name, errno);
+      DPRINTF("backends/cache: error: %s: failed to write ISO path: %d\n", curTitle->name ? curTitle->name : "?",
+              errno);
       fclose(file);
       remove(cachePath);
       return -EIO;
@@ -160,6 +184,8 @@ int storeTitleIDCache(TargetList *list, struct BackendDevice *device) {
 
 // Loads title ID cache from storage into cache
 int loadTitleIDCache(TitleIDCache *cache, struct BackendDevice *device) {
+  if (!cache)
+    return -EINVAL;
   // Make sure path exists
   if (device->type == Device_None || device->mountpoint == NULL)
     return -ENODEV;
@@ -169,6 +195,7 @@ int loadTitleIDCache(TitleIDCache *cache, struct BackendDevice *device) {
 
   cache->total = 0;
   cache->lastMatchedIdx = 0;
+  cache->entries = NULL;
 
   // Open cache file for reading
   char cachePath[PATH_MAX];
@@ -244,7 +271,7 @@ int loadTitleIDCache(TitleIDCache *cache, struct BackendDevice *device) {
     entry->titleID[11] = '\0';
     entry->fullPath = strdup(pathBuf);
     entry->fileSize = header.fileSize;
-    entry->flags = header.flags;
+    entry->flags = header.flags & CachedTitleFlagsMask;
     readIndex++;
   }
   fclose(file);
@@ -281,11 +308,11 @@ void freeTitleCache(TitleIDCache *cache) {
   if (cache == NULL)
     return;
 
-  for (int i = 0; i < cache->total; i++) {
-    free(cache->entries[i].fullPath);
+  if (cache->entries != NULL) {
+    for (int i = 0; i < cache->total; i++)
+      free(cache->entries[i].fullPath);
+    free(cache->entries);
   }
-
-  free(cache->entries);
   free(cache);
 }
 
@@ -336,14 +363,17 @@ int updateLastLaunchedTitle(Target *target) {
   struct BackendDevice *device = target->device;
   struct BackendDevice *writeDevice = device->metadev ? device->metadev : device;
   DPRINTF("backends/cache: writing last launched title as %s\n", target->path);
+  char dirPath[PATH_MAX];
   char targetPath[PATH_MAX];
-  buildConfigFilePath(targetPath, writeDevice->mountpoint, NULL);
+  buildConfigFilePath(dirPath, writeDevice->mountpoint, NULL);
+  buildConfigFilePath(targetPath, writeDevice->mountpoint, lastTitleFile);
+  if (dirPath[0] == '\0' || targetPath[0] == '\0')
+    return -EIO;
   struct stat st;
-  if (stat(targetPath, &st) == -1) {
-    DPRINTF("backends/cache: creating config directory: %s\n", targetPath);
-    mkdir(targetPath, 0777);
+  if (stat(dirPath, &st) == -1) {
+    DPRINTF("backends/cache: creating config directory: %s\n", dirPath);
+    mkdir(dirPath, 0777);
   }
-  strcat(targetPath, lastTitleFile);
   int fd = open(targetPath, O_WRONLY | O_CREAT | O_TRUNC);
   if (fd < 0) {
     DPRINTF("backends/cache: error: failed to open last launched title file: %d\n", fd);

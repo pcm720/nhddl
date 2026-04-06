@@ -66,8 +66,12 @@ void freeBackendDeviceTitles(struct BackendDevice *device);
 void freeAllBackendTitles(void);
 // Rescans all backend devices (rebuilds device->titles). Call before rebuilding the title list view.
 void rescanAllBackendDevices(void);
+// Drops backends whose type is not in getEnabledDevices() (sync/cleanup, free titles and mountpoints).
+void removeBackendsDisabledInConfig(void);
 // Fills out[] with each DeviceType bit set in config (getEnabledDevices()), up to maxCount. Returns count.
 int getEnabledDeviceTypesArray(DeviceType *out, int maxCount);
+// Fills out[] with each DeviceType supported, up to maxCount. Returns count.
+int getSupportedDeviceTypesArray(DeviceType *out, int maxCount);
 // Runs cleanup on all backend devices (unmount PFS, etc.). Call before launch, exit, or IOP reboot.
 void cleanupAllBackends(void);
 

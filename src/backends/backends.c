@@ -25,6 +25,7 @@ static const DeviceType enabledDeviceTypeBits[] = {
   Device_USB,
   Device_UDPFS,
   Device_MX4SIO,
+  Device_iLink,
 };
 static const int numEnabledDeviceTypeBits =
     (int)(sizeof(enabledDeviceTypeBits) / sizeof(enabledDeviceTypeBits[0]));
@@ -82,6 +83,65 @@ Target *getLastLaunchedTarget(void) {
   if (!bestDevice)
     return NULL;
   return getTargetByIdx(bestDevice->titles, bestDevice->lastLaunchedTitleIdx);
+}
+
+static void destroyBackendDeviceEntry(struct BackendDevice *d) {
+  if (!d || d->type == Device_None)
+    return;
+  if (d->sync)
+    d->sync(d);
+  if (d->cleanup)
+    d->cleanup(d);
+  freeBackendDeviceTitles(d);
+  if (d->metadev) {
+    if (d->metadev->mountpoint) {
+      free(d->metadev->mountpoint);
+      d->metadev->mountpoint = NULL;
+    }
+    free(d->metadev);
+    d->metadev = NULL;
+  }
+  if (d->mountpoint) {
+    free(d->mountpoint);
+    d->mountpoint = NULL;
+  }
+  d->type = Device_None;
+  d->scan = NULL;
+  d->sync = NULL;
+  d->cleanup = NULL;
+  d->lastLaunchedTitleIdx = -1;
+  d->lastLaunchedTimestamp = 0;
+}
+
+// Remove backends for device types the user disabled in config; compact the array.
+void removeBackendsDisabledInConfig(void) {
+  DeviceType enabled = getEnabledDevices();
+  if (enabled == Device_None)
+    return;
+
+  int write = 0;
+  for (int read = 0; read < MAX_DEVICES; read++) {
+    if (backendDevices[read].type == Device_None)
+      break;
+    if (!(enabled & backendDevices[read].type)) {
+      destroyBackendDeviceEntry(&backendDevices[read]);
+      continue;
+    }
+    if (write != read) {
+      backendDevices[write] = backendDevices[read];
+      backendDevices[read].type = Device_None;
+      backendDevices[read].mountpoint = NULL;
+      backendDevices[read].scan = NULL;
+      backendDevices[read].sync = NULL;
+      backendDevices[read].cleanup = NULL;
+      backendDevices[read].metadev = NULL;
+      backendDevices[read].lastLaunchedTitleIdx = -1;
+      backendDevices[read].lastLaunchedTimestamp = 0;
+    }
+    write++;
+  }
+  for (int i = write; i < MAX_DEVICES; i++)
+    backendDevices[i].type = Device_None;
 }
 
 // Remove backends whose type is in the conflict mask; compact array so no holes
@@ -150,6 +210,18 @@ int getEnabledDeviceTypesArray(DeviceType *out, int maxCount) {
   int n = 0;
   for (int i = 0; i < numEnabledDeviceTypeBits && n < maxCount; i++) {
     if (mask & enabledDeviceTypeBits[i])
+      out[n++] = enabledDeviceTypeBits[i];
+  }
+  return n;
+}
+
+// Fills out[] with each DeviceType supported, up to maxCount.
+// Returns the number of types written. UI uses this to know which device types to offer.
+int getSupportedDeviceTypesArray(DeviceType *out, int maxCount) {
+  if (!out || maxCount <= 0)
+    return 0;
+  int n = 0;
+  for (int i = 0; i < numEnabledDeviceTypeBits && n < maxCount; i++) {
       out[n++] = enabledDeviceTypeBits[i];
   }
   return n;

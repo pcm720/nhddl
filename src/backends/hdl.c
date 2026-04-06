@@ -310,15 +310,20 @@ int findHDLTargets(struct BackendDevice *device) {
       if (!title)
         continue;
       title->device = device;
-      result->total++;
       if (result->first == NULL) {
         result->first = title;
         result->last = title;
-      } else
-        insertIntoTargetList(result, title);
+      } else if (insertIntoTargetList(result, title) != 0) {
+        freeTarget(NULL, title);
+      }
     }
   }
   fileXioDclose(fd);
+
+  int actual = 0;
+  for (Target *t = result->first; t; t = t->next)
+    actual++;
+  result->total = actual;
 
   if (result->total == 0) {
     freeTargetList(device->titles);
@@ -326,21 +331,25 @@ int findHDLTargets(struct BackendDevice *device) {
     return -ENOENT;
   }
 
-  TitleIDCache *cache = malloc(sizeof(TitleIDCache));
+  TitleIDCache *cache = calloc(1, sizeof(TitleIDCache));
   int cacheNeedsSave = 0;
-  if (!loadTitleIDCache(cache, device)) {
-    if (cache->total != result->total)
-      cacheNeedsSave = 1;
-    Target *curTarget = result->first;
-    while (curTarget != NULL) {
-      CacheEntry *cached = getCachedEntry(curTarget->path, cache);
-      if (cached != NULL)
-        curTarget->flags = cached->flags;
-      curTarget = curTarget->next;
-    }
-  } else
+  if (!cache) {
     cacheNeedsSave = 1;
-  freeTitleCache(cache);
+  } else {
+    if (!loadTitleIDCache(cache, device)) {
+      if (cache->total != result->total)
+        cacheNeedsSave = 1;
+      Target *curTarget = result->first;
+      while (curTarget != NULL) {
+        CacheEntry *cached = getCachedEntry(curTarget->path, cache);
+        if (cached != NULL)
+          curTarget->flags = cached->flags;
+        curTarget = curTarget->next;
+      }
+    } else
+      cacheNeedsSave = 1;
+    freeTitleCache(cache);
+  }
 
   int idx = 0;
   Target *curTitle = result->first;

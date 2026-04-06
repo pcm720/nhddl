@@ -7,13 +7,22 @@
 // Defined in backends.h
 struct BackendDevice;
 
-// Title flags (bitfield), used in Target and cache. Mask unknown bits when reading for forward compatibility.
+// Title flags (bitfield), used in Target and cache.
+// For cachem, mask unknown bits with CachedTitleFlagsMask for forward compatibility.
 typedef enum {
   TitleFlag_None = 0,
+  // Flags stored in cache
   TitleFlag_Favorite = (1 << 0),
   TitleFlag_FakeDEV9 = (1 << 1), // If set, will enable DEV9 faking
-  /* bits 1–31 reserved for future use */
+  // Compressed formats
+  TitleFlag_ZSO = (1 << 2),
+  TitleFlag_CSO = (1 << 3),
+  TitleFlag_CHD = (1 << 4),
+  /* bits 5–31 reserved for future use */
 } TitleFlags;
+
+// Used to mask off flags that should be stored in title cache
+#define CachedTitleFlagsMask (TitleFlag_Favorite | TitleFlag_FakeDEV9)
 
 // An entry in TargetList
 typedef struct Target {
@@ -47,8 +56,8 @@ Target *getTargetByIdx(TargetList *targets, int idx);
 // Makes and returns a deep copy of src without prev/next pointers.
 Target *copyTarget(Target *src);
 
-// Inserts title in the list while keeping the alphabetical order
-void insertIntoTargetList(TargetList *result, Target *title);
+// Inserts title in the list while keeping the alphabetical order. Returns 0 on success, -1 if insertion failed (e.g. OOM).
+int insertIntoTargetList(TargetList *result, Target *title);
 
 // Completely frees Target and returns pointer to the next target in the list
 Target *freeTarget(TargetList *targetList, Target *target);
