@@ -83,7 +83,7 @@ To skip all other devices, `mode: ata` must be present in `nhddl.yaml`.
 #### MX4SIO
 
 MX4SIO support requires explicit configuration due to conflicts with memory cards and MMCE devices.  
-`mode: mx4sio` must be present in `nhddl.yaml` for MX4SIO to work.
+`mode: mx4sio` must be present in `nhddl.yaml` for MX4SIO to be enabled.
 
 Note that __MMCE devices will not be available__ when this mode is enabled, regardless of how it's configured.
 
@@ -116,7 +116,8 @@ Recommended UDPFS server implementations:
 
 #### iLink
 
-To skip all other devices, `mode: ilink` must be present in `nhddl.yaml`.
+iLink support requires explicit configuration.
+`mode: ilink` must be present in `nhddl.yaml` for iLink to be enabled.
 
 #### MMCE (SD2PSX, MemCard PRO2)
 

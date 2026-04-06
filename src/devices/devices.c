@@ -62,16 +62,3 @@ int initDeviceMap() {
   }
   return deviceCount;
 }
-
-//
-// The following functions are based on code by AKuHAK
-//
-
-void delay(int count) {
-  int ret;
-  for (int i = 0; i < count; i++) {
-    ret = 0x01000000;
-    while (ret--)
-      asm("nop\nnop\nnop\nnop");
-  }
-}

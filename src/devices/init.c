@@ -183,6 +183,14 @@ int initModules(ModeType modeType) {
 
     if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL)) {
       if ((ret = loadModule(&moduleList[i]))) {
+        if ((modeType == MODE_ALL) && (moduleList[i].mode != MODE_ALL)) {
+          // Ignore errors and disable the failed mode when loading all modes
+          modeType &= ~(moduleList[i].mode);
+          LAUNCHER_OPTIONS.mode &= ~(moduleList[i].mode);
+          DPRINTF("Failed to initialize module %s: %d\n", moduleList[i].name, ret);
+          continue;
+        }
+
         uiSplashLogString(LEVEL_ERROR, "Failed to initialize module %s: %d\n", moduleList[i].name, ret);
         return ret;
       }
@@ -228,6 +236,7 @@ int loadModule(ModuleListEntry *mod) {
 
 // Tries to read SYS-CONF/IPCONFIG.DAT from memory card
 int parseIPConfig() {
+  return -ENOENT;
   // The 'X' in "mcX" will be replaced with memory card number
   static char ipconfigPath[] = "mcX:/SYS-CONF/IPCONFIG.DAT";
 

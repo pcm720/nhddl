@@ -100,7 +100,7 @@ int initBDMDevices(int deviceIdx) {
 
     // Wait for IOP to initialize device driver
     for (int attempts = 0; attempts < delayAttempts; attempts++) {
-      delay(2);
+      sleep(1);
       directory = opendir(mountpoint);
       if (directory != NULL) {
         closedir(directory);
