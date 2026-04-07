@@ -64,8 +64,8 @@ typedef struct ModuleListEntry {
   ModeType mode;                  // Used to ignore modules not required for target mode
 } ModuleListEntry;
 
-// Initializes SMAP arguments
-char *initSMAPArguments(uint32_t *argLength);
+// Initializes ministack arguments
+char *initMinistackArguments(uint32_t *argLength);
 // Initializes PS2HDD arguments
 char *initPS2HDDArguments(uint32_t *argLength);
 // Initializes PS2FS arguments
@@ -94,7 +94,7 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(bdmfs_fatfs, MODE_BDM, NULL),
     // UDPFS
     INT_MODULE(smap, MODE_UDPFS, NULL),
-    INT_MODULE(ministack, MODE_UDPFS, &initSMAPArguments),
+    INT_MODULE(ministack, MODE_UDPFS, &initMinistackArguments),
     INT_MODULE(udpfs_ioman, MODE_UDPFS, NULL),
     // ATA
     INT_MODULE(ata_bd, MODE_ATA | MODE_HDL, NULL),
@@ -236,7 +236,6 @@ int loadModule(ModuleListEntry *mod) {
 
 // Tries to read SYS-CONF/IPCONFIG.DAT from memory card
 int parseIPConfig() {
-  return -ENOENT;
   // The 'X' in "mcX" will be replaced with memory card number
   static char ipconfigPath[] = "mcX:/SYS-CONF/IPCONFIG.DAT";
 
@@ -271,8 +270,8 @@ int parseIPConfig() {
   return strlen(LAUNCHER_OPTIONS.udpfsIp);
 }
 
-// Builds IP address argument for SMAP modules
-char *initSMAPArguments(uint32_t *argLength) {
+// Builds IP address argument for network modules
+char *initMinistackArguments(uint32_t *argLength) {
   // If udpfs_ip was not set, try to get IP from IPCONFIG.DAT
   if ((LAUNCHER_OPTIONS.udpfsIp[0] == '\0') && (parseIPConfig() <= 0)) {
     return NULL;
@@ -282,6 +281,7 @@ char *initSMAPArguments(uint32_t *argLength) {
   *argLength = 19;
   char *argStr = calloc(sizeof(char), 19);
   snprintf(argStr, sizeof(ipArg), "ip=%s", LAUNCHER_OPTIONS.udpfsIp);
+  DPRINTF("with argument: %s\n", argStr);
   return argStr;
 }
 
@@ -299,6 +299,7 @@ char *initPS2HDDArguments(uint32_t *argLength) {
 
   char *argStr = malloc(sizeof(ps2hddArguments));
   memcpy(argStr, ps2hddArguments, sizeof(ps2hddArguments));
+  DPRINTF("with argument: %s\n", argStr);
   return argStr;
 }
 
@@ -316,5 +317,6 @@ char *initPS2FSArguments(uint32_t *argLength) {
 
   char *argStr = malloc(sizeof(ps2fsArguments));
   memcpy(argStr, ps2fsArguments, sizeof(ps2fsArguments));
+  DPRINTF("with argument: %s\n", argStr);
   return argStr;
 }
