@@ -119,6 +119,7 @@ static ModuleListEntry moduleList[] = {
 int loadModule(ModuleListEntry *mod);
 
 uint32_t loadedModules = 0;
+uint8_t isWarmReboot = 0;
 
 // Initializes IOP modules
 int initModules(ModeType modeType) {
@@ -155,6 +156,9 @@ int initModules(ModeType modeType) {
   // Skip rebooting IOP if modules were loaded previously
   if (!loadedModules) {
     DPRINTF("Rebooting IOP\n");
+    if (isWarmReboot)
+      fileXioExit();
+
     while (!SifIopReset("", 0)) {
     };
     while (!SifIopSync()) {
@@ -166,7 +170,11 @@ int initModules(ModeType modeType) {
     // Apply patches required to load modules from EE RAM
     sbv_patch_enable_lmb();
     sbv_patch_disable_prefix_check();
-    sbv_patch_fileio();
+    if (!isWarmReboot)
+      // Patching fileio twice makes IOP crash when Neutrino tries to access files
+      sbv_patch_fileio();
+
+    isWarmReboot = 1;
   }
 
   // Load modules
