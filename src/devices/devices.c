@@ -159,7 +159,9 @@ int rebootIOP() {
   // Apply patches required to load modules from EE RAM
   sbv_patch_enable_lmb();
   sbv_patch_disable_prefix_check();
-  sbv_patch_fileio();
+  if (loadedModules == -1)
+    // Patching fileio twice can crash IOP when Neutrino tries to access files
+    sbv_patch_fileio();
 
   loadedModules = 0;
   loadedDevices = 0;
@@ -238,11 +240,8 @@ int loadModule(ModuleListEntry *mod) {
   // If module has an arugment function, execute it
   if (mod->argumentFunction != NULL) {
     mod->argStr = mod->argumentFunction(&mod->argLength);
-    if (mod->argStr == NULL) {
-      // Ignore errors if module can fail
-      ret = -EINVAL;
-      return ret;
-    }
+    if (mod->argStr == NULL)
+      return -EINVAL;
   }
 
   ret = SifExecModuleBuffer(mod->irx, *mod->size, mod->argLength, mod->argStr, &iopret);
