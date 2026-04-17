@@ -5,7 +5,6 @@
 #include "devices/devices.h"
 #include "devices/utils.h"
 #include "dprintf.h"
-#include "ui/ui.h"
 #include <dirent.h>
 #include <errno.h>
 #include <kernel.h>

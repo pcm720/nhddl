@@ -6,7 +6,6 @@
 #include "backends/title_id.h"
 #include "devices/utils.h"
 #include "dprintf.h"
-#include "ui/ui.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <ps2sdkapi.h>

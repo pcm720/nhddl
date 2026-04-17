@@ -1,6 +1,9 @@
 #ifndef _DPRINTF_H_
 #define _DPRINTF_H_
 
+#include <stdio.h>
+
+
 // printf implementation for EE SIO
 int sio_printf(const char *format, ...);
 

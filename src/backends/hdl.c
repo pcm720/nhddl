@@ -5,7 +5,6 @@
 #include "devices/devices.h"
 #include "devices/hdd.h"
 #include "dprintf.h"
-#include "ui/ui.h"
 #include <hdd-ioctl.h>
 #include <stdio.h>
 #include <stdlib.h>
