@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.13)
 include($ENV{PS2SDK}/ps2dev.cmake)
 
 project(nhddl)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Executable name
 set(EE_BIN "nhddl_unc.elf")
 set(EE_BIN_PKD "nhddl.elf")
@@ -17,12 +18,36 @@ set(SOURCES
     src/dprintf.c
     src/forwarder.c
 
-    # UI
-    # src/ui/gui.c
-    # src/ui/graphics.c
-    # src/ui/args.c
+    # Main UI code
+    src/ui/ui_main.c
+    src/ui/view.c
+    src/ui/title_list.c
+    src/ui/atlas.c
+    src/ui/font.c
+    src/ui/scale.c
+    src/ui/png.c
+    src/ui/draw.c
+    src/ui/icons.c
+
+    # UI worker thread
+    src/ui/worker/worker.c
+
+    # Scenes (one per file under ui/views)
+    src/ui/views/exit_modal.c
+    src/ui/views/splash_scene.c
+    src/ui/views/osd_overlay.c
+    src/ui/views/main_scene.c
+    src/ui/views/menu_scene.c
+    src/ui/views/file_selector_scene.c
+    src/ui/views/title_options_scene.c
+    src/ui/neutrino/neutrino_arg_editor.c
+    src/ui/neutrino/neutrino_arg_rows.c
+    src/ui/neutrino/neutrino_arg_draw.c
+    src/ui/neutrino/neutrino_arg_input.c
+    src/ui/views/view_options_popup.c
 
     # Neutrino support
+    src/neutrino/neutrino_arg_marshal.c
     src/neutrino/argv.c
     src/neutrino/locate.c
     src/neutrino/launcher.c
@@ -78,7 +103,6 @@ if(USE_EESIO)
     add_definitions(-DUSE_EESIO)
 endif()
 
-
 # Create the main executable
 add_executable(${EE_BIN} ${SOURCES})
 
@@ -86,6 +110,7 @@ add_executable(${EE_BIN} ${SOURCES})
 target_include_directories(${EE_BIN}
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    $ENV{PS2SDK}/ports/include/freetype2
 )
 
 # Custom linker script
@@ -98,7 +123,7 @@ target_link_options(${EE_BIN}
 )
 
 # Link libraries
-target_link_libraries(${EE_BIN}
+set(EE_LIBS
     pad
     patches
     fileXio
@@ -109,12 +134,14 @@ target_link_libraries(${EE_BIN}
     png
     z
     tiff
+    freetype
 )
+target_link_libraries(${EE_BIN} ${EE_LIBS})
 
-# Set link flags for PS2
-set_target_properties(${EE_BIN} PROPERTIES
-    LINK_FLAGS "-s"
-)
+# # Set link flags for PS2
+# set_target_properties(${EE_BIN} PROPERTIES
+#     LINK_FLAGS "-s"
+# )
 
 # Create packed binary
 add_custom_command(

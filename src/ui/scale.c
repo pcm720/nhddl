@@ -4,6 +4,7 @@
 // Copyright 2010, Volca
 
 #include "ui/scale.h"
+#include "gsInit.h"
 #include <gsKit.h>
 
 static int displayWidth;
@@ -37,6 +38,7 @@ static const struct ScaleVMode scaleVModeTable[] = {
     {GS_MODE_NTSC, 640, 448, GS_INTERLACED, GS_FIELD, 14, 15, ASPECT_4_3, 60},
     {GS_MODE_PAL, 640, 512, GS_INTERLACED, GS_FIELD, 16, 15, ASPECT_4_3, 50},
     {GS_MODE_DTV_480P, 640, 448, GS_NONINTERLACED, GS_FRAME, 14, 15, ASPECT_4_3, 60},
+    {GS_MODE_DTV_576P, 640, 512, GS_NONINTERLACED, GS_FRAME, 16, 15, ASPECT_4_3, 50},
     {GS_MODE_DTV_720P, 1280, 720, GS_NONINTERLACED, GS_FRAME, 1, 1, ASPECT_16_9, 60},
     {-1, 640, 448, 0, 0, 1, 1, ASPECT_4_3},
 };
@@ -72,9 +74,17 @@ void scaleApplyVMode(GSGLOBAL *gs, VModeType v) {
       gs->Field = scaleVModeTable[i].field;
       refreshRate = scaleVModeTable[i].refreshRate;
       scaleUpdate(gs);
+
       return;
     }
   }
+
+  gs->Mode = gsKit_check_rom();
+  gs->Width = 640;
+  gs->Height = (gs->Mode == GS_MODE_PAL) ? 512 : 448;
+  gs->Interlace = GS_INTERLACED;
+  gs->Field = GS_FIELD;
+  scaleUpdate(gs);
 }
 
 void scaleUpdate(GSGLOBAL *gs) {

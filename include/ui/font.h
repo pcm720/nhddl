@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #define FONT_DEFAULT 0
+#define FONT_PROMPT 1
 #define FONT_ERROR   (-1)
 #define FONT_DEFAULT_SIZE 17
 
@@ -37,13 +38,13 @@ void fontUpdateAspectRatio(void);
 int fontRenderString(int id, int x, int y, short aligned, size_t width, size_t height, int z,
                      const char *string, uint64_t colour);
 
-// Line height in virtual Y units (for vertical alignment). id must be 0. Returns 0 if font not ready.
+// Line height in virtual Y units (for vertical alignment). id must be FONT_DEFAULT or FONT_PROMPT. Returns 0 if font not ready.
 int fontGetLineHeight(int id);
 
-// Advance width of first line only (stops at '\n'), in native pixels. id must be 0.
+// Advance width of first line only (stops at '\n'), in native pixels. id must be FONT_DEFAULT or FONT_PROMPT.
 int fontCalcDimensionsFirstLine(int id, const char *str);
 
-// Total advance width in native pixels (whole string). id must be 0.
+// Total advance width in native pixels (whole string). id must be FONT_DEFAULT or FONT_PROMPT.
 int fontCalcDimensions(int id, const char *str);
 
 // Render string in rect [x1,y1]-[x2,y2] in virtual coords (640×480). Alignment bitmask (FONT_ALIGN_*).

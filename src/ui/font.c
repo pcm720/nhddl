@@ -57,7 +57,7 @@ typedef struct {
   int dataOwned; // 1 if dataPtr was allocated by us (file load), 0 if external (e.g. embedded)
 } FontSlot;
 
-static FontSlot font;
+static FontSlot font[2];
 
 #define GLYPH_PAGE_OK(slot, page) ((page) <= (slot)->cacheMaxPage && (slot)->glyphCache[page])
 
@@ -272,15 +272,52 @@ void fontInit(void *gs) {
   if (FT_Init_FreeType(&ftLib) != 0)
     return;
   fontPrepareClut();
-  fontInitSlot(&font);
+  fontInitSlot(&font[0]);
+  fontInitSlot(&font[1]);
 }
 
 // Frees the font slot, shuts down FreeType and the shared CLUT.
 void fontEnd(void) {
-  fontDeleteSlot(&font);
+  fontInitSlot(&font[0]);
+  fontInitSlot(&font[1]);
   FT_Done_FreeType(ftLib);
   fontDestroyClut();
   fontGs = NULL;
+}
+
+// Load from memory (e.g. embedded font). Caller keeps ownership of data.
+int fontLoadMemory(const void *data, size_t size, int fontSizePt) {
+  if (!data || size == 0)
+    return FONT_ERROR;
+  fontInitSlot(&font[0]);
+  fontInitSlot(&font[1]);
+  //
+  // Main font
+  //
+  font[0].dataPtr = (void *)data;
+  font[0].dataOwned = 1;
+  if (FT_New_Memory_Face(ftLib, (const FT_Byte *)data, (FT_Long)size, 0, &font[0].face) != 0) {
+    fontDeleteSlot(&font[0]);
+    return FONT_ERROR;
+  }
+  font[0].valid = 1;
+  font[0].fontSizePt = (fontSizePt > 0) ? fontSizePt : FONT_DEFAULT_SIZE;
+  // Default Char_Size; fontUpdateAspectRatio() sets correct size from scale module.
+  FT_Set_Char_Size(font[0].face, (FT_F26Dot6)(font[0].fontSizePt * 64), (FT_F26Dot6)(font[0].fontSizePt * 64), (FT_UInt)FONT_DPI, (FT_UInt)FONT_DPI);
+  //
+  // Prompt font
+  //
+  font[1].dataPtr = (void *)data;
+  font[1].dataOwned = 1;
+  if (FT_New_Memory_Face(ftLib, (const FT_Byte *)data, (FT_Long)size, 0, &font[1].face) != 0) {
+    fontDeleteSlot(&font[1]);
+    return FONT_ERROR;
+  }
+  font[1].valid = 1;
+  font[1].fontSizePt = font[0].fontSizePt - 2;
+  // Default Char_Size; fontUpdateAspectRatio() sets correct size from scale module.
+  FT_Set_Char_Size(font[0].face, (FT_F26Dot6)(font[0].fontSizePt * 64), (FT_F26Dot6)(font[0].fontSizePt * 64), (FT_UInt)FONT_DPI, (FT_UInt)FONT_DPI);
+  return 0;
 }
 
 // Loads a TTF from path into the single slot. fontSizePt: point size (0 = FONT_DEFAULT_SIZE). Returns 0 on success.
@@ -305,40 +342,12 @@ int fontLoadFile(const char *path, int fontSizePt) {
     return FONT_ERROR;
   }
   close(fd);
-  fontInitSlot(&font);
-  font.dataPtr = buf;
-  font.dataOwned = 1;
-  if (FT_New_Memory_Face(ftLib, (const FT_Byte *)buf, (FT_Long)sz, 0, &font.face) != 0) {
-    fontDeleteSlot(&font);
-    return FONT_ERROR;
-  }
-  font.valid = 1;
-  font.fontSizePt = (fontSizePt > 0) ? fontSizePt : FONT_DEFAULT_SIZE;
-  // Default Char_Size; fontUpdateAspectRatio() sets correct size from scale module.
-  FT_Set_Char_Size(font.face, (FT_F26Dot6)(font.fontSizePt * 64), (FT_F26Dot6)(font.fontSizePt * 64), (FT_UInt)FONT_DPI, (FT_UInt)FONT_DPI);
-  return 0;
-}
-
-// Load from memory (e.g. embedded font). Caller keeps ownership of data.
-int fontLoadMemory(const void *data, size_t size, int fontSizePt) {
-  if (!data || size == 0)
-    return FONT_ERROR;
-  fontInitSlot(&font);
-  font.dataPtr = (void *)data;
-  font.dataOwned = 0;
-  if (FT_New_Memory_Face(ftLib, (const FT_Byte *)data, (FT_Long)size, 0, &font.face) != 0) {
-    fontDeleteSlot(&font);
-    return FONT_ERROR;
-  }
-  font.valid = 1;
-  font.fontSizePt = (fontSizePt > 0) ? fontSizePt : FONT_DEFAULT_SIZE;
-  FT_Set_Char_Size(font.face, (FT_F26Dot6)(font.fontSizePt * 64), (FT_F26Dot6)(font.fontSizePt * 64), (FT_UInt)FONT_DPI, (FT_UInt)FONT_DPI);
-  return 0;
+  return fontLoadMemory(buf, sz, fontSizePt);
 }
 
 // Set glyph size from scale (FT_Set_Char_Size with PAR in DPI). DPI truncated for integer scaling.
 void fontUpdateAspectRatio(void) {
-  if (!font.valid || !font.face || font.fontSizePt <= 0)
+  if (!font[0].valid || !font[0].face || font[0].fontSizePt <= 0)
     return;
   float hs = scaleGetScaleY();
   float ws = hs * scaleGetPAR();
@@ -350,15 +359,18 @@ void fontUpdateAspectRatio(void) {
     horz = 1;
   if (vert < 1)
     vert = 1;
-  fontCacheFlush(&font); // Glyph bitmaps depend on DPI; must re-rasterize
-  FT_Set_Char_Size(font.face, (FT_F26Dot6)(font.fontSizePt * 64), (FT_F26Dot6)(font.fontSizePt * 64), horz, vert);
+  // Glyph bitmaps depend on DPI; must re-rasterize
+  fontCacheFlush(&font[0]);
+  FT_Set_Char_Size(font[0].face, (FT_F26Dot6)(font[0].fontSizePt * 64), (FT_F26Dot6)(font[0].fontSizePt * 64), horz, vert);
+  fontCacheFlush(&font[1]);
+  FT_Set_Char_Size(font[1].face, (FT_F26Dot6)(font[1].fontSizePt * 64), (FT_F26Dot6)(font[1].fontSizePt * 64), horz, vert);
 }
 
-// Renders string at (x,y). Integer native coords via scaleScaleX/Y; id must be 0. z: depth (larger = in front on PS2).
+// Renders string at (x,y). Integer native coords via scaleScaleX/Y; id must be FONT_DEFAULT or FONT_PROMPT. z: depth (larger = in front on PS2).
 int fontRenderString(int id, int x, int y, short aligned, size_t width, size_t height, int z, const char *string, uint64_t colour) {
-  if (id != 0 || !font.valid)
+  if (id < 0 || id > sizeof(font) / sizeof(FontSlot) || !font[id].valid)
     return 0;
-  FontSlot *slot = &font;
+  FontSlot *slot = &font[id];
 
   int xNat = scaleScaleX(x) + scaleGetOffsetX();
   int yNat = scaleScaleY(y) + scaleGetOffsetY();
@@ -413,12 +425,12 @@ int fontRenderString(int id, int x, int y, short aligned, size_t width, size_t h
   return scaleUnscaleX(penX - scaleGetOffsetX());
 }
 
-// Returns total advance width in native pixels (rasterization already has PAR). id must be 0.
+// Returns total advance width in native pixels (rasterization already has PAR). id must be FONT_DEFAULT or FONT_PROMPT.
 int fontCalcDimensions(int id, const char *str) {
   int w = 0;
-  if (id != 0 || !font.valid)
+  if (id < 0 || id > sizeof(font) / sizeof(FontSlot) || !font[id].valid)
     return 0;
-  FontSlot *slot = &font;
+  FontSlot *slot = &font[id];
   int useKerning = FT_HAS_KERNING(slot->face);
   FT_UInt prevIndex = 0;
   const char *s = str;
@@ -441,19 +453,19 @@ int fontCalcDimensions(int id, const char *str) {
   return w;
 }
 
-// Line height in virtual Y units (matches offset used in fontRenderString). id must be 0.
+// Line height in virtual Y units (matches offset used in fontRenderString). id must be FONT_DEFAULT or FONT_PROMPT.
 int fontGetLineHeight(int id) {
-  if (id != 0 || !font.valid)
+  if (id < 0 || id > sizeof(font) / sizeof(FontSlot) || !font[id].valid)
     return 0;
-  return font.fontSizePt + 2;
+  return font[id].fontSizePt + 2;
 }
 
 // Advance width of first line only (stops at '\n'), in native pixels.
 int fontCalcDimensionsFirstLine(int id, const char *str) {
   int w = 0;
-  if (id != 0 || !font.valid)
+  if (id < 0 || id > sizeof(font) / sizeof(FontSlot) || !font[id].valid)
     return 0;
-  FontSlot *slot = &font;
+  FontSlot *slot = &font[id];
   int useKerning = FT_HAS_KERNING(slot->face);
   FT_UInt prevIndex = 0;
   const char *s = str;
@@ -480,7 +492,7 @@ int fontCalcDimensionsFirstLine(int id, const char *str) {
 
 // Render string in rect [x1,y1]-[x2,y2] in virtual coords (640×480). Alignment bitmask. Clips to rect.
 int fontRenderInRect(int id, int x1, int y1, int x2, int y2, unsigned alignment, int z, const char *string, uint64_t colour) {
-  if (id != 0 || !font.valid)
+  if (id < 0 || id > sizeof(font) / sizeof(FontSlot) || !font[id].valid)
     return 0;
   int lineH = fontGetLineHeight(id);
   int firstLineW_nat = fontCalcDimensionsFirstLine(id, string);

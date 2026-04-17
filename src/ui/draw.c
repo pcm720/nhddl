@@ -142,57 +142,50 @@ void uiDrawIconScaled(GSGLOBAL *gs, int vx, int vy, int vw, int vh, int z, uint6
 }
 
 #define PROMPT_ICON_TEXT_GAP 4
-#define PROMPT_ICON_SIZE_V 32
+#define PROMPT_ICON_SIZE_V 22
 // Font VCENTER is baseline-centric, so drawn text sits low in the rect. Offset text rect up so it aligns with icon.
 #define PROMPT_TEXT_SLOT_OFFSET_UP 3
 
-void uiDrawPrompt(GSGLOBAL *gs, int centerVX, int iconRowVY, int textRowVY, int z, uint64_t color, IconType iconType, const char *label) {
+void uiDrawPrompt(GSGLOBAL *gs, int x, int y, int z, uint64_t color, IconType iconType, const char *label) {
   int iconW_nat = getIconWidth(iconType);
   int iconH_nat = getIconHeight(iconType);
-  // Scale icon to fit inside PROMPT_ICON_SIZE_V × PROMPT_ICON_SIZE_V preserving aspect.
+  int iconH_tgt = PROMPT_ICON_SIZE_V;
+  // Scale icon to fit inside iconH_tgt × iconH_tgt while preserving aspect.
   int iconMax = iconW_nat > iconH_nat ? iconW_nat : iconH_nat;
-  int iconW_v = (PROMPT_ICON_SIZE_V * iconW_nat + iconMax / 2) / iconMax;
-  int iconH_v = (PROMPT_ICON_SIZE_V * iconH_nat + iconMax / 2) / iconMax;
+  int iconW_v = (iconH_tgt * iconW_nat + iconMax / 2) / iconMax;
+  int iconH_v = (iconH_tgt * iconH_nat + iconMax / 2) / iconMax;
   if (iconW_v < 1)
     iconW_v = 1;
   if (iconH_v < 1)
     iconH_v = 1;
-  int textW_nat = fontCalcDimensionsFirstLine(FONT_DEFAULT, label);
+  int textW_nat = fontCalcDimensionsFirstLine(FONT_PROMPT, label);
   int textW_v = scaleUnscaleX(textW_nat);
-  int totalW_v = PROMPT_ICON_SIZE_V + PROMPT_ICON_TEXT_GAP + textW_v;
-  int leftX = centerVX - totalW_v / 2;
+  int totalW_v = iconH_tgt + PROMPT_ICON_TEXT_GAP + textW_v;
+  int leftX = x - totalW_v / 2;
 
   int slotHalfH = SCENE_ROW_SIZE / 2;
 
-  if (iconRowVY != textRowVY) {
-    // Double-row slot: icon and text centered in fixed-width slot (SCENE_PROMPT_SLOT_WIDTH).
-    // Icon size uses scaleY (aspect-preserving); position uses scaleX
-    int slotLeftV = centerVX - SCENE_PROMPT_SLOT_WIDTH / 2;
-    int slotRightV = centerVX + SCENE_PROMPT_SLOT_WIDTH / 2;
-    int nativeIconHalfW = (int)((float)iconW_v * scaleGetScaleY() / 2.0f + 0.5f);
-    int iconLeftV = scaleUnscaleX(scaleScaleX(centerVX) - nativeIconHalfW);
-    int iconTopV = iconRowVY - iconH_v / 2;
-    uiDrawIconScaled(gs, iconLeftV, iconTopV, iconW_v, iconH_v, z, color, iconType);
-    int textTop = textRowVY - slotHalfH - PROMPT_TEXT_SLOT_OFFSET_UP;
-    int textBottom = textRowVY + slotHalfH - PROMPT_TEXT_SLOT_OFFSET_UP;
-    fontRenderInRect(FONT_DEFAULT, slotLeftV, textTop, slotRightV, textBottom, FONT_ALIGN_HCENTER | FONT_ALIGN_VCENTER, z, label, color);
-    return;
-  }
-  int rowVY = iconRowVY;
-  totalW_v = PROMPT_ICON_SIZE_V + PROMPT_ICON_TEXT_GAP + textW_v;
-  leftX = centerVX - totalW_v / 2;
-  int iconTopV = rowVY - iconH_v / 2;
-  int iconLeftV = leftX + (PROMPT_ICON_SIZE_V - iconW_v) / 2;
+  totalW_v = iconH_tgt + PROMPT_ICON_TEXT_GAP + textW_v;
+  int iconTopV = y - iconH_v / 2;
+  int iconLeftV = leftX + (iconH_tgt - iconW_v) / 2;
   uiDrawIconScaled(gs, iconLeftV, iconTopV, iconW_v, iconH_v, z, color, iconType);
-  int textTop = rowVY - slotHalfH - PROMPT_TEXT_SLOT_OFFSET_UP;
-  int textBottom = rowVY + slotHalfH - PROMPT_TEXT_SLOT_OFFSET_UP;
-  int tx1 = leftX + PROMPT_ICON_SIZE_V + PROMPT_ICON_TEXT_GAP;
+  int textTop = y - slotHalfH - PROMPT_TEXT_SLOT_OFFSET_UP;
+  int textBottom = y + slotHalfH - PROMPT_TEXT_SLOT_OFFSET_UP;
+  int tx1 = leftX + iconH_tgt + PROMPT_ICON_TEXT_GAP;
   int tx2 = leftX + totalW_v;
-  fontRenderInRect(FONT_DEFAULT, tx1, textTop, tx2, textBottom, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, z, label, color);
+  fontRenderInRect(FONT_PROMPT, tx1, textTop, tx2, textBottom, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, z, label, color);
+}
+
+void uiDrawModalPrompt(GSGLOBAL *gs, int vx1, int vx2, int slot, int y, int z, uint64_t color, IconType iconType, const char *label) {
+  uiDrawPrompt(gs, POPUP_PROMPT_SLOT_CENTER_X(vx1, vx2, slot), POPUP_PROMPT_ROW_Y(y), z, color, iconType, label);
+}
+
+void uiDrawScenePrompt(GSGLOBAL *gs, int slot, int z, uint64_t color, IconType iconType, const char *label) {
+  uiDrawPrompt(gs, SCENE_PROMPT_SLOT_CENTER_X(slot), SCENE_FOOTER_ROW_Y, z, color, iconType, label);
 }
 
 // Draw texture in virtual rect; ratio-preserving and centered. If tex is NULL or empty, draws solid rect.
-void uiDrawTextureInVirtualRect(GSGLOBAL *gs, int vx, int vy, int vw, int vh, GSTEXTURE *tex, int z, uint64_t color) {
+void uiDrawTextureInVirtualRect(GSGLOBAL *gs, int vx, int vy, int vw, int vh, GSTEXTURE *tex, int z, uint64_t color, int disableAlphaTest) {
   int slotX1 = scaleScaleX(vx) + scaleGetOffsetX();
   int slotY1 = scaleScaleY(vy) + scaleGetOffsetY();
   int slotX2 = scaleScaleX(vx + vw) + scaleGetOffsetX();
@@ -203,27 +196,16 @@ void uiDrawTextureInVirtualRect(GSGLOBAL *gs, int vx, int vy, int vw, int vh, GS
   int destH = (int)((float)vh * scaleYR + 0.5f);
   int drawX = (slotX1 + slotX2 - destW) / 2;
   int drawY = (slotY1 + slotY2 - destH) / 2;
+  if (disableAlphaTest)
+    gs->PrimAlphaEnable = GS_SETTING_OFF;
   if (tex && tex->Width > 0 && tex->Height > 0) {
     gsKit_prim_sprite_texture(gs, tex, (float)drawX, (float)drawY, 0.0f, 0.0f, (float)(drawX + destW), (float)(drawY + destH), (float)tex->Width,
                               (float)tex->Height, z, color);
   } else {
     uiDrawRectNative(gs, drawX, drawY, drawX + destW, drawY + destH, z, color);
   }
-}
-
-// Same ratio-preserving slot and centering as cover art; draws a filled rect (e.g. for border around cover).
-void uiDrawRectRatioPreserving(GSGLOBAL *gs, int vx, int vy, int vw, int vh, int z, uint64_t color) {
-  int slotX1 = scaleScaleX(vx) + scaleGetOffsetX();
-  int slotY1 = scaleScaleY(vy) + scaleGetOffsetY();
-  int slotX2 = scaleScaleX(vx + vw) + scaleGetOffsetX();
-  int slotY2 = scaleScaleY(vy + vh) + scaleGetOffsetY();
-  float scaleXR = scaleGetScaleXForRatio();
-  float scaleYR = scaleGetScaleY();
-  int destW = (int)((float)vw * scaleXR + 0.5f);
-  int destH = (int)((float)vh * scaleYR + 0.5f);
-  int drawX = (slotX1 + slotX2 - destW) / 2;
-  int drawY = (slotY1 + slotY2 - destH) / 2;
-  uiDrawRectNative(gs, drawX, drawY, drawX + destW, drawY + destH, z, color);
+  if (disableAlphaTest)
+    gs->PrimAlphaEnable = GS_SETTING_ON;
 }
 
 void uiVirtualRectToNative(int vx1, int vy1, int vx2, int vy2, int *out_x1, int *out_y1, int *out_x2, int *out_y2) {

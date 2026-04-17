@@ -89,14 +89,12 @@ int viewStackRunFrame(struct ViewStack *stack) {
 
   View *top = viewStackTop(stack);
   gsKit_clear(stack->gs, BGColor);
-  gsKit_TexManager_nextFrame(stack->gs);
 
   // Draw all views from bottom to top. PS2 depth test is GREATER (larger Z = in front).
   // Depth buffer is cleared to 0, so we use Z starting at 1 so first draw passes (1 > 0).
   for (int i = 0; i < stack->count - 1; i++) {
-    int zOrder = i + 1; // bottom = 1, ... underlays behind
     if (stack->stack[i]->draw)
-      stack->stack[i]->draw(stack->stack[i], zOrder);
+      stack->stack[i]->draw(stack->stack[i], i);
   }
   // Dim underlay when top is a modal; same Z as first underlay
   if (top->type == ViewType_Modal && stack->count > 1) {
@@ -124,10 +122,16 @@ int viewStackRunFrame(struct ViewStack *stack) {
     }
   }
 
-  gsKit_set_finish(stack->gs);
-  gsKit_queue_exec(stack->gs);
-  gsKit_finish();
-  gsKit_sync_flip(stack->gs);
+  if (gsGlobal->Mode == GS_MODE_DTV_720P) {
+    gsKit_hires_sync(gsGlobal);
+    gsKit_hires_flip(gsGlobal);
+  } else {
+    gsKit_set_finish(stack->gs);
+    gsKit_queue_exec(stack->gs);
+    gsKit_finish();
+    gsKit_sync_flip(stack->gs);
+  }
+  gsKit_TexManager_nextFrame(stack->gs);
 
   int input = readInput();
   ViewResult r = top->onInput ? top->onInput(top, input) : ViewResult_Continue;

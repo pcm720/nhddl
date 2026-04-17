@@ -18,12 +18,16 @@ typedef enum {
   ICON_COUNT
 } IconType;
 
-// Load PNG from memory into texture (8-bit palettized or 32-bit RGBA). Caller allocates GSTEXTURE; this fills it and allocates Mem. Returns 0 on success.
-// invertAlpha: 1 if PNG uses opposite alpha (0=opaque, 255=transparent); 0 for normal (gsKit: 0=opaque, 128=transparent).
-int loadPngFromMemory(GSGLOBAL *gs, GSTEXTURE *texture, void *buf, size_t size);
+// Loads PNG from file into GSTEXTURE and uploads to GS VRAM.
+// Supports 8-bit palettized and 32-bit RGBA
+int loadPNGFromFile(GSGLOBAL *gs, GSTEXTURE *texture, char *path);
+
+// Loads PNG from memory into GSTEXTURE and uploads to GS VRAM.
+// Supports 8-bit palettized (icons) and 32-bit RGBA (e.g. splash logo)
+int loadPNGFromMemory(GSGLOBAL *gs, GSTEXTURE *texture, void *buf, size_t size);
 
 // Initializes icon textures from embedded PNGs. Returns 0 on success.
-int initIconsOnly(GSGLOBAL *gs);
+int initIcons(GSGLOBAL *gs);
 
 // Draws icon at screen position (x,y) with size (w,h). No-op if icon not loaded.
 void drawIconAt(GSGLOBAL *gs, float x, float y, float w, float h, int z, uint64_t color, IconType iconType);

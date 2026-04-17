@@ -43,9 +43,6 @@ int titleListViewBuildFromBackends(TitleListView *v) {
   int n = getBackendDeviceCount();
   for (int i = 0; i < n; i++) {
     struct BackendDevice *dev = getBackendDeviceAt(i);
-    if (dev->scan && !dev->titles)
-      scanBackendDevice(dev);
-
     TargetList *tl = getBackendDeviceTitles(dev);
     DPRINTF("ui/title_list: device %s has %d titles\n", dev->mountpoint, tl ? tl->total : 0);
     if (!tl)
@@ -68,12 +65,9 @@ int titleListViewBuildFromBackendsFiltered(TitleListView *v, uint32_t deviceMask
     if (deviceMask != 0 && !(deviceMask & (1u << i)))
       continue;
     struct BackendDevice *dev = getBackendDeviceAt(i);
-    if (!dev || (dev->scan && !dev->titles)) {
-      if (dev && dev->scan)
-        scanBackendDevice(dev);
-      dev = getBackendDeviceAt(i);
-    }
-    TargetList *tl = dev ? getBackendDeviceTitles(dev) : NULL;
+    if (!dev)
+      continue;
+    TargetList *tl = getBackendDeviceTitles(dev);
     if (!tl)
       continue;
     Target *cur = tl->first;
@@ -149,15 +143,12 @@ Target *titleListViewGetAt(const TitleListView *v, int index) {
 }
 
 int titleListViewGetIdx(const TitleListView *v, Target *t) {
-  int idx = 0;
-  struct TitleListViewNode *n = v->first;
-  if (!n || !t)
+  if (!t)
     return -1;
-  while (n->next) {
+  int idx = 0;
+  for (struct TitleListViewNode *n = v->first; n; n = n->next, idx++) {
     if (n->target == t)
       return idx;
-    idx++;
-    n = n->next;
   }
   return -1;
 }

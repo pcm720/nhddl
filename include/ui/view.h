@@ -11,7 +11,6 @@
 // Overlay views are not on the stack; only draw is used; onEnter, onLeave, onInput are ignored.
 typedef enum {
   ViewType_Scene,
-  ViewType_Popup,
   ViewType_Modal,
   ViewType_Overlay,
 } ViewType;
