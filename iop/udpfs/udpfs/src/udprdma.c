@@ -62,6 +62,7 @@ struct udprdma_socket {
     uint32_t rx_received;       /* Bytes received so far */
     uint16_t rx_seq_nr_expected; /* Next expected sequence number */
     uint8_t rx_window_count;    /* Packets received since last window ACK */
+    uint8_t rx_nack_sent;       /* 1 = NACK already sent for rx_seq_nr_expected */
 
     /* RX app header state */
     void *rx_hdr_buffer;        /* App header receive buffer (NULL = not configured) */
@@ -190,6 +191,7 @@ static int _ist(udp_socket_t *udp_socket, void *arg, const uint8_t *hdr, uint16_
                         }
 
                         s->rx_seq_nr_expected = (base_hdr.seq_nr + 1) & 0xFFF;
+                        s->rx_nack_sent = 0;  /* New expected seq, reset NACK guard */
 
                         /* Complete when FIN received or buffer full */
                         if ((data_hdr.flags & UDPRDMA_DF_FIN) ||
@@ -201,8 +203,14 @@ static int _ist(udp_socket_t *udp_socket, void *arg, const uint8_t *hdr, uint16_
                             SetEventFlag(s->event_flag, EF_RX_WINDOW);
                         }
                     } else {
-                        /* Out of order - signal NACK needed */
-                        SetEventFlag(s->event_flag, EF_RX_NACK);
+                        /* Out of order - send one NACK per missing seq_nr.
+                         * The server discards all in-flight packets after the
+                         * gap, so they all trigger this path, but the server
+                         * only needs one NACK to know what to retransmit. */
+                        if (!s->rx_nack_sent) {
+                            s->rx_nack_sent = 1;
+                            SetEventFlag(s->event_flag, EF_RX_NACK);
+                        }
                     }
                 }
             }
@@ -639,6 +647,7 @@ void udprdma_set_rx_buffer(udprdma_socket_t *socket, void *buffer, uint32_t size
     socket->rx_buffer_size = size;
     socket->rx_received = 0;
     socket->rx_window_count = 0;
+    socket->rx_nack_sent = 0;
 }
 
 void udprdma_set_rx_app_header(udprdma_socket_t *socket, void *hdr_buf, uint32_t hdr_size)
