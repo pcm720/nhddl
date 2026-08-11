@@ -81,6 +81,9 @@ int getIconWidth(IconType iconType) { return ICONS[iconType].width; }
 void drawIcon(float x, float y, int z, uint64_t color, IconType iconType) {
   Icon icon = ICONS[iconType];
 
+  // Keep the texture resident: cover art binds can evict it from VRAM,
+  // and an evicted texture would otherwise draw garbage from a stale address
+  gsKit_TexManager_bind(gsGlobal, icons);
   gsKit_set_primalpha(gsGlobal, GS_BLEND_BACK2FRONT, 0);
   gsKit_set_test(gsGlobal, GS_ATEST_OFF);
   gsKit_prim_sprite_texture(gsGlobal, icons,          // font page
@@ -105,6 +108,8 @@ int getLogoWidth() { return logo->Width; }
 
 // Draws the logo at specified coordinates
 void drawLogo(float x, float y, int z) {
+  // Keep the texture resident (see drawIcon)
+  gsKit_TexManager_bind(gsGlobal, logo);
   gsKit_set_primalpha(gsGlobal, GS_BLEND_BACK2FRONT, 0);
   gsKit_set_test(gsGlobal, GS_ATEST_OFF);
   gsKit_prim_sprite_texture(gsGlobal, logo,   // Logo texture
@@ -161,6 +166,9 @@ const BMFontChar *getGlyph(uint32_t character) {
 
 // Draws glyph at specified coordinates
 static void drawGlyph(const BMFontChar *glyph, float x, float y, int z, uint64_t color) {
+  // Keep the font page resident: cover art binds can evict it from VRAM,
+  // and an evicted texture would otherwise draw garbage from a stale address
+  gsKit_TexManager_bind(gsGlobal, fontPages[glyph->page]);
   gsKit_prim_sprite_texture(gsGlobal, fontPages[glyph->page],   // font page
                             x + glyph->xoffset,                 // x1 (destination)
                             y + glyph->yoffset,                 // y1
