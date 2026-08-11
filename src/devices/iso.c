@@ -176,6 +176,10 @@ int _findISO(DIR *directory, TargetList *result, struct DeviceMapEntry *device) 
         } else {
           insertIntoTargetList(result, title);
         }
+
+        // Show scan progress (total unknown while walking directories)
+        if (!(result->total % 25))
+          uiSplashLogProgress("Building target list", result->total, 0);
       }
     }
   }
@@ -201,12 +205,22 @@ void processTitleID(TargetList *result, struct DeviceMapEntry *device) {
     isCacheUpdateNeeded = 1;
   }
 
+  // Count entries belonging to this device for progress reporting
+  int deviceTotal = 0;
+  Target *curTarget = result->first;
+  while (curTarget != NULL) {
+    if (curTarget->device == device)
+      deviceTotal++;
+    curTarget = curTarget->next;
+  }
+
   // For every entry in target list, try to get title ID from cache
   // If cache doesn't have title ID for the path,
   // get it from ISO
   int cacheMisses = 0;
+  int processed = 0;
   char *titleID = NULL;
-  Target *curTarget = result->first;
+  curTarget = result->first;
   while (curTarget != NULL) {
     // Ignore targets not belonging to the current device
     if (curTarget->device != device) {
@@ -219,11 +233,18 @@ void processTitleID(TargetList *result, struct DeviceMapEntry *device) {
       titleID = getCachedTitleID(curTarget->fullPath, cache);
     }
 
+    processed++;
     if (titleID != NULL) {
       curTarget->id = strdup(titleID);
+      // Update progress sparingly on the fast cache-hit path
+      if (!(processed % 25) || (processed == deviceTotal))
+        uiSplashLogProgress("Scanning titles", processed, deviceTotal);
     } else { // Get title ID from ISO
       cacheMisses++;
       DPRINTF("Cache miss for %s\n", curTarget->fullPath);
+      // Cache misses read the ISO (slow, especially over the network):
+      // update progress on every title so the screen never looks frozen
+      uiSplashLogProgress("Scanning titles", processed, deviceTotal);
       curTarget->id = getTitleID(curTarget->fullPath);
       if (curTarget->id == NULL) {
         uiSplashLogString(LEVEL_WARN, "Failed to scan\n%s\n", curTarget->fullPath);

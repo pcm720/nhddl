@@ -17,6 +17,7 @@ typedef enum {
   LEVEL_INFO,         // Prints in regular color and waits for a second
   LEVEL_WARN,         // Prints in warning color and waits for two seconds
   LEVEL_ERROR,        // Prints in error color and waits for two seconds
+  LEVEL_PROGRESS,     // Internal: used by uiSplashLogProgress
 } UILogLevelType;
 
 // Initializes and starts UI splash thread
@@ -24,6 +25,11 @@ int startSplashScreen();
 
 // Logs to splash screen and debug console in a thread-safe way
 void uiSplashLogString(UILogLevelType level, const char *str, ...);
+
+// Shows scan progress on the splash screen without delay.
+// total > 0 draws a progress bar with a cur/total counter;
+// total == 0 draws a spinner with just the count (unknown total).
+void uiSplashLogProgress(const char *label, int cur, int total);
 
 // Sets Neutrino version on the splash screen
 void uiSplashSetNeutrinoVersion(const char *str);

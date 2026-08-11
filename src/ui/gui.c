@@ -749,6 +749,8 @@ struct {
   UILogLevelType level;      // Log level
   char neutrinoVersion[100]; // Neutrino version string
   char buf[255];             // String buffer. String must be null-terminated
+  int progressCur;           // Progress counter (LEVEL_PROGRESS)
+  int progressTotal;         // Progress total; 0 = unknown (LEVEL_PROGRESS)
 } logBuffer = {};
 #define THREAD_STACK_SIZE 0x1000
 static uint8_t threadStack[THREAD_STACK_SIZE] __attribute__((aligned(16)));
@@ -809,6 +811,36 @@ void uiSplashThread() {
     // Wait until a new string is written to buffer
     WaitSema(logBuffer.newStringSema);
     gsKit_TexManager_nextFrame(gsGlobal);
+
+    if (logBuffer.level == LEVEL_PROGRESS) {
+      // Erase the log area, then draw the label with a counter and
+      // a progress bar (known total) or a spinner (unknown total)
+      static const char spinnerFrames[] = "|/-\\";
+      static int spinnerIdx = 0;
+      gsKit_prim_sprite(gsGlobal, 0, logStartY, gsGlobal->Width, gsGlobal->Height - footerHeight, 0, BGColor);
+      if (logBuffer.progressTotal > 0) {
+        snprintf(lineBuffer, 255, "%s\n%d/%d", logBuffer.buf, logBuffer.progressCur, logBuffer.progressTotal);
+        drawTextWindow(0, logStartY, gsGlobal->Width, gsGlobal->Height - footerHeight, 0, HeaderTextColor, ALIGN_HCENTER, lineBuffer);
+        // Progress bar: outline with proportional fill
+        int barW = gsGlobal->Width / 2;
+        int barX = (gsGlobal->Width - barW) / 2;
+        int barY = gsGlobal->Height - footerHeight - 10;
+        int fillW = ((barW - 4) * logBuffer.progressCur) / logBuffer.progressTotal;
+        gsKit_prim_sprite(gsGlobal, barX, barY, barX + barW, barY + 8, 0, FontMainColor);
+        gsKit_prim_sprite(gsGlobal, barX + 2, barY + 2, barX + barW - 2, barY + 6, 0, BGColor);
+        gsKit_prim_sprite(gsGlobal, barX + 2, barY + 2, barX + 2 + fillW, barY + 6, 0, ColorSelected);
+      } else {
+        spinnerIdx = (spinnerIdx + 1) % 4;
+        snprintf(lineBuffer, 255, "%s %c\n%d found", logBuffer.buf, spinnerFrames[spinnerIdx], logBuffer.progressCur);
+        drawTextWindow(0, logStartY, gsGlobal->Width, gsGlobal->Height - footerHeight, 0, HeaderTextColor, ALIGN_HCENTER, lineBuffer);
+      }
+      if (logBuffer.neutrinoVersion[0] != '\0')
+        drawTextWindow(0, (gsGlobal->Height / 4 + getLogoHeight() + getFontLineHeight() + 10), gsGlobal->Width, 0, 0,
+                       GS_SETREG_RGBA(0x40, 0x40, 0x40, 0x80), ALIGN_HCENTER, logBuffer.neutrinoVersion);
+      SignalSema(logBuffer.drawnSema);
+      continue;
+    }
+
     switch (logBuffer.level) {
     case LEVEL_INFO_NODELAY:
     case LEVEL_INFO:
@@ -869,6 +901,22 @@ void uiSplashLogString(UILogLevelType level, const char *str, ...) {
     sleep(2);
     return;
   }
+}
+
+// Shows scan progress on the splash screen without delay (thread-safe).
+// total > 0 draws a progress bar with a cur/total counter;
+// total == 0 draws a spinner with just the count (unknown total).
+void uiSplashLogProgress(const char *label, int cur, int total) {
+  if (!gsGlobal)
+    return;
+
+  logBuffer.level = LEVEL_PROGRESS;
+  snprintf(logBuffer.buf, 255, "%s", label);
+  logBuffer.progressCur = cur;
+  logBuffer.progressTotal = total;
+
+  SignalSema(logBuffer.newStringSema);
+  WaitSema(logBuffer.drawnSema);
 }
 
 // Sets Neutrino version on the splash screen
