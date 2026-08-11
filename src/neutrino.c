@@ -2,6 +2,7 @@
 #include "devices/devices.h"
 #include "devices/init.h"
 #include "dprintf.h"
+#include "favorites.h"
 #include "options.h"
 #include <debug.h>
 #include <kernel.h>
@@ -112,6 +113,8 @@ void launchTitle(Target *target, ArgumentList *arguments) {
   if (updateLastLaunchedTitle(target->device, target->fullPath)) {
     DPRINTF("ERROR: Failed to update last launched title\n");
   }
+  // Record the launch in the recently-played list
+  favoritesAddRecent(target->device, target->fullPath);
 
   // Sync storage device before loading Neutrino
   if (target->device->sync)

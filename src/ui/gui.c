@@ -1,5 +1,6 @@
 #include "common.h"
 #include "dprintf.h"
+#include "favorites.h"
 #include "neutrino.h"
 #include "options.h"
 #include "ui/args.h"
@@ -27,7 +28,47 @@ void closeUI();
 int uiLoop(TargetList *titles);
 int uiTitleOptionsLoop(Target *title);
 int uiArgumentListLoop(Target *target, ArgumentList *titleArguments);
-void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover);
+void drawTitleView(Target **view, int viewTotal, const char *viewName, int selectedIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover);
+
+// Title list view modes (cycled with Select)
+typedef enum {
+  VIEW_ALL = 0,
+  VIEW_FAVORITES,
+  VIEW_RECENT,
+  VIEW_COUNT,
+} TitleViewMode;
+static const char *viewNames[] = {"Title List", "Favorites", "Recently Played"};
+
+// Fills view with targets for the given mode and returns the view size.
+// view must have room for titles->total pointers.
+static int buildTitleView(TargetList *titles, Target **view, TitleViewMode mode) {
+  int total = 0;
+  Target *cur;
+
+  if (mode == VIEW_RECENT) {
+    // Order by recency; ranks can have gaps if a recently-played title
+    // no longer exists in the list, so scan a fixed rank range
+    for (int rank = 0; rank < 16; rank++) {
+      cur = titles->first;
+      while (cur != NULL) {
+        if (favoritesGetRecentRank(cur) == rank) {
+          view[total++] = cur;
+          break;
+        }
+        cur = cur->next;
+      }
+    }
+    return total;
+  }
+
+  cur = titles->first;
+  while (cur != NULL) {
+    if ((mode == VIEW_ALL) || favoritesIsFavorite(cur))
+      view[total++] = cur;
+    cur = cur->next;
+  }
+  return total;
+}
 void uiLaunchTitle(Target *target, ArgumentList *arguments);
 void drawGameID(const char *game_id);
 int createSplashThread();
@@ -253,6 +294,7 @@ int uiLoop(TargetList *titles) {
   }
 
   int res = 0;
+  Target **viewList = NULL;
   if ((gsGlobal == NULL) && (res = uiInit())) {
     DPRINTF("ERROR: Failed to init UI: %d\n", res);
     goto exit;
@@ -260,7 +302,6 @@ int uiLoop(TargetList *titles) {
   // Init gamepad inputs
   initPad();
 
-  int selectedTitleIdx = 0;
   int maxTitlesPerPage = (gsGlobal->Height - (headerHeight + footerHeight)) / getFontLineHeight();
   Target *curTarget = titles->first;
 
@@ -275,7 +316,6 @@ int uiLoop(TargetList *titles) {
         mountpointLen = 0;
 
       if (!strcmp(lastTitle, &curTarget->fullPath[mountpointLen])) {
-        selectedTitleIdx = curTarget->idx;
         break;
       }
       curTarget = curTarget->next;
@@ -287,6 +327,19 @@ int uiLoop(TargetList *titles) {
   }
   free(lastTitle);
 
+  // Load favorites/recently-played and build the initial view
+  favoritesInit();
+  TitleViewMode viewMode = VIEW_ALL;
+  viewList = malloc(sizeof(Target *) * titles->total);
+  int viewTotal = buildTitleView(titles, viewList, viewMode);
+  int selectedViewIdx = 0;
+  for (int i = 0; i < viewTotal; i++) {
+    if (viewList[i] == curTarget) {
+      selectedViewIdx = i;
+      break;
+    }
+  }
+
   // Main UI loop
   int frameCount = 0;
   int prevInput = 0;
@@ -295,18 +348,19 @@ int uiLoop(TargetList *titles) {
     gsKit_clear(gsGlobal, BGColor);
     gsKit_TexManager_nextFrame(gsGlobal);
 
-    // Reload target if index has changed
-    if (curTarget->idx != selectedTitleIdx) {
-      curTarget = getTargetByIdx(titles, selectedTitleIdx);
-    }
+    // Reload target if selection has changed
+    if ((viewTotal > 0) && (curTarget != viewList[selectedViewIdx]))
+      curTarget = viewList[selectedViewIdx];
 
     // Get cover art for the selected title.
     // Loads happen asynchronously: returns NULL until the texture is ready,
     // so the UI never blocks on file IO or PNG decoding while scrolling.
-    GSTEXTURE *selectedTitleCover = coverArtGet(titles, curTarget);
+    GSTEXTURE *selectedTitleCover = NULL;
+    if (viewTotal > 0)
+      selectedTitleCover = coverArtGet(titles, curTarget);
 
-    // Draw title list
-    drawTitleList(titles, selectedTitleIdx, maxTitlesPerPage, selectedTitleCover);
+    // Draw title list for the active view
+    drawTitleView(viewList, viewTotal, viewNames[viewMode], selectedViewIdx, maxTitlesPerPage, selectedTitleCover);
 
     gsKit_queue_exec(gsGlobal);
     gsKit_finish();
@@ -329,40 +383,55 @@ int uiLoop(TargetList *titles) {
     frameCount = 0;
     prevInput = input;
 
-    if (input & (PAD_CROSS | PAD_CIRCLE)) {
+    if ((input & (PAD_CROSS | PAD_CIRCLE)) && (viewTotal > 0)) {
       // Quiesce cover art IO before launching
       coverArtPause();
       // Copy target, free title list and launch
       Target *target = copyTarget(curTarget);
+      free(viewList);
       freeTargetList(titles);
       uiLaunchTitle(target, NULL);
       // Something went wrong, main loop must exit immediately
       return -1;
-    } else if (input & PAD_UP) {
+    } else if ((input & PAD_UP) && (viewTotal > 0)) {
       // Point to the previous title
-      selectedTitleIdx = ((selectedTitleIdx - 1) + titles->total) % titles->total;
-    } else if (input & PAD_DOWN) {
+      selectedViewIdx = ((selectedViewIdx - 1) + viewTotal) % viewTotal;
+    } else if ((input & PAD_DOWN) && (viewTotal > 0)) {
       // Advance to the next title
-      selectedTitleIdx = (selectedTitleIdx + 1) % titles->total;
-    } else if (input & PAD_R1) {
+      selectedViewIdx = (selectedViewIdx + 1) % viewTotal;
+    } else if ((input & PAD_R1) && (viewTotal > 0)) {
       // Switch to the next page
-      if (selectedTitleIdx == titles->total - 1) {
-        selectedTitleIdx = 0; // Wrap around if the last title is selected
+      if (selectedViewIdx == viewTotal - 1) {
+        selectedViewIdx = 0; // Wrap around if the last title is selected
       } else {
-        selectedTitleIdx += maxTitlesPerPage;
-        if (selectedTitleIdx >= titles->total)
-          selectedTitleIdx = titles->total - 1;
+        selectedViewIdx += maxTitlesPerPage;
+        if (selectedViewIdx >= viewTotal)
+          selectedViewIdx = viewTotal - 1;
       }
-    } else if (input & PAD_L1) {
+    } else if ((input & PAD_L1) && (viewTotal > 0)) {
       // Switch to the previous page
-      if (selectedTitleIdx == 0) {
-        selectedTitleIdx = titles->total - 1; // Wrap around if the first title is selected
+      if (selectedViewIdx == 0) {
+        selectedViewIdx = viewTotal - 1; // Wrap around if the first title is selected
       } else {
-        selectedTitleIdx -= maxTitlesPerPage;
-        if (selectedTitleIdx < 0)
-          selectedTitleIdx = 0;
+        selectedViewIdx -= maxTitlesPerPage;
+        if (selectedViewIdx < 0)
+          selectedViewIdx = 0;
       }
-    } else if (input & PAD_TRIANGLE) {
+    } else if ((input & PAD_SQUARE) && (viewTotal > 0)) {
+      // Toggle favorite for the selected title
+      favoritesToggle(curTarget);
+      if (viewMode == VIEW_FAVORITES) {
+        // Rebuild the view in case the title was just removed from it
+        viewTotal = buildTitleView(titles, viewList, viewMode);
+        if (selectedViewIdx >= viewTotal)
+          selectedViewIdx = (viewTotal > 0) ? (viewTotal - 1) : 0;
+      }
+    } else if (input & PAD_SELECT) {
+      // Cycle between All -> Favorites -> Recently Played views
+      viewMode = (viewMode + 1) % VIEW_COUNT;
+      viewTotal = buildTitleView(titles, viewList, viewMode);
+      selectedViewIdx = 0;
+    } else if ((input & PAD_TRIANGLE) && (viewTotal > 0)) {
       input = -1;    // Force UI loop to wait once uiTitleOptionsLoop returns
       prevInput = 0; // Reset previous input
       // Pause cover art IO while the options screens do file IO
@@ -380,6 +449,8 @@ int uiLoop(TargetList *titles) {
   }
 
 exit:
+  free(viewList);
+  favoritesFree();
   closePad();
   closeUI();
   return res;
@@ -400,35 +471,39 @@ void drawTitleListFooter(int baseX) {
   drawTextWindow(0, baseY, gsGlobal->Width - baseX, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT, "Title options");
 }
 
-// Draws title list
-void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover) {
-  int curPage = selectedTitleIdx / maxTitlesPerPage;
+// Draws the title list for the active view
+void drawTitleView(Target **view, int viewTotal, const char *viewName, int selectedIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover) {
+  int curPage = (viewTotal > 0) ? (selectedIdx / maxTitlesPerPage) : 0;
 
   // Draw header and footer
   int titleY = headerHeight;
   int baseX = keepoutArea + 10;
-  drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, "Title List");
-  snprintf(lineBuffer, 255, "Page %d/%d\nTitle %d/%d", curPage + 1, DIV_ROUND(titles->total, maxTitlesPerPage), selectedTitleIdx + 1, titles->total);
-  drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_RIGHT, lineBuffer);
+  drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, viewName);
+  if (viewTotal > 0) {
+    snprintf(lineBuffer, 255, "Page %d/%d\nTitle %d/%d", curPage + 1, DIV_ROUND(viewTotal, maxTitlesPerPage), selectedIdx + 1, viewTotal);
+    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_RIGHT, lineBuffer);
+  }
 
   drawTitleListFooter(baseX);
 
+  if (viewTotal == 0) {
+    // Empty view: favorites/recents have no entries yet
+    drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER,
+                   "Nothing here yet\nPress Square on a title to add it to Favorites");
+    return;
+  }
+
   // Draw title list
-  Target *curTitle = titles->first;
+  int pageEnd = (curPage + 1) * maxTitlesPerPage;
+  if (pageEnd > viewTotal)
+    pageEnd = viewTotal;
 
   titleY += getFontLineHeight() / 2;
-  while (curTitle != NULL) {
-    // Do not display titles before the current page
-    if (curTitle->idx < maxTitlesPerPage * curPage) {
-      goto next;
-    }
-    // Do not display titles beyond the current page
-    if (curTitle->idx >= maxTitlesPerPage * (curPage + 1)) {
-      break;
-    }
+  for (int i = curPage * maxTitlesPerPage; i < pageEnd; i++) {
+    Target *curTitle = view[i];
 
     // Draw title ID for selected title
-    if (selectedTitleIdx == curTitle->idx) {
+    if (i == selectedIdx) {
       // Draw title ID and device type under the cover art
       drawTextWindow(coverArtX1,
                      drawTextWindow(coverArtX1, coverArtY2 + 5, coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER,
@@ -436,11 +511,13 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
                      coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER, modeToString(curTitle->device->mode));
     }
 
-    // Draw title name
-    titleY = drawText(baseX, titleY, 0, coverArtX1 - 5, 0, ((selectedTitleIdx == curTitle->idx) ? ColorSelected : FontMainColor), curTitle->name);
-
-  next:
-    curTitle = curTitle->next;
+    // Draw title name, marking favorites with a star
+    if (favoritesIsFavorite(curTitle)) {
+      snprintf(lineBuffer, 255, "* %s", curTitle->name);
+      titleY = drawText(baseX, titleY, 0, coverArtX1 - 5, 0, ((i == selectedIdx) ? ColorSelected : FontMainColor), lineBuffer);
+    } else {
+      titleY = drawText(baseX, titleY, 0, coverArtX1 - 5, 0, ((i == selectedIdx) ? ColorSelected : FontMainColor), curTitle->name);
+    }
   }
 
   // Draw cover art placeholder/frame

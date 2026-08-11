@@ -18,6 +18,7 @@ set(SOURCES
     src/neutrino.c
     src/target.c
     src/forwarder.c
+    src/favorites.c
 
     # UI
     src/ui/gui.c
