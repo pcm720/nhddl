@@ -13,6 +13,11 @@
 // Decoded texture cache size. A 140x200 cover is ~28 KB as 8-bit palette or
 // ~112 KB as CT32, so even the worst case stays under 2 MB of EE RAM.
 #define COVER_CACHE_SLOTS 16
+// Upper bound on total decoded texture memory. Oversized cover art (full-size
+// scans) would otherwise multiply across cache slots and exhaust EE RAM.
+#define COVER_CACHE_MAX_BYTES (4 * 1024 * 1024)
+// Reject absurdly large cover art outright (the UI draws covers at 140x200)
+#define COVER_MAX_DIMENSION 512
 // How many neighbors of the selected title to prefetch in each direction
 #define COVER_PREFETCH 2
 // Maximum queued load requests (selected + prefetched neighbors)
@@ -39,6 +44,7 @@ typedef struct {
   struct DeviceMapEntry *device;  // Device the art was requested from
   SlotState state;
   uint32_t lastUse;               // LRU tick of last request/draw
+  uint32_t memBytes;              // Decoded texture memory (Mem + Clut)
   GSTEXTURE tex;                  // Decoded texture (Mem/Clut owned by slot)
 } CoverSlot;
 
@@ -53,6 +59,7 @@ static CoverRequest queue[COVER_QUEUE_SIZE];
 static int queueCount = 0;
 
 static uint32_t lruTick = 0;
+static uint32_t cacheBytes = 0; // Total decoded texture memory in the cache
 static char lastRequestedID[COVER_ID_LEN] = {0};
 static const char *statusText = "";
 
@@ -90,6 +97,14 @@ static uint32_t textureSizeEE(int width, int height, int psm) {
     return (width * height / 2);
   }
   return 0;
+}
+
+// Total EE RAM held by a decoded texture (pixel data + CLUT)
+static uint32_t textureMemBytes(const GSTEXTURE *tex) {
+  uint32_t bytes = textureSizeEE(tex->Width, tex->Height, tex->PSM);
+  if (tex->Clut)
+    bytes += (tex->PSM == GS_PSM_T8) ? (256 * 4) : (16 * 4);
+  return bytes;
 }
 
 // Decodes a PNG file into tex->Mem/tex->Clut. Returns 0 on success.
@@ -136,6 +151,15 @@ static int decodePNG(GSTEXTURE *tex, const char *path) {
   int bitDepth, colorType, interlaceType;
   png_get_IHDR(pngPtr, infoPtr, &width, &height, &bitDepth, &colorType, &interlaceType, NULL, NULL);
 
+  // Reject oversized art: covers are drawn at 140x200, and huge decoded
+  // textures multiplied across cache slots would exhaust EE RAM
+  if ((width == 0) || (height == 0) || (width > COVER_MAX_DIMENSION) || (height > COVER_MAX_DIMENSION)) {
+    DPRINTF("coverart: rejecting %s (%ldx%ld)\n", path, width, height);
+    png_destroy_read_struct(&pngPtr, &infoPtr, NULL);
+    fclose(file);
+    return -1;
+  }
+
   if (bitDepth == 16)
     png_set_strip_16(pngPtr);
   if (colorType == PNG_COLOR_TYPE_GRAY && bitDepth < 4)
@@ -155,10 +179,13 @@ static int decodePNG(GSTEXTURE *tex, const char *path) {
     int rowBytes = png_get_rowbytes(pngPtr, infoPtr);
     tex->PSM = (outColorType == PNG_COLOR_TYPE_RGB_ALPHA) ? GS_PSM_CT32 : GS_PSM_CT24;
     tex->Mem = memalign(128, textureSizeEE(tex->Width, tex->Height, tex->PSM));
-
     rowPointers = calloc(height, sizeof(png_bytep));
-    for (uint32_t row = 0; row < height; row++)
-      rowPointers[row] = malloc(rowBytes);
+    if (!tex->Mem || !rowPointers)
+      png_error(pngPtr, "out of memory"); // longjmps to the cleanup path
+    for (uint32_t row = 0; row < height; row++) {
+      if (!(rowPointers[row] = malloc(rowBytes)))
+        png_error(pngPtr, "out of memory");
+    }
     png_read_image(pngPtr, rowPointers);
 
     if (tex->PSM == GS_PSM_CT32) {
@@ -209,11 +236,14 @@ static int decodePNG(GSTEXTURE *tex, const char *path) {
     tex->PSM = (bitDepth == 4) ? GS_PSM_T4 : GS_PSM_T8;
     tex->Mem = memalign(128, textureSizeEE(tex->Width, tex->Height, tex->PSM));
     tex->Clut = memalign(128, clutEntries * 4);
-    memset(tex->Clut, 0, clutEntries * 4);
-
     rowPointers = calloc(height, sizeof(png_bytep));
-    for (uint32_t row = 0; row < height; row++)
-      rowPointers[row] = malloc(rowBytes);
+    if (!tex->Mem || !tex->Clut || !rowPointers)
+      png_error(pngPtr, "out of memory"); // longjmps to the cleanup path
+    memset(tex->Clut, 0, clutEntries * 4);
+    for (uint32_t row = 0; row < height; row++) {
+      if (!(rowPointers[row] = malloc(rowBytes)))
+        png_error(pngPtr, "out of memory");
+    }
     png_read_image(pngPtr, rowPointers);
 
     struct pngClut *clut = (struct pngClut *)tex->Clut;
@@ -287,6 +317,8 @@ static void freeSlot(GSGLOBAL *gsGlobal, CoverSlot *slot) {
     free(slot->tex.Mem);
     free(slot->tex.Clut);
   }
+  cacheBytes -= (slot->memBytes > cacheBytes) ? cacheBytes : slot->memBytes;
+  slot->memBytes = 0;
   memset(&slot->tex, 0, sizeof(GSTEXTURE));
   slot->id[0] = '\0';
   slot->device = NULL;
@@ -409,6 +441,8 @@ static void coverArtWorker() {
     if (req.slot->state == SLOT_LOADING) {
       if (res == 0) {
         req.slot->tex = tex;
+        req.slot->memBytes = textureMemBytes(&tex);
+        cacheBytes += req.slot->memBytes;
         req.slot->state = SLOT_READY;
       } else {
         req.slot->state = SLOT_FAILED;
@@ -422,11 +456,12 @@ static void coverArtWorker() {
     // acknowledge as soon as that load completes
     int mustAck = needAck;
     needAck = 0;
+    int moreWork = (queueCount > 0);
     unlock();
 
     if (mustAck)
       SignalSema(ackSema);
-    if (queueCount > 0)
+    if (moreWork)
       SignalSema(workSema);
   }
 
@@ -547,6 +582,21 @@ GSTEXTURE *coverArtGet(TargetList *titles, Target *target) {
       statusText = "No cover art";
     }
   }
+
+  // Enforce the cache memory budget by evicting least recently used covers
+  // (never the selected slot or slots the worker is still using)
+  while (cacheBytes > COVER_CACHE_MAX_BYTES) {
+    CoverSlot *victim = NULL;
+    for (int i = 0; i < COVER_CACHE_SLOTS; i++) {
+      if ((&cache[i] == slot) || ((cache[i].state != SLOT_READY) && (cache[i].state != SLOT_FAILED)))
+        continue;
+      if ((victim == NULL) || (cache[i].lastUse < victim->lastUse))
+        victim = &cache[i];
+    }
+    if (victim == NULL)
+      break;
+    freeSlot(gsGlobal, victim);
+  }
   int pending = queueCount;
   unlock();
 
@@ -586,5 +636,8 @@ void coverArtResume() {
 
   lock();
   pauseRequested = 0;
+  // Force the next coverArtGet to re-request the selection and its
+  // neighbors (their queued loads were flushed by coverArtPause)
+  lastRequestedID[0] = '\0';
   unlock();
 }
