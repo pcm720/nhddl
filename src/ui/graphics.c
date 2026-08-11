@@ -21,6 +21,14 @@ GSTEXTURE *logo;
 // Used font
 const struct BMFont font = BMFONT_DEJAVU_SANS;
 
+// UI scale factor for HD video modes: fonts and icons render at fixed pixel
+// sizes tuned for 448/512-line modes and would look tiny at 720/1080 lines.
+// All text/icon metrics and draws are multiplied by this factor.
+static float uiScale = 1.0f;
+
+// Sets the UI scale factor (1.0 for SD modes; >1 for HD modes)
+void setUIScale(float scale) { uiScale = scale; }
+
 // Initializes and uploads graphics resources to GS VRAM
 int initGraphics() {
   if (font.pageCount == 0) {
@@ -72,10 +80,10 @@ void closeFont() {
 }
 
 // Returns icon height
-int getIconHeight(IconType iconType) { return ICONS[iconType].height; }
+int getIconHeight(IconType iconType) { return (int)(ICONS[iconType].height * uiScale); }
 
 // Returns icon width
-int getIconWidth(IconType iconType) { return ICONS[iconType].width; }
+int getIconWidth(IconType iconType) { return (int)(ICONS[iconType].width * uiScale); }
 
 // Draws the icon at specified coordinates
 void drawIcon(float x, float y, int z, uint64_t color, IconType iconType) {
@@ -86,15 +94,15 @@ void drawIcon(float x, float y, int z, uint64_t color, IconType iconType) {
   gsKit_TexManager_bind(gsGlobal, icons);
   gsKit_set_primalpha(gsGlobal, GS_BLEND_BACK2FRONT, 0);
   gsKit_set_test(gsGlobal, GS_ATEST_OFF);
-  gsKit_prim_sprite_texture(gsGlobal, icons,          // font page
-                            x,                        // x1 (destination)
-                            y,                        // y1
-                            icon.x,                   // u1 (source texture)
-                            icon.y,                   // v1
-                            x + icon.width,           // x2 (destination)
-                            y + icon.height,          // y2
-                            icon.x + icon.width + 1,  // u2 (source texture)
-                            icon.y + icon.height + 1, // v2
+  gsKit_prim_sprite_texture(gsGlobal, icons,               // font page
+                            x,                             // x1 (destination)
+                            y,                             // y1
+                            icon.x,                        // u1 (source texture)
+                            icon.y,                        // v1
+                            x + icon.width * uiScale,      // x2 (destination)
+                            y + icon.height * uiScale,     // y2
+                            icon.x + icon.width + 1,       // u2 (source texture)
+                            icon.y + icon.height + 1,      // v2
                             z, color);
   gsKit_set_test(gsGlobal, GS_ATEST_ON);
   gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
@@ -130,21 +138,23 @@ void drawLogo(float x, float y, int z) {
 void drawIconWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_t alignment, IconType iconType) {
   Icon icon = ICONS[iconType];
 
-  // Apply vertical alignment
+  // Apply vertical alignment (using scaled icon dimensions)
+  int iconW = getIconWidth(iconType);
+  int iconH = getIconHeight(iconType);
   if (y2) {
     if (alignment & ALIGN_VCENTER) {
-      y1 += ((y2 - y1) - icon.height) / 2;
+      y1 += ((y2 - y1) - iconH) / 2;
     } else if (alignment & ALIGN_BOTTOM) {
-      y1 = y2 - icon.height;
+      y1 = y2 - iconH;
     }
   }
 
   // Apply horizontal alignment
   if (x2) {
     if (alignment & ALIGN_HCENTER) {
-      x1 = x1 + (((x2 - x1) - icon.width) / 2);
+      x1 = x1 + (((x2 - x1) - iconW) / 2);
     } else if (alignment & ALIGN_RIGHT) {
-      x1 = x2 - icon.width;
+      x1 = x2 - iconW;
     }
   }
 
@@ -152,7 +162,7 @@ void drawIconWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8
 }
 
 // Returns line height for used font
-uint8_t getFontLineHeight() { return font.lineHeight; }
+uint8_t getFontLineHeight() { return (uint8_t)(font.lineHeight * uiScale); }
 
 // Returns pointer to the glyph or NULL if the font doesn't have a glyph for this character
 const BMFontChar *getGlyph(uint32_t character) {
@@ -169,15 +179,15 @@ static void drawGlyph(const BMFontChar *glyph, float x, float y, int z, uint64_t
   // Keep the font page resident: cover art binds can evict it from VRAM,
   // and an evicted texture would otherwise draw garbage from a stale address
   gsKit_TexManager_bind(gsGlobal, fontPages[glyph->page]);
-  gsKit_prim_sprite_texture(gsGlobal, fontPages[glyph->page],   // font page
-                            x + glyph->xoffset,                 // x1 (destination)
-                            y + glyph->yoffset,                 // y1
-                            glyph->x,                           // u1 (source texture)
-                            glyph->y,                           // v1
-                            x + glyph->xoffset + glyph->width,  // x2 (destination)
-                            y + glyph->yoffset + glyph->height, // y2
-                            glyph->x + glyph->width + 1,        // u2 (source texture, without +1 all characters are cut off on real hardware)
-                            glyph->y + glyph->height + 1,       // v2
+  gsKit_prim_sprite_texture(gsGlobal, fontPages[glyph->page],                       // font page
+                            x + glyph->xoffset * uiScale,                           // x1 (destination)
+                            y + glyph->yoffset * uiScale,                           // y1
+                            glyph->x,                                               // u1 (source texture)
+                            glyph->y,                                               // v1
+                            x + (glyph->xoffset + glyph->width) * uiScale,          // x2 (destination)
+                            y + (glyph->yoffset + glyph->height) * uiScale,         // y2
+                            glyph->x + glyph->width + 1,                            // u2 (source texture, without +1 all characters are cut off on real hardware)
+                            glyph->y + glyph->height + 1,                           // v2
                             z, color);
 }
 
@@ -192,10 +202,11 @@ int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, c
   gsKit_set_test(gsGlobal, GS_ATEST_OFF);
 
   int curHeight = 0;
+  int lineHeight = getFontLineHeight();
   for (int i = 0; text[i] != '\0'; i++) {
     if (text[i] == '\n') {
       curX = x;
-      curHeight += font.lineHeight;
+      curHeight += lineHeight;
       continue;
     }
 
@@ -208,18 +219,18 @@ int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, c
       continue;
     }
 
-    if (maxHeight && ((curHeight + font.lineHeight) > maxHeight)) {
+    if (maxHeight && ((curHeight + lineHeight) > maxHeight)) {
       break;
     }
 
     drawGlyph(glyph, curX, y + curHeight, z, color);
-    curX += glyph->xadvance;
+    curX += glyph->xadvance * uiScale;
 
     // Account for kerning if kernings are present and next char is not a null terminator
     if (glyph->kernings && (text[i + 1] != '\0')) {
       for (int i = 0; i < glyph->kerningsCount; i++) {
         if (glyph->kernings[i].secondChar == text[i + 1]) {
-          curX += glyph->kernings[i].amount;
+          curX += glyph->kernings[i].amount * uiScale;
         }
       }
     }
@@ -229,7 +240,7 @@ int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, c
   gsKit_set_test(gsGlobal, GS_ATEST_ON);
   gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
 
-  return (y + curHeight + font.lineHeight);
+  return (y + curHeight + lineHeight);
 }
 
 // Gets the line width for the first line in text
@@ -246,12 +257,12 @@ float getLineWidth(const char *text) {
       continue;
     }
 
-    lineWidth += glyph->xadvance;
+    lineWidth += glyph->xadvance * uiScale;
     // Account for kerning
     if (glyph->kernings && (text[i + 1] != '\0')) {
       for (int i = 0; i < glyph->kerningsCount; i++) {
         if (glyph->kernings[i].secondChar == text[i + 1]) {
-          lineWidth += glyph->kernings[i].amount;
+          lineWidth += glyph->kernings[i].amount * uiScale;
         }
       }
     }

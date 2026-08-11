@@ -44,6 +44,10 @@ typedef enum {
 // Initializes and uploads graphics resources to GS VRAM
 int initGraphics();
 
+// Sets the UI scale factor applied to all text and icon metrics/draws
+// (1.0 for SD modes; >1 for HD modes where fixed pixel sizes look tiny)
+void setUIScale(float scale);
+
 // Draws the text with specified max dimensions relative to x and y
 // Returns the bottom Y coordinate of the last line that can be used to draw the next text
 int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, const char *text);

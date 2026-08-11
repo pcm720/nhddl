@@ -285,11 +285,24 @@ int uiInit() {
     }
   }
 
-  // Init cover art sprite coordinates and async loader
+  // Scale the UI for HD modes: fixed pixel sizes tuned for 448/512 lines
+  // look tiny at 720/1080 lines. Half-steps keep glyph scaling acceptable.
+  float uiScale = 1.0f;
+  if (gsGlobal->Height >= 1000)
+    uiScale = 2.0f;
+  else if (gsGlobal->Height >= 700)
+    uiScale = 1.5f;
+  setUIScale(uiScale);
+
+  // Init cover art sprite coordinates and async loader.
+  // HD modes are 16:9: logical pixels are wider, so compensate the cover
+  // width to preserve the box art aspect ratio.
+  int coverW = (int)(COVER_ART_RES_W * uiScale * ((uiScale > 1.0f) ? 0.75f : 1.0f));
+  int coverH = (int)(COVER_ART_RES_H * uiScale);
   coverArtX2 = (gsGlobal->Width - keepoutArea - 10);
-  coverArtY2 = (gsGlobal->Height / 2) + (COVER_ART_RES_H / 2);
-  coverArtX1 = coverArtX2 - COVER_ART_RES_W;
-  coverArtY1 = coverArtY2 - COVER_ART_RES_H;
+  coverArtY2 = (gsGlobal->Height / 2) + (coverH / 2);
+  coverArtX1 = coverArtX2 - coverW;
+  coverArtY1 = coverArtY2 - coverH;
   if (coverArtInit()) {
     // Not fatal: the UI works without cover art
     DPRINTF("ERROR: Failed to start cover art loader\n");
@@ -369,11 +382,22 @@ int uiLoop(TargetList *titles) {
       memset(&bgTexture, 0, sizeof(GSTEXTURE));
       bgTexture.Delayed = 1;
       if (!gsKit_texture_png(gsGlobal, &bgTexture, bgPath)) {
-        // Keep Mem allocated: the texture is re-bound (and re-uploaded after
-        // VRAM evictions) on every frame it is drawn
-        bgLoaded = 1;
-        DPRINTF("Loaded background from %s\n", bgPath);
-        break;
+        // Only accept palettized backgrounds within the logical canvas:
+        // a fullscreen truecolor texture cannot fit in the VRAM left over
+        // by PAL/576p framebuffers, and gsKit's VRAM allocator loops
+        // forever on an allocation that can never be satisfied.
+        if (((bgTexture.PSM != GS_PSM_T8) && (bgTexture.PSM != GS_PSM_T4)) || (bgTexture.Width > 640) || (bgTexture.Height > 512)) {
+          DPRINTF("Rejecting background %s: use an 8-bit PNG, max 640x512\n", bgPath);
+          free(bgTexture.Mem);
+          free(bgTexture.Clut);
+          memset(&bgTexture, 0, sizeof(GSTEXTURE));
+        } else {
+          // Keep Mem allocated: the texture is re-bound (and re-uploaded
+          // after VRAM evictions) on every frame it is drawn
+          bgLoaded = 1;
+          DPRINTF("Loaded background from %s\n", bgPath);
+          break;
+        }
       }
     }
   }
@@ -576,6 +600,25 @@ exit:
   return res;
 }
 
+// Draws a small bordered "button" pill with a label (for buttons that have
+// no icon in the atlas). Returns the x coordinate right after the pill.
+static int drawButtonPill(int x, int y, const char *label) {
+  int w = (int)getLineWidth(label) + 8;
+  int h = getFontLineHeight() + 1;
+  gsKit_prim_sprite(gsGlobal, x, y, x + w, y + h, 0, HeaderTextColor);
+  gsKit_prim_sprite(gsGlobal, x + 1, y + 1, x + w - 1, y + h - 1, 0, BGColor);
+  drawTextWindow(x, y, x + w, y + h, 0, FontMainColor, ALIGN_CENTER, label);
+  return x + w;
+}
+
+// Draws a button pill followed by its action label.
+// Returns the x coordinate after the group, including trailing spacing.
+static int drawButtonHint(int x, int y, const char *button, const char *action) {
+  x = drawButtonPill(x, y, button) + 4;
+  drawText(x, y, 0, 0, 0, HeaderTextColor, action);
+  return x + (int)getLineWidth(action) + 14;
+}
+
 void drawTitleListFooter(int baseX) {
   // Row 1: primary actions (icons), kept above the hint row
   int baseY = gsGlobal->Height - footerHeight;
@@ -593,8 +636,18 @@ void drawTitleListFooter(int baseX) {
   drawTextWindow(0, baseY, gsGlobal->Width - baseX, row1End - 1, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT, "Title options");
 
   // Row 2: hints for the list navigation extras
-  drawTextWindow(0, gsGlobal->Height - getFontLineHeight() - 2, gsGlobal->Width, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_HCENTER,
-                 "Square: Favorite  Select: View  L2/R2: A-Z  L3: Random  R3: Video  Stick: Scroll");
+  // (button pill + action label groups, matching row 1's icon+label style)
+  int hintY = gsGlobal->Height - getFontLineHeight() - 3;
+  int hx = baseX;
+  drawIconWindow(hx, hintY, 0, gsGlobal->Height - 2, 0, FontMainColor, ALIGN_VCENTER, ICON_SQUARE);
+  hx += getIconWidth(ICON_SQUARE) + 4;
+  drawText(hx, hintY, 0, 0, 0, HeaderTextColor, "Favorite");
+  hx += (int)getLineWidth("Favorite") + 14;
+  hx = drawButtonHint(hx, hintY, "SEL", "View");
+  hx = drawButtonPill(hx, hintY, "L2") + 2;
+  hx = drawButtonHint(hx, hintY, "R2", "A-Z");
+  hx = drawButtonHint(hx, hintY, "L3", "Random");
+  hx = drawButtonHint(hx, hintY, "R3", "Video");
 }
 
 // Draws the title list for the active view
