@@ -1,4 +1,5 @@
 #include "common.h"
+#include "devices/devices.h"
 #include "dprintf.h"
 #include "favorites.h"
 #include "neutrino.h"
@@ -30,6 +31,24 @@ int uiLoop(TargetList *titles);
 int uiTitleOptionsLoop(Target *title);
 int uiArgumentListLoop(Target *target, ArgumentList *titleArguments);
 void drawTitleView(Target **view, int viewTotal, const char *viewName, int selectedIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover);
+static int uiVideoModePicker();
+static void persistVideoMode(const char *configValue);
+
+// Video modes selectable in the picker (R3 in the title list)
+static const struct {
+  const char *label;
+  const char *configValue; // Value written to nhddl.yaml, NULL = remove the line
+  VModeType mode;
+} videoModes[] = {
+    {"Auto (console default)", NULL, VMODE_NONE},
+    {"NTSC (480i)", "ntsc", VMODE_NTSC},
+    {"PAL (576i)", "pal", VMODE_PAL},
+    {"480p", "480p", VMODE_480P},
+    {"576p", "576p", VMODE_576P},
+    {"720p (needs component cables)", "720p", VMODE_720P},
+    {"1080i (needs component cables)", "1080i", VMODE_1080I},
+};
+#define VIDEO_MODES_TOTAL (sizeof(videoModes) / sizeof(videoModes[0]))
 
 // Title list view modes (cycled with Select)
 typedef enum {
@@ -78,6 +97,13 @@ void closeUISplashThread();
 
 GSGLOBAL *gsGlobal;
 static char lineBuffer[255];
+
+// Optional custom background, loaded from <device>/THM/bg.png.
+// Palettized (8-bit) PNGs are strongly recommended: they use a fraction of
+// the VRAM (fullscreen CT24/CT32 backgrounds wouldn't fit alongside the
+// framebuffers in some video modes).
+static GSTEXTURE bgTexture;
+static int bgLoaded = 0;
 
 // Cover art sprite coordinates
 // Initialized during uiInit from screen width and height
@@ -328,6 +354,29 @@ int uiLoop(TargetList *titles) {
   }
   free(lastTitle);
 
+  // Try to load a custom background from the first device that has one.
+  // One-time synchronous read: the UI isn't interactive yet at this point.
+  if (!bgLoaded) {
+    char bgPath[PATH_MAX + 1];
+    for (int i = 0; i < MAX_DEVICES; i++) {
+      if ((deviceModeMap[i].mode == MODE_NONE) || (deviceModeMap[i].mode == MODE_ALL) || (deviceModeMap[i].mountpoint == NULL))
+        continue;
+      struct DeviceMapEntry *bgDevice = &deviceModeMap[i];
+      if (bgDevice->metadev)
+        bgDevice = bgDevice->metadev;
+      snprintf(bgPath, sizeof(bgPath), "%s/THM/bg.png", bgDevice->mountpoint);
+      memset(&bgTexture, 0, sizeof(GSTEXTURE));
+      bgTexture.Delayed = 1;
+      if (!gsKit_texture_png(gsGlobal, &bgTexture, bgPath)) {
+        // Keep Mem allocated: the texture is re-bound (and re-uploaded after
+        // VRAM evictions) on every frame it is drawn
+        bgLoaded = 1;
+        DPRINTF("Loaded background from %s\n", bgPath);
+        break;
+      }
+    }
+  }
+
   // Load favorites/recently-played and build the initial view
   favoritesInit();
   TitleViewMode viewMode = VIEW_ALL;
@@ -477,6 +526,16 @@ int uiLoop(TargetList *titles) {
       viewMode = (viewMode + 1) % VIEW_COUNT;
       viewTotal = buildTitleView(titles, viewList, viewMode);
       selectedViewIdx = 0;
+    } else if (input & PAD_R3) {
+      // Video mode picker (click the right stick)
+      input = -1;    // Wait for fresh input after the picker returns
+      prevInput = 0;
+      coverArtPause();
+      if (uiVideoModePicker()) {
+        // Display was reinitialized: recompute the layout
+        maxTitlesPerPage = (gsGlobal->Height - (headerHeight + footerHeight)) / getFontLineHeight();
+      }
+      coverArtResume();
     } else if ((input & PAD_TRIANGLE) && (viewTotal > 0)) {
       input = -1;    // Force UI loop to wait once uiTitleOptionsLoop returns
       prevInput = 0; // Reset previous input
@@ -520,6 +579,17 @@ void drawTitleListFooter(int baseX) {
 // Draws the title list for the active view
 void drawTitleView(Target **view, int viewTotal, const char *viewName, int selectedIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover) {
   int curPage = (viewTotal > 0) ? (selectedIdx / maxTitlesPerPage) : 0;
+
+  // Draw the custom background first (dimmed so text stays readable).
+  // Alpha blending is disabled for the same reason as cover art: PNG alpha
+  // is stored inverted, and the background has nothing to blend with anyway.
+  if (bgLoaded) {
+    gsKit_TexManager_bind(gsGlobal, &bgTexture);
+    gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
+    gsKit_prim_sprite_texture(gsGlobal, &bgTexture, 0, 0, 0.0f, 0.0f, gsGlobal->Width, gsGlobal->Height, bgTexture.Width, bgTexture.Height, 0,
+                              GS_SETREG_RGBA(0x38, 0x38, 0x38, 0x80));
+    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+  }
 
   // Draw header and footer
   int titleY = headerHeight;
@@ -582,6 +652,144 @@ void drawTitleView(Target **view, int viewTotal, const char *viewName, int selec
     gsKit_prim_sprite(gsGlobal, coverArtX1, coverArtY1, coverArtX2, coverArtY2, 1, BGColor);
     // "Loading..." while the async load is in flight, "No cover art" if it failed
     drawTextWindow(coverArtX1, coverArtY1, coverArtX2, coverArtY2, 1, FontMainColor, ALIGN_CENTER, coverArtStatusText());
+  }
+}
+
+// Writes (or removes, when configValue is NULL) the video option in the
+// first device's nhddl/nhddl.yaml so the picked mode persists across boots
+static void persistVideoMode(const char *configValue) {
+  char yamlPath[PATH_MAX];
+  char dirPath[PATH_MAX];
+  static char contents[2048];
+
+  for (int i = 0; i < MAX_DEVICES; i++) {
+    if ((deviceModeMap[i].mode == MODE_NONE) || (deviceModeMap[i].mode == MODE_ALL) || (deviceModeMap[i].mountpoint == NULL))
+      continue;
+    struct DeviceMapEntry *device = &deviceModeMap[i];
+    if (device->metadev)
+      device = device->metadev;
+    buildConfigFilePath(dirPath, device->mountpoint, NULL);
+    buildConfigFilePath(yamlPath, device->mountpoint, "/nhddl.yaml");
+
+    // Read the existing file, dropping any current video option
+    int len = 0;
+    contents[0] = '\0';
+    FILE *file = fopen(yamlPath, "rb");
+    if (file != NULL) {
+      char line[256];
+      while (fgets(line, sizeof(line), file) != NULL) {
+        if (!strncmp(line, "video:", 6))
+          continue;
+        int lineLen = strlen(line);
+        if ((len + lineLen) >= (int)(sizeof(contents) - 32))
+          break;
+        memcpy(&contents[len], line, lineLen);
+        len += lineLen;
+      }
+      fclose(file);
+    } else {
+      // Make sure the config directory exists
+      struct stat st;
+      if (stat(dirPath, &st) == -1)
+        mkdir(dirPath, 0777);
+    }
+    if ((len > 0) && (contents[len - 1] != '\n'))
+      contents[len++] = '\n';
+    if (configValue != NULL)
+      len += snprintf(&contents[len], sizeof(contents) - len, "video: %s\n", configValue);
+
+    if ((file = fopen(yamlPath, "wb")) == NULL) {
+      DPRINTF("ERROR: Failed to write %s\n", yamlPath);
+      return;
+    }
+    fwrite(contents, 1, len, file);
+    fclose(file);
+    return; // First device only
+  }
+}
+
+// Video mode picker (opened with R3 from the title list). Applies the chosen
+// mode immediately, then auto-reverts unless confirmed within ~12 seconds so
+// picking a mode the display can't show never strands the UI.
+// Returns 1 if the display was reinitialized (caller must recompute layout).
+static int uiVideoModePicker() {
+  int selected = 0;
+  int reinited = 0;
+  int baseX = keepoutArea + 10;
+
+  // Preselect the active mode
+  for (int i = 0; i < (int)VIDEO_MODES_TOTAL; i++) {
+    if (videoModes[i].mode == LAUNCHER_OPTIONS.vmode)
+      selected = i;
+  }
+
+  while (1) {
+    gsKit_clear(gsGlobal, BGColor);
+    gsKit_TexManager_nextFrame(gsGlobal);
+
+    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, "Video Mode");
+    int y = headerHeight + 2 * getFontLineHeight();
+    for (int i = 0; i < (int)VIDEO_MODES_TOTAL; i++) {
+      snprintf(lineBuffer, 255, "%s%s", videoModes[i].label, ((videoModes[i].mode == LAUNCHER_OPTIONS.vmode) ? "  (current)" : ""));
+      y = drawText(baseX + 20, y, 0, 0, 0, ((i == selected) ? ColorSelected : FontMainColor), lineBuffer);
+    }
+    drawTextWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_CENTER,
+                   "Cross: try mode (auto-reverts unless kept)\nTriangle: back");
+
+    gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
+    uiSyncFlip();
+
+    int input = waitForInput(-1);
+    if (input & PAD_UP) {
+      selected = (selected - 1 + (int)VIDEO_MODES_TOTAL) % (int)VIDEO_MODES_TOTAL;
+    } else if (input & PAD_DOWN) {
+      selected = (selected + 1) % (int)VIDEO_MODES_TOTAL;
+    } else if (input & PAD_TRIANGLE) {
+      return reinited;
+    } else if (input & (PAD_CROSS | PAD_CIRCLE)) {
+      if (videoModes[selected].mode == LAUNCHER_OPTIONS.vmode)
+        continue; // Already active
+
+      // Apply the new mode immediately
+      VModeType prevMode = LAUNCHER_OPTIONS.vmode;
+      LAUNCHER_OPTIONS.vmode = videoModes[selected].mode;
+      uiInit();
+      reinited = 1;
+
+      // Confirmation countdown with auto-revert
+      const int totalFrames = 12 * 60; // ~12 seconds (~10 on PAL)
+      int confirmed = 0;
+      for (int frames = totalFrames; frames > 0; frames--) {
+        gsKit_clear(gsGlobal, BGColor);
+        gsKit_TexManager_nextFrame(gsGlobal);
+        snprintf(lineBuffer, 255, "%s\n\nPress Cross to KEEP this mode\nReverting in %d...", videoModes[selected].label, (frames / 60) + 1);
+        drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, lineBuffer);
+        gsKit_queue_exec(gsGlobal);
+        gsKit_finish();
+        uiSyncFlip();
+
+        int cInput = pollInput();
+        // Ignore inputs for the first half second (the button press that
+        // applied the mode may still be held down)
+        if (frames > (totalFrames - 30))
+          continue;
+        if (cInput & (PAD_CROSS | PAD_CIRCLE)) {
+          confirmed = 1;
+          break;
+        }
+        if (cInput & PAD_TRIANGLE)
+          break; // Revert immediately
+      }
+
+      if (confirmed) {
+        persistVideoMode(videoModes[selected].configValue);
+        return 1;
+      }
+      // Not confirmed: revert to the previous mode
+      LAUNCHER_OPTIONS.vmode = prevMode;
+      uiInit();
+    }
   }
 }
 
