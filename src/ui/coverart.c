@@ -61,6 +61,7 @@ static int queueCount = 0;
 static uint32_t lruTick = 0;
 static uint32_t cacheBytes = 0; // Total decoded texture memory in the cache
 static char lastRequestedID[COVER_ID_LEN] = {0};
+static struct DeviceMapEntry *lastRequestedDevice = NULL;
 static const char *statusText = "";
 
 // Worker thread state
@@ -126,7 +127,9 @@ static int decodePNG(GSTEXTURE *tex, const char *path) {
     return -1;
   }
 
-  png_bytep *rowPointers = NULL;
+  // volatile: modified after setjmp and read in the longjmp cleanup path,
+  // so its value must be guaranteed to survive the longjmp (C11 7.13.2.1)
+  png_bytep *volatile rowPointers = NULL;
   if (setjmp(png_jmpbuf(pngPtr))) {
     // libpng longjmps here on any decode error
     png_destroy_read_struct(&pngPtr, &infoPtr, NULL);
@@ -478,11 +481,13 @@ extern GSGLOBAL *gsGlobal; // Owned by gui.c
 int coverArtInit() {
   memset(cache, 0, sizeof(cache));
   queueCount = 0;
+  cacheBytes = 0;
   workerBusy = 0;
   pauseRequested = 0;
   shutdownRequested = 0;
   needAck = 0;
   lastRequestedID[0] = '\0';
+  lastRequestedDevice = NULL;
   statusText = "";
 
   ee_sema_t semaphore;
@@ -500,7 +505,7 @@ int coverArtInit() {
   ackSema = CreateSema(&semaphore);
 
   if ((mutexSema < 0) || (workSema < 0) || (ackSema < 0))
-    return -1;
+    goto fail;
 
   ee_thread_t thread;
   thread.func = coverArtWorker;
@@ -511,13 +516,24 @@ int coverArtInit() {
   thread.attr = thread.option = 0;
 
   if ((workerThreadID = CreateThread(&thread)) < 0)
-    return -1;
+    goto fail;
   if (StartThread(workerThreadID, NULL) < 0) {
     DeleteThread(workerThreadID);
     workerThreadID = -1;
-    return -1;
+    goto fail;
   }
   return 0;
+
+fail:
+  // Roll back partially created resources so retrying init stays possible
+  if (mutexSema >= 0)
+    DeleteSema(mutexSema);
+  if (workSema >= 0)
+    DeleteSema(workSema);
+  if (ackSema >= 0)
+    DeleteSema(ackSema);
+  mutexSema = workSema = ackSema = -1;
+  return -1;
 }
 
 void coverArtShutdown() {
@@ -553,12 +569,19 @@ GSTEXTURE *coverArtGet(TargetList *titles, Target *target) {
   lruTick++;
 
   lock();
-  // On selection change, re-request the selection and its neighbors
-  if (strncmp(lastRequestedID, target->id, COVER_ID_LEN)) {
+  // On selection change, re-request the selection and its neighbors.
+  // The device is part of the key: different devices can carry the same ID.
+  if (strncmp(lastRequestedID, target->id, COVER_ID_LEN) || (lastRequestedDevice != target->device)) {
     strncpy(lastRequestedID, target->id, COVER_ID_LEN - 1);
     lastRequestedID[COVER_ID_LEN - 1] = '\0';
+    lastRequestedDevice = target->device;
 
     flushQueue();
+    // Touch the selected slot first so queueing neighbors can never pick it
+    // as the LRU eviction victim (it would never be re-requested)
+    CoverSlot *selectedSlot = findSlot(target->id, target->device);
+    if (selectedSlot != NULL)
+      selectedSlot->lastUse = lruTick;
     queueLoad(gsGlobal, target->id, target->device);
     // Prefetch neighbors, nearest first
     Target *next = target;
@@ -639,5 +662,6 @@ void coverArtResume() {
   // Force the next coverArtGet to re-request the selection and its
   // neighbors (their queued loads were flushed by coverArtPause)
   lastRequestedID[0] = '\0';
+  lastRequestedDevice = NULL;
   unlock();
 }

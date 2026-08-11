@@ -173,8 +173,15 @@ int uiInit() {
   vsyncSema.max_count = 1;
   vsyncSema.option = 0;
   vsyncSemaID = CreateSema(&vsyncSema);
-  if (vsyncSemaID >= 0)
+  if (vsyncSemaID >= 0) {
     vsyncHandlerID = gsKit_add_vsync_handler(vsyncHandler);
+    if (vsyncHandlerID < 0) {
+      // No handler to signal the semaphore: waiting on it would deadlock.
+      // Drop it so uiSyncFlip falls back to the spinning gsKit_vsync_wait.
+      DeleteSema(vsyncSemaID);
+      vsyncSemaID = -1;
+    }
+  }
 
   // Init cover art sprite coordinates and async loader
   coverArtX2 = (gsGlobal->Width - keepoutArea - 10);
