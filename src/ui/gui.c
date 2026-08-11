@@ -19,6 +19,7 @@
 #include <ps2sdkapi.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define DIV_ROUND(n, d) (n + (d - 1)) / d
 
@@ -377,6 +378,12 @@ int uiLoop(TargetList *titles) {
     }
   }
 
+  // Seed the random title picker from the CPU cycle counter
+  // (boot timing varies with network/cache state, so this differs per boot)
+  uint32_t seed;
+  asm volatile("mfc0 %0, $9" : "=r"(seed));
+  srand(seed);
+
   // Load favorites/recently-played and build the initial view
   favoritesInit();
   TitleViewMode viewMode = VIEW_ALL;
@@ -513,8 +520,13 @@ int uiLoop(TargetList *titles) {
       }
       selectedViewIdx = idx;
     } else if ((input & PAD_SQUARE) && (viewTotal > 0)) {
-      // Toggle favorite for the selected title
+      // Toggle favorite for the selected title.
+      // Pause cover art IO first: the favorites file write must not run
+      // concurrently with the worker's file reads (device access is
+      // serialized), or the write can fail silently.
+      coverArtPause();
       favoritesToggle(curTarget);
+      coverArtResume();
       if (viewMode == VIEW_FAVORITES) {
         // Rebuild the view in case the title was just removed from it
         viewTotal = buildTitleView(titles, viewList, viewMode);
@@ -526,6 +538,9 @@ int uiLoop(TargetList *titles) {
       viewMode = (viewMode + 1) % VIEW_COUNT;
       viewTotal = buildTitleView(titles, viewList, viewMode);
       selectedViewIdx = 0;
+    } else if ((input & PAD_L3) && (viewTotal > 0)) {
+      // Jump to a random title (press Cross to play it)
+      selectedViewIdx = rand() % viewTotal;
     } else if (input & PAD_R3) {
       // Video mode picker (click the right stick)
       input = -1;    // Wait for fresh input after the picker returns
@@ -562,18 +577,24 @@ exit:
 }
 
 void drawTitleListFooter(int baseX) {
+  // Row 1: primary actions (icons), kept above the hint row
   int baseY = gsGlobal->Height - footerHeight;
-  drawIconWindow(baseX, baseY, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
-  drawIconWindow(baseX + getIconWidth(ICON_CIRCLE), baseY, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
-  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), baseY, 0, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_VCENTER,
+  int row1End = gsGlobal->Height - getFontLineHeight() - 2;
+  drawIconWindow(baseX, baseY, 0, row1End, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
+  drawIconWindow(baseX + getIconWidth(ICON_CIRCLE), baseY, 0, row1End, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
+  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), baseY, 0, row1End - 1, 0, HeaderTextColor, ALIGN_VCENTER,
                  "Launch title");
 
-  drawIconWindow(0, baseY, gsGlobal->Width - getLineWidth("Exit") - 5, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_START);
-  drawTextWindow(5 + getIconWidth(ICON_START), baseY, gsGlobal->Width, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_CENTER, "Exit");
+  drawIconWindow(0, baseY, gsGlobal->Width - getLineWidth("Exit") - 5, row1End, 0, FontMainColor, ALIGN_CENTER, ICON_START);
+  drawTextWindow(5 + getIconWidth(ICON_START), baseY, gsGlobal->Width, row1End - 1, 0, HeaderTextColor, ALIGN_CENTER, "Exit");
 
   drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Title options"), baseY, gsGlobal->Width - baseX,
-                 gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
-  drawTextWindow(0, baseY, gsGlobal->Width - baseX, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT, "Title options");
+                 row1End, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
+  drawTextWindow(0, baseY, gsGlobal->Width - baseX, row1End - 1, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT, "Title options");
+
+  // Row 2: hints for the list navigation extras
+  drawTextWindow(0, gsGlobal->Height - getFontLineHeight() - 2, gsGlobal->Width, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_HCENTER,
+                 "Square: Favorite  Select: View  L2/R2: A-Z  L3: Random  R3: Video  Stick: Scroll");
 }
 
 // Draws the title list for the active view
