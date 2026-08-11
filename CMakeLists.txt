@@ -23,6 +23,7 @@ set(SOURCES
     src/ui/gui.c
     src/ui/graphics.c
     src/ui/args.c
+    src/ui/coverart.c
     src/ui/pad.c
 
     # Devices

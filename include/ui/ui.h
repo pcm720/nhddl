@@ -7,6 +7,10 @@ int uiInit();
 int uiLoop(TargetList *titles);
 void uiCleanup();
 
+// Blocks until the next vertical blank without spinning, yielding the CPU
+// to background threads. No-op if the UI is not initialized.
+void uiWaitVSync();
+
 // Splash screen log level types
 typedef enum {
   LEVEL_INFO_NODELAY, // Prints text without delay

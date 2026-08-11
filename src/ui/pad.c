@@ -1,4 +1,5 @@
 #include "ui/pad.h"
+#include "ui/ui.h"
 #include <kernel.h>
 #include <libpad.h>
 #include <stdint.h>
@@ -60,6 +61,9 @@ int waitForInput(int button) {
     curInputs = (readPad(0, 0) | readPad(1, 0));
     if (curInputs & button)
       return curInputs;
+    // Sleep until the next frame instead of spinning at full speed,
+    // letting background threads (async cover art loader) run
+    uiWaitVSync();
   }
 }
 

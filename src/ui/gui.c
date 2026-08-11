@@ -3,6 +3,7 @@
 #include "neutrino.h"
 #include "options.h"
 #include "ui/args.h"
+#include "ui/coverart.h"
 #include "ui/graphics.h"
 #include "ui/pad.h"
 #include "ui/ui.h"
@@ -34,12 +35,7 @@ void uiSplashThread();
 void closeUISplashThread();
 
 GSGLOBAL *gsGlobal;
-static GSTEXTURE *coverTexture;
 static char lineBuffer[255];
-
-// Path relative to storage device mountpoint.
-// Used to load cover art
-static const char artPath[] = "/ART";
 
 // Cover art sprite coordinates
 // Initialized during uiInit from screen width and height
@@ -51,6 +47,53 @@ static int coverArtY1;
 static const int keepoutArea = 20;
 static const int headerHeight = 20 + keepoutArea;
 static const int footerHeight = 40 + keepoutArea;
+
+//
+// VSync handling
+//
+// gsKit_sync_flip/gsKit_vsync_wait busy-wait on the GS CSR register, which
+// keeps the main thread spinning at full priority and starves lower-priority
+// threads (the async cover art loader would never run). Instead, a vsync
+// interrupt handler signals a semaphore so the main thread truly sleeps until
+// the next vertical blank, yielding the CPU to background threads.
+//
+
+static int32_t vsyncSemaID = -1;
+static int vsyncHandlerID = -1;
+
+static int vsyncHandler(int cause) {
+  if (vsyncSemaID >= 0)
+    iSignalSema(vsyncSemaID);
+  ExitHandler();
+  return 0;
+}
+
+// Blocks until the next vertical blank without spinning.
+// No-op if the UI is not initialized.
+void uiWaitVSync() {
+  if (vsyncSemaID < 0)
+    return;
+  // Drain stale signals to lock onto the next vsync edge
+  while (PollSema(vsyncSemaID) == vsyncSemaID) {
+  }
+  WaitSema(vsyncSemaID);
+}
+
+// Drop-in replacement for gsKit_sync_flip that sleeps instead of spinning
+static void uiSyncFlip() {
+  if (!gsGlobal->FirstFrame) {
+    if (vsyncSemaID >= 0)
+      uiWaitVSync();
+    else
+      gsKit_vsync_wait(); // Fallback: spin like gsKit_sync_flip would
+
+    if (gsGlobal->DoubleBuffering == GS_SETTING_ON) {
+      GS_SET_DISPFB2(gsGlobal->ScreenBuffer[gsGlobal->ActiveBuffer & 1] / 8192, gsGlobal->Width / 64, gsGlobal->PSM, 0, 0);
+      gsGlobal->ActiveBuffer ^= 1;
+    }
+  }
+  gsKit_setactive(gsGlobal);
+}
 
 void initVMode(GSGLOBAL *gsGlobal) {
   switch (LAUNCHER_OPTIONS.vmode) {
@@ -124,42 +167,41 @@ int uiInit() {
     return -1;
   };
 
-  // Init cover texture
-  coverTexture = calloc(sizeof(GSTEXTURE), 1);
+  // Set up blocking vsync waits (see uiSyncFlip)
+  ee_sema_t vsyncSema;
+  vsyncSema.init_count = 0;
+  vsyncSema.max_count = 1;
+  vsyncSema.option = 0;
+  vsyncSemaID = CreateSema(&vsyncSema);
+  if (vsyncSemaID >= 0)
+    vsyncHandlerID = gsKit_add_vsync_handler(vsyncHandler);
+
+  // Init cover art sprite coordinates and async loader
   coverArtX2 = (gsGlobal->Width - keepoutArea - 10);
   coverArtY2 = (gsGlobal->Height / 2) + (COVER_ART_RES_H / 2);
   coverArtX1 = coverArtX2 - COVER_ART_RES_W;
   coverArtY1 = coverArtY2 - COVER_ART_RES_H;
-  coverTexture->Delayed = 1;
-
-  return 0;
-}
-
-// Invalidates currently loaded texture and loads a new one
-int loadCoverArt(struct DeviceMapEntry *device, char *titleID) {
-  if (device->metadev) { // Fallback to metadata device
-    device = device->metadev;
+  if (coverArtInit()) {
+    // Not fatal: the UI works without cover art
+    DPRINTF("ERROR: Failed to start cover art loader\n");
   }
-  // Reuse line buffer for building texture path
-  // Append cover art path to the mountpoint
-  snprintf(lineBuffer, 255, "%s%s/%s_COV.png", device->mountpoint, artPath, titleID);
-  // Upload new texture
-  gsKit_TexManager_invalidate(gsGlobal, coverTexture);
-  if (gsKit_texture_png(gsGlobal, coverTexture, lineBuffer)) {
-    return -1;
-  }
-  gsKit_TexManager_bind(gsGlobal, coverTexture);
-  // Free memory after the texture has been uploaded
-  free(coverTexture->Mem);
-  coverTexture->Mem = NULL;
+
   return 0;
 }
 
 // Frees textures and deinits gsKit
 void closeUI() {
+  coverArtShutdown();
+  if (vsyncHandlerID >= 0) {
+    gsKit_remove_vsync_handler(vsyncHandlerID);
+    vsyncHandlerID = -1;
+  }
+  if (vsyncSemaID >= 0) {
+    DeleteSema(vsyncSemaID);
+    vsyncSemaID = -1;
+  }
   gsKit_vram_clear(gsGlobal);
   closeFont();
-  free(coverTexture);
   gsKit_deinit_global(gsGlobal);
 }
 
@@ -178,7 +220,6 @@ int uiLoop(TargetList *titles) {
   // Init gamepad inputs
   initPad();
 
-  int isCoverUninitialized = 1;
   int selectedTitleIdx = 0;
   int maxTitlesPerPage = (gsGlobal->Height - (headerHeight + footerHeight)) / getFontLineHeight();
   Target *curTarget = titles->first;
@@ -206,9 +247,6 @@ int uiLoop(TargetList *titles) {
   }
   free(lastTitle);
 
-  // Load cover art
-  isCoverUninitialized = loadCoverArt(curTarget->device, curTarget->id);
-
   // Main UI loop
   int frameCount = 0;
   int prevInput = 0;
@@ -220,18 +258,19 @@ int uiLoop(TargetList *titles) {
     // Reload target if index has changed
     if (curTarget->idx != selectedTitleIdx) {
       curTarget = getTargetByIdx(titles, selectedTitleIdx);
-      isCoverUninitialized = loadCoverArt(curTarget->device, curTarget->id);
     }
 
+    // Get cover art for the selected title.
+    // Loads happen asynchronously: returns NULL until the texture is ready,
+    // so the UI never blocks on file IO or PNG decoding while scrolling.
+    GSTEXTURE *selectedTitleCover = coverArtGet(titles, curTarget);
+
     // Draw title list
-    if (!isCoverUninitialized)
-      drawTitleList(titles, selectedTitleIdx, maxTitlesPerPage, coverTexture);
-    else
-      drawTitleList(titles, selectedTitleIdx, maxTitlesPerPage, NULL);
+    drawTitleList(titles, selectedTitleIdx, maxTitlesPerPage, selectedTitleCover);
 
     gsKit_queue_exec(gsGlobal);
     gsKit_finish();
-    gsKit_sync_flip(gsGlobal);
+    uiSyncFlip();
 
     // Process user inputs:
     if (input == -1)            // If input is -1, block until input changes
@@ -251,6 +290,8 @@ int uiLoop(TargetList *titles) {
     prevInput = input;
 
     if (input & (PAD_CROSS | PAD_CIRCLE)) {
+      // Quiesce cover art IO before launching
+      coverArtPause();
       // Copy target, free title list and launch
       Target *target = copyTarget(curTarget);
       freeTargetList(titles);
@@ -284,11 +325,14 @@ int uiLoop(TargetList *titles) {
     } else if (input & PAD_TRIANGLE) {
       input = -1;    // Force UI loop to wait once uiTitleOptionsLoop returns
       prevInput = 0; // Reset previous input
+      // Pause cover art IO while the options screens do file IO
+      coverArtPause();
       // Enter title options screen
       if ((res = uiTitleOptionsLoop(curTarget)) < 0) {
         // Something went wrong, main loop must exit immediately
         return -1;
       }
+      coverArtResume();
     } else if (input & PAD_START) {
       // Quit
       break;
@@ -373,7 +417,8 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
     gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
   } else {
     gsKit_prim_sprite(gsGlobal, coverArtX1, coverArtY1, coverArtX2, coverArtY2, 1, BGColor);
-    drawTextWindow(coverArtX1, coverArtY1, coverArtX2, coverArtY2, 1, FontMainColor, ALIGN_CENTER, "No cover art");
+    // "Loading..." while the async load is in flight, "No cover art" if it failed
+    drawTextWindow(coverArtX1, coverArtY1, coverArtX2, coverArtY2, 1, FontMainColor, ALIGN_CENTER, coverArtStatusText());
   }
 }
 
@@ -440,7 +485,7 @@ int uiTitleOptionsLoop(Target *target) {
 
     gsKit_queue_exec(gsGlobal);
     gsKit_finish();
-    gsKit_sync_flip(gsGlobal);
+    uiSyncFlip();
 
     // Process user inputs
     input = waitForInput(-1);
@@ -542,7 +587,7 @@ int uiArgumentListLoop(Target *target, ArgumentList *titleArguments) {
 
     gsKit_queue_exec(gsGlobal);
     gsKit_finish();
-    gsKit_sync_flip(gsGlobal);
+    uiSyncFlip();
 
     // Process user inputs
     input = waitForInput(-1);
@@ -597,7 +642,7 @@ void uiLaunchTitle(Target *target, ArgumentList *arguments) {
 
   gsKit_queue_exec(gsGlobal);
   gsKit_finish();
-  gsKit_sync_flip(gsGlobal);
+  uiSyncFlip();
 
   // Cleanup the UI and launch title
   closePad();
