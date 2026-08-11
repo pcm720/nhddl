@@ -16,8 +16,11 @@
 // Upper bound on total decoded texture memory. Oversized cover art (full-size
 // scans) would otherwise multiply across cache slots and exhaust EE RAM.
 #define COVER_CACHE_MAX_BYTES (4 * 1024 * 1024)
-// Reject absurdly large cover art outright (the UI draws covers at 140x200)
-#define COVER_MAX_DIMENSION 512
+// Reject oversized cover art outright (the UI draws covers at 140x200).
+// 256 also bounds the VRAM bind request to ~264 KB: PAL/576p framebuffers
+// leave only ~896 KB of VRAM, and gsKit's TexManager loops forever on an
+// allocation that can never fit.
+#define COVER_MAX_DIMENSION 256
 // How many neighbors of the selected title to prefetch in each direction
 #define COVER_PREFETCH 2
 // Maximum queued load requests (selected + prefetched neighbors)
