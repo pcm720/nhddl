@@ -282,6 +282,12 @@ VModeType parseVMode(const char *modeStr) {
     return VMODE_PAL;
   if (!strncmp(modeStr, "480p", 4))
     return VMODE_480P;
+  if (!strncmp(modeStr, "576p", 4))
+    return VMODE_576P;
+  if (!strncmp(modeStr, "720p", 4))
+    return VMODE_720P;
+  if (!strncmp(modeStr, "1080i", 5))
+    return VMODE_1080I;
   return VMODE_NONE;
 }
 

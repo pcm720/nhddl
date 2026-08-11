@@ -25,6 +25,9 @@ typedef enum {
   VMODE_NTSC = GS_MODE_NTSC,
   VMODE_PAL = GS_MODE_PAL,
   VMODE_480P = GS_MODE_DTV_480P,
+  VMODE_576P = GS_MODE_DTV_576P,
+  VMODE_720P = GS_MODE_DTV_720P,   // Requires component cables
+  VMODE_1080I = GS_MODE_DTV_1080I, // Requires component cables
 } VModeType;
 
 // Launcher options

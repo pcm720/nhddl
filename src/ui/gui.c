@@ -121,6 +121,37 @@ void initVMode(GSGLOBAL *gsGlobal) {
     gsGlobal->Width = 640;
     gsGlobal->Height = 448;
     break;
+  case GS_MODE_DTV_576P:
+    DPRINTF("Forcing 576p mode\n");
+    gsGlobal->Mode = GS_MODE_DTV_576P;
+    gsGlobal->Interlace = GS_NONINTERLACED;
+    gsGlobal->Field = GS_FRAME;
+    gsGlobal->Width = 640;
+    gsGlobal->Height = 512;
+    break;
+  // HD modes (require component cables). The GS upscales the 640-wide
+  // framebuffer horizontally on output; a 16-bit framebuffer keeps the
+  // full-height render targets inside the 4 MB of VRAM.
+  case GS_MODE_DTV_720P:
+    DPRINTF("Forcing 720p mode\n");
+    gsGlobal->Mode = GS_MODE_DTV_720P;
+    gsGlobal->Interlace = GS_NONINTERLACED;
+    gsGlobal->Field = GS_FRAME;
+    gsGlobal->Width = 640; // Scaled to 1280 on output
+    gsGlobal->Height = 720;
+    gsGlobal->PSM = GS_PSM_CT16S;
+    break;
+  case GS_MODE_DTV_1080I:
+    DPRINTF("Forcing 1080i mode\n");
+    gsGlobal->Mode = GS_MODE_DTV_1080I;
+    gsGlobal->Interlace = GS_INTERLACED;
+    gsGlobal->Field = GS_FRAME; // Full-height frame; gsKit sets SMODE2 for 1080i
+    gsGlobal->Width = 640; // Scaled to 1920 on output
+    gsGlobal->Height = 1080;
+    gsGlobal->PSM = GS_PSM_CT16S;
+    // Two 640x1080 buffers plus Z would exceed 4 MB of VRAM
+    gsGlobal->DoubleBuffering = GS_SETTING_OFF;
+    break;
   default:
   }
 }
@@ -131,11 +162,13 @@ int uiInit() {
     closeUI();
   }
   gsGlobal = gsKit_init_global();
-  initVMode(gsGlobal);
   gsGlobal->PSM = GS_PSM_CT24; // Set color depth to avoid PAL VRAM issues
   gsGlobal->PSMZ = GS_PSMZ_16S;
   gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
   gsGlobal->DoubleBuffering = GS_SETTING_ON;
+  // Applied after the defaults above: HD modes override PSM/DoubleBuffering
+  // to fit their larger framebuffers into VRAM
+  initVMode(gsGlobal);
   // Setup TEST register to ignore fully transparent pixels
   gsGlobal->Test->ATST = 7;    // Set alpha test method to NOTEQUAL (pixels with A not equal to AREF pass)
   gsGlobal->Test->AREF = 0x00; // Set reference value to 0x00 (transparent)
