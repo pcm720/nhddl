@@ -69,3 +69,21 @@ int waitForInput(int button) {
 
 // Returns inputs on both gamepads
 int pollInput() { return (pollPad(0, 0) | pollPad(1, 0)); }
+
+// Returns vertical deflection of the left analog stick on gamepad 1
+// (-127..127, 0 = centered/dead zone/not in DualShock mode)
+int pollStickY() {
+  // Joystick bytes are only valid in DualShock mode (id 7);
+  // digital mode reports 0xFF, which would read as full deflection
+  if (padInfoMode(0, 0, PAD_MODECURID, 0) != 7)
+    return 0;
+
+  struct padButtonStatus buttons;
+  if (padRead(0, 0, &buttons) == 0)
+    return 0;
+
+  int v = (int)buttons.ljoy_v - 128;
+  if ((v > -48) && (v < 48)) // Dead zone
+    return 0;
+  return v;
+}

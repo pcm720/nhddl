@@ -8,6 +8,7 @@
 #include "ui/graphics.h"
 #include "ui/pad.h"
 #include "ui/ui.h"
+#include <ctype.h>
 #include <dmaKit.h>
 #include <gsKit.h>
 #include <gsToolkit.h>
@@ -344,6 +345,7 @@ int uiLoop(TargetList *titles) {
   int frameCount = 0;
   int prevInput = 0;
   int input = 0;
+  float scrollAccum = 0.0f; // Fractional analog scroll position
   while (1) {
     gsKit_clear(gsGlobal, BGColor);
     gsKit_TexManager_nextFrame(gsGlobal);
@@ -371,6 +373,25 @@ int uiLoop(TargetList *titles) {
       input = waitForInput(-1); // Used to ignore held inputs after returning from title options
     else
       input = pollInput();
+
+    // Analog speed-scroll: the left stick scrolls with speed proportional
+    // to deflection, bypassing the digital input repeat throttle below
+    if (viewTotal > 0) {
+      int stickY = pollStickY();
+      if (stickY != 0) {
+        // Quadratic response: 48..127 deflection -> ~3..20 titles per second
+        scrollAccum += ((float)stickY * (float)((stickY > 0) ? stickY : -stickY)) / 48000.0f;
+        while (scrollAccum >= 1.0f) {
+          selectedViewIdx = (selectedViewIdx + 1) % viewTotal;
+          scrollAccum -= 1.0f;
+        }
+        while (scrollAccum <= -1.0f) {
+          selectedViewIdx = ((selectedViewIdx - 1) + viewTotal) % viewTotal;
+          scrollAccum += 1.0f;
+        }
+      } else
+        scrollAccum = 0.0f;
+    }
 
     if (gsGlobal->Mode == GS_MODE_PAL)
       frameCount = (frameCount + 1) % 8; // Handle input only every 8th frame unless it changes
@@ -417,6 +438,31 @@ int uiLoop(TargetList *titles) {
         if (selectedViewIdx < 0)
           selectedViewIdx = 0;
       }
+    } else if ((input & PAD_R2) && (viewTotal > 0)) {
+      // Jump to the first title of the next letter group
+      char curLetter = toupper((unsigned char)viewList[selectedViewIdx]->name[0]);
+      for (int i = 1; i <= viewTotal; i++) {
+        int idx = (selectedViewIdx + i) % viewTotal;
+        if (toupper((unsigned char)viewList[idx]->name[0]) != curLetter) {
+          selectedViewIdx = idx;
+          break;
+        }
+      }
+    } else if ((input & PAD_L2) && (viewTotal > 0)) {
+      // Jump to the start of the current letter group,
+      // or the start of the previous group if already there
+      char curLetter = toupper((unsigned char)viewList[selectedViewIdx]->name[0]);
+      int idx = selectedViewIdx;
+      while ((idx > 0) && (toupper((unsigned char)viewList[idx - 1]->name[0]) == curLetter))
+        idx--;
+      if ((idx == selectedViewIdx) && (idx > 0)) {
+        // Already at the group start: go to the previous group's start
+        char prevLetter = toupper((unsigned char)viewList[idx - 1]->name[0]);
+        idx--;
+        while ((idx > 0) && (toupper((unsigned char)viewList[idx - 1]->name[0]) == prevLetter))
+          idx--;
+      }
+      selectedViewIdx = idx;
     } else if ((input & PAD_SQUARE) && (viewTotal > 0)) {
       // Toggle favorite for the selected title
       favoritesToggle(curTarget);

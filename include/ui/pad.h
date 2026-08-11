@@ -14,4 +14,8 @@ int waitForInput(int button);
 // Returns inputs on both gamepads
 int pollInput();
 
+// Returns vertical deflection of the left analog stick on gamepad 1
+// (-127..127, 0 = centered/dead zone/not in DualShock mode)
+int pollStickY();
+
 #endif
