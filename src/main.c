@@ -48,11 +48,17 @@ ModeType parseFilename(const char *path);
 // Tries to load IPCONFIG.DAT from memory card
 void parseIPConfig();
 
+char SELF_ELF_PATH[PATH_MAX + 1] = {0};
+
 int main(int argc, char *argv[]) {
   DPRINTF("*************\nNHDDL %s\nA Neutrino launcher by pcm720\n*************\n", GIT_VERSION);
 
   for (int i = 0; i < argc; i++)
     DPRINTF("argv[%d] = %s\n", i, argv[i]);
+
+  // Remember our own ELF path for relaunching (FTP mode exit)
+  if ((argc > 0) && (argv[0][0] != '-'))
+    strlcpy(SELF_ELF_PATH, argv[0], sizeof(SELF_ELF_PATH));
 
   // Parse arguments
   if ((argc > 0 && argv[0][0] == '-') || (argc > 1 && argv[1][0] == '-'))

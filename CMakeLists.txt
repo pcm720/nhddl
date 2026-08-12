@@ -19,6 +19,7 @@ set(SOURCES
     src/target.c
     src/forwarder.c
     src/favorites.c
+    src/ftp.c
 
     # UI
     src/ui/gui.c

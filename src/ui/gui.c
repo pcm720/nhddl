@@ -2,6 +2,7 @@
 #include "devices/devices.h"
 #include "dprintf.h"
 #include "favorites.h"
+#include "ftp.h"
 #include "neutrino.h"
 #include "options.h"
 #include "ui/args.h"
@@ -35,6 +36,7 @@ void drawTitleView(Target **view, int viewTotal, const char *viewName, int selec
 static int uiVideoModePicker();
 static void persistVideoMode(const char *configValue);
 static int uiDetailPane(TargetList *titles, Target *target);
+static void uiFTPScreen();
 
 // Video modes selectable in the picker (R3 in the title list)
 static const struct {
@@ -582,11 +584,19 @@ int uiLoop(TargetList *titles) {
       // Jump to a random title (press Cross to play it)
       selectedViewIdx = rand() % viewTotal;
     } else if (input & PAD_R3) {
-      // Video mode picker (click the right stick)
+      // Settings (click the right stick): video mode picker + FTP server
       input = -1;    // Wait for fresh input after the picker returns
       prevInput = 0;
       coverArtPause();
-      if (uiVideoModePicker()) {
+      int settingsResult = uiVideoModePicker();
+      if (settingsResult == 2) {
+        // FTP server mode: stops all device IO and reboots the IOP with the
+        // FTP stack. The only way back is a full dashboard relaunch, which
+        // uiFTPScreen performs; it never returns.
+        coverArtShutdown();
+        uiFTPScreen();
+      }
+      if (settingsResult) {
         // Display was reinitialized: recompute the layout
         maxTitlesPerPage = (gsGlobal->Height - (headerHeight + footerHeight)) / getFontLineHeight();
       }
@@ -877,6 +887,61 @@ static int uiDetailPane(TargetList *titles, Target *target) {
   }
 }
 
+// FTP server screen. Reboots the IOP with the FTP module stack (killing all
+// other device backends), shows the connection info, and on exit relaunches
+// the dashboard ELF for a clean re-initialization. NEVER RETURNS.
+static void uiFTPScreen() {
+  char ip[16] = "";
+
+  // Show a starting frame before the IOP goes down
+  gsKit_clear(gsGlobal, BGColor);
+  gsKit_TexManager_nextFrame(gsGlobal);
+  drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, "Starting FTP server...");
+  gsKit_queue_exec(gsGlobal);
+  gsKit_finish();
+  uiSyncFlip();
+
+  int res = ftpStartServer(ip, sizeof(ip));
+  if (res == 0)
+    initPad(); // The pad driver was reloaded with the IOP
+
+  int failFrames = 0;
+  while (1) {
+    gsKit_clear(gsGlobal, BGColor);
+    gsKit_TexManager_nextFrame(gsGlobal);
+    if (res == 0) {
+      snprintf(lineBuffer, 255,
+               "FTP server running\n\nftp://%s\nMemory card: /mc/0/\n\n"
+               "Game browsing is paused while FTP is active.",
+               ip);
+      drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, lineBuffer);
+      drawTextWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_CENTER,
+                     "Triangle: restart dashboard");
+    } else {
+      snprintf(lineBuffer, 255, "Failed to start FTP server (%d)\nRestarting dashboard...", res);
+      drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, ErrorTextColor, ALIGN_CENTER, lineBuffer);
+      if (failFrames++ > 240) // ~4 seconds
+        break;
+    }
+    gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
+    uiSyncFlip();
+
+    if (res == 0) {
+      int input = pollInput();
+      if (input & PAD_TRIANGLE)
+        break;
+    }
+  }
+
+  // Relaunch the dashboard for a clean re-init (restores UDPFS browsing)
+  char *selfPath = (SELF_ELF_PATH[0] != '\0') ? SELF_ELF_PATH : "mc0:/APPS/nhddl.elf";
+  LoadExecPS2(selfPath, 0, NULL);
+  // Unreachable
+  while (1) {
+  }
+}
+
 // Writes (or removes, when configValue is NULL) the video option in the
 // first device's nhddl/nhddl.yaml so the picked mode persists across boots
 static void persistVideoMode(const char *configValue) {
@@ -930,11 +995,16 @@ static void persistVideoMode(const char *configValue) {
   }
 }
 
-// Video mode picker (opened with R3 from the title list). Applies the chosen
-// mode immediately, then auto-reverts unless confirmed within ~12 seconds so
-// picking a mode the display can't show never strands the UI.
-// Returns 1 if the display was reinitialized (caller must recompute layout).
+// Settings screen (opened with R3 from the title list): video mode picker
+// plus the FTP server toggle. Chosen video modes apply immediately, then
+// auto-revert unless confirmed within ~12 seconds so picking a mode the
+// display can't show never strands the UI.
+// Returns 1 if the display was reinitialized (caller must recompute layout),
+// 2 if the user chose to start the FTP server.
 static int uiVideoModePicker() {
+  // Menu = video modes + one extra entry for the FTP server
+  const int itemsTotal = (int)VIDEO_MODES_TOTAL + 1;
+  const int ftpItem = (int)VIDEO_MODES_TOTAL;
   int selected = 0;
   int reinited = 0;
   int baseX = keepoutArea + 10;
@@ -949,14 +1019,18 @@ static int uiVideoModePicker() {
     gsKit_clear(gsGlobal, BGColor);
     gsKit_TexManager_nextFrame(gsGlobal);
 
-    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, "Video Mode");
+    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, "Settings");
     int y = headerHeight + 2 * getFontLineHeight();
+    drawText(baseX, y, 0, 0, 0, HeaderTextColor, "Video mode:");
+    y += getFontLineHeight();
     for (int i = 0; i < (int)VIDEO_MODES_TOTAL; i++) {
       snprintf(lineBuffer, 255, "%s%s", videoModes[i].label, ((videoModes[i].mode == LAUNCHER_OPTIONS.vmode) ? "  (current)" : ""));
       y = drawText(baseX + 20, y, 0, 0, 0, ((i == selected) ? ColorSelected : FontMainColor), lineBuffer);
     }
+    y += getFontLineHeight() / 2;
+    y = drawText(baseX, y, 0, 0, 0, ((selected == ftpItem) ? ColorSelected : FontMainColor), "Start FTP server (pauses game browsing)");
     drawTextWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_CENTER,
-                   "Cross: try mode (auto-reverts unless kept)\nTriangle: back");
+                   "Cross: select (video modes auto-revert unless kept)\nTriangle: back");
 
     gsKit_queue_exec(gsGlobal);
     gsKit_finish();
@@ -964,12 +1038,14 @@ static int uiVideoModePicker() {
 
     int input = waitForInput(-1);
     if (input & PAD_UP) {
-      selected = (selected - 1 + (int)VIDEO_MODES_TOTAL) % (int)VIDEO_MODES_TOTAL;
+      selected = (selected - 1 + itemsTotal) % itemsTotal;
     } else if (input & PAD_DOWN) {
-      selected = (selected + 1) % (int)VIDEO_MODES_TOTAL;
+      selected = (selected + 1) % itemsTotal;
     } else if (input & PAD_TRIANGLE) {
       return reinited;
     } else if (input & (PAD_CROSS | PAD_CIRCLE)) {
+      if (selected == ftpItem)
+        return 2;
       if (videoModes[selected].mode == LAUNCHER_OPTIONS.vmode)
         continue; // Already active
 

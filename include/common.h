@@ -41,6 +41,8 @@ typedef struct {
 
 // Path to Neutrino ELF. Initialized in main() during init.
 extern char NEUTRINO_ELF_PATH[PATH_MAX + 1];
+// Path this NHDDL ELF was launched from (argv[0]). Used for relaunching.
+extern char SELF_ELF_PATH[PATH_MAX + 1];
 // Options
 extern LauncherOptions LAUNCHER_OPTIONS;
 

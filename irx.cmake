@@ -17,6 +17,8 @@ set(IRX_FILES
     IEEE1394_bd_mini
     ps2hdd-bdm
     ps2fs
+    ps2ip
+    smap-ps2ip
 )
 
 # Local IRX files
@@ -75,6 +77,18 @@ add_custom_command(
         ${CMAKE_CURRENT_SOURCE_DIR}/iop/udpfs/udpfs
     COMMENT "Building udpfs"
 )
+
+# ps2ftpd: prebuilt in-repo (built from wLaunchELF oldlibs/ps2ftpd with the
+# same SDK container; see docs in the ps2-dashboard workspace repo)
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ps2ftpd_irx.c"
+    COMMAND ${PS2SDK}/bin/bin2c ${CMAKE_CURRENT_SOURCE_DIR}/iop/ps2ftpd.irx
+            "${CMAKE_CURRENT_BINARY_DIR}/ps2ftpd_irx.c"
+            "ps2ftpd_irx"
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/iop/ps2ftpd.irx
+    COMMENT "Converting ps2ftpd with bin2c"
+)
+list(APPEND SOURCES "${CMAKE_CURRENT_BINARY_DIR}/ps2ftpd_irx.c")
 
 foreach(IRX_FILE ${IRX_FILES})
     string(REPLACE "-" "_" irx_name_clean ${IRX_FILE})
