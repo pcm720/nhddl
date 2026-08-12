@@ -34,6 +34,7 @@ int uiArgumentListLoop(Target *target, ArgumentList *titleArguments);
 void drawTitleView(Target **view, int viewTotal, const char *viewName, int selectedIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover);
 static int uiVideoModePicker();
 static void persistVideoMode(const char *configValue);
+static int uiDetailPane(TargetList *titles, Target *target);
 
 // Video modes selectable in the picker (R3 in the title list)
 static const struct {
@@ -562,6 +563,21 @@ int uiLoop(TargetList *titles) {
       viewMode = (viewMode + 1) % VIEW_COUNT;
       viewTotal = buildTitleView(titles, viewList, viewMode);
       selectedViewIdx = 0;
+    } else if ((input & PAD_RIGHT) && (viewTotal > 0)) {
+      input = -1;    // Wait for fresh input after the pane returns
+      prevInput = 0;
+      // Pause cover art IO for the pane's info file read
+      // (the pane resumes the worker itself before its render loop)
+      coverArtPause();
+      if (uiDetailPane(titles, curTarget)) {
+        // Launch was chosen from the pane
+        coverArtPause();
+        Target *target = copyTarget(curTarget);
+        free(viewList);
+        freeTargetList(titles);
+        uiLaunchTitle(target, NULL);
+        return -1;
+      }
     } else if ((input & PAD_L3) && (viewTotal > 0)) {
       // Jump to a random title (press Cross to play it)
       selectedViewIdx = rand() % viewTotal;
@@ -726,6 +742,138 @@ void drawTitleView(Target **view, int viewTotal, const char *viewName, int selec
     gsKit_prim_sprite(gsGlobal, coverArtX1, coverArtY1, coverArtX2, coverArtY2, 1, BGColor);
     // "Loading..." while the async load is in flight, "No cover art" if it failed
     drawTextWindow(coverArtX1, coverArtY1, coverArtX2, coverArtY2, 1, FontMainColor, ALIGN_CENTER, coverArtStatusText());
+  }
+}
+
+// Word-wraps text into out (inserting newlines) so each line fits maxWidth.
+// Existing newlines are preserved.
+static void wrapText(const char *text, int maxWidth, char *out, int outSize) {
+  char word[128];
+  char measure[256];
+  int outLen = 0;
+  int lineLen = 0; // Characters on the current output line
+  int i = 0;
+
+  while ((text[i] != '\0') && (outLen < outSize - 2)) {
+    if (text[i] == '\n') {
+      out[outLen++] = '\n';
+      lineLen = 0;
+      i++;
+      continue;
+    }
+    if (text[i] == ' ') {
+      i++;
+      continue;
+    }
+    // Collect the next word
+    int wordLen = 0;
+    while ((text[i] != '\0') && (text[i] != ' ') && (text[i] != '\n') && (wordLen < 127))
+      word[wordLen++] = text[i++];
+    word[wordLen] = '\0';
+
+    // Measure the current line plus this word
+    int prefixLen = (lineLen < 200) ? lineLen : 200;
+    memcpy(measure, &out[outLen - lineLen], prefixLen);
+    measure[prefixLen] = '\0';
+    if (lineLen > 0)
+      strcat(measure, " ");
+    strncat(measure, word, sizeof(measure) - strlen(measure) - 1);
+
+    if ((lineLen > 0) && (getLineWidth(measure) > maxWidth)) {
+      // Start a new line
+      out[outLen++] = '\n';
+      lineLen = 0;
+    } else if (lineLen > 0) {
+      out[outLen++] = ' ';
+      lineLen++;
+    }
+    for (int j = 0; (j < wordLen) && (outLen < outSize - 2); j++) {
+      out[outLen++] = word[j];
+      lineLen++;
+    }
+  }
+  out[outLen] = '\0';
+}
+
+// Per-title detail pane: shows the cover bigger plus description text from
+// ART/<ID>_INFO.txt on the metadata device. Returns 1 if the user chose to
+// launch the title, 0 to go back to the list.
+static int uiDetailPane(TargetList *titles, Target *target) {
+  static char infoRaw[1536];
+  static char infoWrapped[2048];
+
+  // Read the info file (worker is paused by the caller during this read)
+  struct DeviceMapEntry *device = target->device;
+  if (device->metadev)
+    device = device->metadev;
+  snprintf(lineBuffer, 255, "%s/ART/%s_INFO.txt", device->mountpoint, target->id);
+  int infoLen = 0;
+  FILE *file = fopen(lineBuffer, "rb");
+  if (file != NULL) {
+    infoLen = fread(infoRaw, 1, sizeof(infoRaw) - 1, file);
+    if (infoLen < 0)
+      infoLen = 0;
+    fclose(file);
+  }
+  infoRaw[infoLen] = '\0';
+  if (infoLen == 0)
+    snprintf(infoRaw, sizeof(infoRaw), "No description available.\n\nAdd one on the server:\nART/%s_INFO.txt", target->id);
+
+  // Resume async cover loads for the pane render loop (no more main-thread
+  // file IO happens until the pane exits)
+  coverArtResume();
+
+  // Layout: enlarged cover on the left, wrapped text on the right
+  int baseX = keepoutArea + 10;
+  int coverH = (int)((coverArtY2 - coverArtY1) * 1.25f);
+  int coverW = (int)((coverArtX2 - coverArtX1) * 1.25f);
+  int coverY1 = headerHeight + getFontLineHeight();
+  int textX = baseX + coverW + 15;
+  int textW = gsGlobal->Width - keepoutArea - 10 - textX;
+  wrapText(infoRaw, textW, infoWrapped, sizeof(infoWrapped));
+
+  while (1) {
+    gsKit_clear(gsGlobal, BGColor);
+    gsKit_TexManager_nextFrame(gsGlobal);
+
+    // Header: title name + ID
+    snprintf(lineBuffer, 255, "%s\n%s", target->name, target->id);
+    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, lineBuffer);
+
+    // Cover (async; placeholder frame while loading)
+    GSTEXTURE *cover = coverArtGet(titles, target);
+    gsKit_prim_sprite(gsGlobal, baseX - 2, coverY1 - 2, baseX + coverW + 2, coverY1 + coverH + 2, 1, FontMainColor);
+    if (cover != NULL) {
+      gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
+      gsKit_prim_sprite_texture(gsGlobal, cover, baseX, coverY1, 0.0f, 0.0f, baseX + coverW, coverY1 + coverH, cover->Width, cover->Height, 2,
+                                FontMainColor);
+      gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+    } else {
+      gsKit_prim_sprite(gsGlobal, baseX, coverY1, baseX + coverW, coverY1 + coverH, 1, BGColor);
+      drawTextWindow(baseX, coverY1, baseX + coverW, coverY1 + coverH, 1, FontMainColor, ALIGN_CENTER, coverArtStatusText());
+    }
+
+    // Description text
+    drawText(textX, coverY1, 0, 0, gsGlobal->Height - footerHeight - coverY1, FontMainColor, infoWrapped);
+
+    // Footer
+    drawIconWindow(baseX, gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
+    drawTextWindow(baseX + 5 + getIconWidth(ICON_CROSS), gsGlobal->Height - footerHeight, 0, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_VCENTER,
+                   "Launch title");
+    drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Back"), gsGlobal->Height - footerHeight,
+                   gsGlobal->Width - baseX, gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
+    drawTextWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width - baseX, gsGlobal->Height - 1, 0, HeaderTextColor,
+                   ALIGN_VCENTER | ALIGN_RIGHT, "Back");
+
+    gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
+    uiSyncFlip();
+
+    int input = waitForInput(-1);
+    if (input & (PAD_CROSS | PAD_CIRCLE))
+      return 1;
+    if (input & (PAD_TRIANGLE | PAD_LEFT))
+      return 0;
   }
 }
 
