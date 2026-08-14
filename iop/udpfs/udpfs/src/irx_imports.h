@@ -7,8 +7,12 @@
 #include <bdm.h>
 #include <ioman.h>
 #include <loadcore.h>
+#ifdef FEATURE_UDPFS_PS2IP
+#include <ps2ip.h>
+#else
 #include <mstack.h>
 #include "smap.h"
+#endif
 #include <stdio.h>
 #include <sysclib.h>
 #include <thbase.h>

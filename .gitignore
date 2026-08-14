@@ -5,6 +5,7 @@ neutrino/
 *.elf
 *.o
 *.irx
+!iop/ps2ftpd.irx
 *.yaml
 *.toml
 !examples/*.yaml

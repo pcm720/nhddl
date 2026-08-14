@@ -7,6 +7,10 @@ int uiInit();
 int uiLoop(TargetList *titles);
 void uiCleanup();
 
+// Rebinds the EE power-button callback to the currently loaded poweroff.irx.
+// Call this after every IOP reboot once poweroff.irx is resident.
+int uiInitPowerReset();
+
 // Blocks until the next vertical blank without spinning, yielding the CPU
 // to background threads. No-op if the UI is not initialized.
 void uiWaitVSync();

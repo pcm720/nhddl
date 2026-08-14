@@ -37,12 +37,18 @@ typedef struct {
   char udpfsIp[16];
   char *image; // Used along with the mode argument to turn NHDDL into a simple Neutrino forwarder
   int noInit;
+  // When enabled, a short front-panel power-button press restarts NHDDL.
+  // Disabled by default so a stock installation retains normal power-off.
+  int powerButtonReset;
+  char safeFallbackPath[PATH_MAX + 1];
 } LauncherOptions;
 
 // Path to Neutrino ELF. Initialized in main() during init.
 extern char NEUTRINO_ELF_PATH[PATH_MAX + 1];
 // Path this NHDDL ELF was launched from (argv[0]). Used for relaunching.
 extern char SELF_ELF_PATH[PATH_MAX + 1];
+// Exact nhddl.yaml path selected by loadOptions(). Settings write back here.
+extern char OPTIONS_FILE_PATH[PATH_MAX + 1];
 // Options
 extern LauncherOptions LAUNCHER_OPTIONS;
 

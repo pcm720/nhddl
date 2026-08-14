@@ -6,6 +6,7 @@ set(IRX_FILES
     fileXio
     iomanX
     freepad
+    poweroff
     ps2dev9
     bdm
     bdmfs_fatfs
@@ -18,15 +19,15 @@ set(IRX_FILES
     ps2hdd-bdm
     ps2fs
     ps2ip
+    ps2ips
     smap-ps2ip
 )
 
 # Local IRX files
 set(LOCAL_IRX_FILES
     mmceman
-    smap
-    ministack
-    udpfs_ioman
+    resetspu
+    udpfs_ioman_ps2ip
 )
 
 # mmceman
@@ -43,7 +44,8 @@ add_custom_command(
 )
 
 
-# smap, ministack, udpfs_ioman
+# Legacy ministack targets are kept available for Neutrino/fallback builds,
+# but NHDDL embeds only the PS2IP-backed IOMAN variant below.
 add_custom_command(
     OUTPUT
         ${CMAKE_CURRENT_BINARY_DIR}/smap.irx
@@ -54,6 +56,38 @@ add_custom_command(
     WORKING_DIRECTORY
         ${CMAKE_CURRENT_SOURCE_DIR}/iop/udpfs/smap
     COMMENT "Building smap"
+)
+
+# OPL's one-shot SPU2 reset module. It exits with MODULE_NO_RESIDENT_END after
+# clearing both SPU cores, so NHDDL loads it through a dedicated helper rather
+# than treating it as a normal resident module.
+add_custom_command(
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/resetspu.irx
+    COMMAND make -C ${CMAKE_CURRENT_SOURCE_DIR}/iop/resetspu clean
+    COMMAND make -C ${CMAKE_CURRENT_SOURCE_DIR}/iop/resetspu
+    COMMAND ${CMAKE_COMMAND} -E rename
+        ${CMAKE_CURRENT_SOURCE_DIR}/iop/resetspu/resetspu.irx
+        ${CMAKE_CURRENT_BINARY_DIR}/resetspu.irx
+    DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/iop/resetspu/Makefile
+        ${CMAKE_CURRENT_SOURCE_DIR}/iop/resetspu/resetspu.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/iop/resetspu/imports.lst
+        ${CMAKE_CURRENT_SOURCE_DIR}/iop/resetspu/irx_imports.h
+    WORKING_DIRECTORY
+        ${CMAKE_CURRENT_SOURCE_DIR}/iop/resetspu
+    COMMENT "Building OPL resetspu"
+)
+add_custom_command(
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/udpfs_ioman_ps2ip.irx
+    COMMAND make -C ${CMAKE_CURRENT_SOURCE_DIR}/iop/udpfs/udpfs UDPFS_IOMAN_PS2IP=1
+    COMMAND ${CMAKE_COMMAND} -E rename
+        ${CMAKE_CURRENT_SOURCE_DIR}/iop/udpfs/udpfs/irx/udpfs_ioman_ps2ip.irx
+        ${CMAKE_CURRENT_BINARY_DIR}/udpfs_ioman_ps2ip.irx
+    WORKING_DIRECTORY
+        ${CMAKE_CURRENT_SOURCE_DIR}/iop/udpfs/udpfs
+    COMMENT "Building PS2IP-backed udpfs"
 )
 add_custom_command(
     OUTPUT
@@ -78,8 +112,9 @@ add_custom_command(
     COMMENT "Building udpfs"
 )
 
-# ps2ftpd: prebuilt in-repo (built from wLaunchELF oldlibs/ps2ftpd with the
-# same SDK container; see docs in the ps2-dashboard workspace repo)
+# ps2ftpd: the exact hardware-validated module is retained in-repo so a fresh
+# clone produces the tested dashboard. Its AFL-2.0 source and build notes are
+# retained under iop/ps2ftpd-src/.
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ps2ftpd_irx.c"
     COMMAND ${PS2SDK}/bin/bin2c ${CMAKE_CURRENT_SOURCE_DIR}/iop/ps2ftpd.irx

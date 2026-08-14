@@ -16,11 +16,13 @@
 #include <gsToolkit.h>
 #include <kernel.h>
 #include <libpad.h>
+#include <libpwroff.h>
 #include <malloc.h>
-#include <ps2sdkapi.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <debug.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define DIV_ROUND(n, d) (n + (d - 1)) / d
 
@@ -33,12 +35,14 @@ int uiLoop(TargetList *titles);
 int uiTitleOptionsLoop(Target *title);
 int uiArgumentListLoop(Target *target, ArgumentList *titleArguments);
 void drawTitleView(Target **view, int viewTotal, const char *viewName, int selectedIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover);
-static int uiVideoModePicker();
-static void persistVideoMode(const char *configValue);
+static int uiSettingsMenu(int hasSelectedTitle);
+static void uiControlsScreen();
+static int persistVideoMode(const char *configValue);
 static int uiDetailPane(TargetList *titles, Target *target);
-static void uiFTPScreen();
+static int uiSearchScreen();
+static int uiFtpSettings();
 
-// Video modes selectable in the picker (R3 in the title list)
+// Video modes selectable from Settings.
 static const struct {
   const char *label;
   const char *configValue; // Value written to nhddl.yaml, NULL = remove the line
@@ -49,19 +53,38 @@ static const struct {
     {"PAL (576i)", "pal", VMODE_PAL},
     {"480p", "480p", VMODE_480P},
     {"576p", "576p", VMODE_576P},
-    {"720p (needs component cables)", "720p", VMODE_720P},
-    {"1080i (needs component cables)", "1080i", VMODE_1080I},
+    {"720p (HDMI adapter/component)", "720p", VMODE_720P},
+    {"1080i (HDMI adapter/component)", "1080i", VMODE_1080I},
 };
 #define VIDEO_MODES_TOTAL (sizeof(videoModes) / sizeof(videoModes[0]))
 
-// Title list view modes (cycled with Select)
+// Title list view modes (cycled with D-pad Left; search uses Triangle)
 typedef enum {
   VIEW_ALL = 0,
   VIEW_FAVORITES,
   VIEW_RECENT,
-  VIEW_COUNT,
+  VIEW_COUNT, // Views cycled by D-pad Left stop here
+  VIEW_SEARCH,
 } TitleViewMode;
-static const char *viewNames[] = {"Title List", "Favorites", "Recently Played"};
+static const char *viewNames[] = {"Title List", "Favorites", "Recently Played", "", "Search Results"};
+
+// Active search query (VIEW_SEARCH)
+static char searchQuery[33] = "";
+
+// Case-insensitive substring match (newlib has no strcasestr)
+static int nameMatchesQuery(const char *name, const char *query) {
+  if (query[0] == '\0')
+    return 1;
+  int queryLen = strlen(query);
+  for (int i = 0; name[i] != '\0'; i++) {
+    int j = 0;
+    while ((j < queryLen) && (name[i + j] != '\0') && (tolower((unsigned char)name[i + j]) == tolower((unsigned char)query[j])))
+      j++;
+    if (j == queryLen)
+      return 1;
+  }
+  return 0;
+}
 
 // Fills view with targets for the given mode and returns the view size.
 // view must have room for titles->total pointers.
@@ -87,7 +110,8 @@ static int buildTitleView(TargetList *titles, Target **view, TitleViewMode mode)
 
   cur = titles->first;
   while (cur != NULL) {
-    if ((mode == VIEW_ALL) || favoritesIsFavorite(cur))
+    if ((mode == VIEW_ALL) || ((mode == VIEW_SEARCH) && nameMatchesQuery(cur->name, searchQuery)) ||
+        ((mode == VIEW_FAVORITES) && favoritesIsFavorite(cur)))
       view[total++] = cur;
     cur = cur->next;
   }
@@ -101,6 +125,17 @@ void closeUISplashThread();
 
 GSGLOBAL *gsGlobal;
 static char lineBuffer[255];
+
+// Total titles in the library (set once in uiLoop). Used by the status bar;
+// a non-zero value means the game server was reachable at startup.
+static int libraryTotal = 0;
+
+// Restrained translucent surfaces keep the custom wallpaper visible while
+// giving the list, metadata and controls a clear visual hierarchy.
+static const uint64_t PanelColor = GS_SETREG_RGBA(0x04, 0x0B, 0x20, 0x58);
+static const uint64_t PanelStrongColor = GS_SETREG_RGBA(0x03, 0x08, 0x18, 0x70);
+static const uint64_t SelectionPanelColor = GS_SETREG_RGBA(0x00, 0x3A, 0x58, 0x58);
+static const uint64_t AccentColor = GS_SETREG_RGBA(0x00, 0x72, 0xA0, 0x80);
 
 // Optional custom background, loaded from <device>/THM/bg.png.
 // Palettized (8-bit) PNGs are strongly recommended: they use a fraction of
@@ -116,9 +151,18 @@ static int coverArtY2;
 static int coverArtX1;
 static int coverArtY1;
 
-static const int keepoutArea = 20;
-static const int headerHeight = 20 + keepoutArea;
-static const int footerHeight = 40 + keepoutArea;
+// Recomputed after every video-mode change. The old fixed 40/60-pixel bands
+// overlapped scaled text in HD modes and wasted two footer rows in SD.
+static int keepoutArea = 20;
+static int headerHeight = 44;
+static int footerHeight = 38;
+static int titleRowHeight = 19;
+
+static int getMaxTitlesPerPage() {
+  int available = gsGlobal->Height - headerHeight - footerHeight - (int)(12 * getUIScale());
+  int rows = available / titleRowHeight;
+  return (rows > 0) ? rows : 1;
+}
 
 //
 // VSync handling
@@ -133,7 +177,95 @@ static const int footerHeight = 40 + keepoutArea;
 static int32_t vsyncSemaID = -1;
 static int vsyncHandlerID = -1;
 
+#define POWER_RESET_STACK_SIZE (8 * 1024)
+static uint8_t powerResetStack[POWER_RESET_STACK_SIZE] __attribute__((aligned(16)));
+static int32_t powerResetSemaID = -1;
+static int32_t powerResetThreadID = -1;
+static volatile int powerResetRequested = 0;
+
+static void powerResetThread(void *arg) {
+  (void)arg;
+
+  for (;;) {
+    WaitSema(powerResetSemaID);
+    DPRINTF("Power reset: front-panel press detected\n");
+    int result = restartDashboardNow();
+
+    // The prepared loader should never return. If both it and the live-load
+    // fallback fail, leave a visible error and return to the system browser.
+    init_scr();
+    scr_printf("\n\n\n  Dashboard power reset failed: %d\n", result);
+    Exit(0);
+  }
+}
+
+static int initPowerResetThread(void) {
+  if (powerResetThreadID >= 0)
+    return 0;
+
+  ee_sema_t sema;
+  sema.init_count = 0;
+  sema.max_count = 1;
+  sema.option = 0;
+  powerResetSemaID = CreateSema(&sema);
+  if (powerResetSemaID < 0)
+    return powerResetSemaID;
+
+  ee_thread_t thread;
+  memset(&thread, 0, sizeof(thread));
+  thread.func = powerResetThread;
+  thread.stack = powerResetStack;
+  thread.stack_size = POWER_RESET_STACK_SIZE;
+  thread.gp_reg = &_gp;
+  thread.initial_priority = 1;
+  powerResetThreadID = CreateThread(&thread);
+  if (powerResetThreadID < 0) {
+    DeleteSema(powerResetSemaID);
+    powerResetSemaID = -1;
+    return powerResetThreadID;
+  }
+  int result = StartThread(powerResetThreadID, NULL);
+  if (result < 0) {
+    DeleteThread(powerResetThreadID);
+    DeleteSema(powerResetSemaID);
+    powerResetThreadID = -1;
+    powerResetSemaID = -1;
+    return result;
+  }
+  return 0;
+}
+
+// poweroff.irx clears the hardware event and forwards one notification here
+// from its RPC thread. Keep this callback tiny: the priority-1 worker performs
+// the staged dashboard handoff from ordinary EE thread context.
+static void powerResetCallback(void *arg) {
+  (void)arg;
+
+  if ((powerResetSemaID >= 0) && !powerResetRequested) {
+    powerResetRequested = 1;
+    SignalSema(powerResetSemaID);
+  }
+}
+
+int uiInitPowerReset() {
+  int result = initPowerResetThread();
+  if (result < 0)
+    return result;
+
+  // This must run only after poweroff.irx is resident. libpoweroff detects an
+  // IOP reboot, rebuilds its RPC callback thread, and disables the module's
+  // normal auto-shutdown so a short press becomes our restart event.
+  result = poweroffInit();
+  if (result < 0)
+    return result;
+  poweroffSetCallback(powerResetCallback, NULL);
+  DPRINTF("Power reset: callback armed\n");
+  return 0;
+}
+
 static int vsyncHandler(int cause) {
+  (void)cause;
+
   if (vsyncSemaID >= 0)
     iSignalSema(vsyncSemaID);
   ExitHandler();
@@ -201,28 +333,36 @@ void initVMode(GSGLOBAL *gsGlobal) {
     gsGlobal->Width = 640;
     gsGlobal->Height = 512;
     break;
-  // HD modes (require component cables). The GS upscales the 640-wide
-  // framebuffer horizontally on output; a 16-bit framebuffer keeps the
-  // full-height render targets inside the 4 MB of VRAM.
+  // Render 720p through a square-pixel 640x360 canvas. gsKit magnifies it 2x
+  // in both axes to the 1280x720 signal, so geometry stays correctly shaped.
+  // Two CT16S buffers fit comfortably in GS VRAM and prevent the television
+  // from scanning the same buffer that the UI is clearing/redrawing (the
+  // cause of the moving blank band and flickering cover top on real hardware).
   case GS_MODE_DTV_720P:
     DPRINTF("Forcing 720p mode\n");
     gsGlobal->Mode = GS_MODE_DTV_720P;
     gsGlobal->Interlace = GS_NONINTERLACED;
     gsGlobal->Field = GS_FRAME;
-    gsGlobal->Width = 640; // Scaled to 1280 on output
-    gsGlobal->Height = 720;
+    gsGlobal->Width = 640;
+    gsGlobal->Height = 360;
     gsGlobal->PSM = GS_PSM_CT16S;
+    gsGlobal->DoubleBuffering = GS_SETTING_ON;
+    gsGlobal->ZBuffering = GS_SETTING_OFF;
+    gsGlobal->Dithering = GS_SETTING_ON;
     break;
   case GS_MODE_DTV_1080I:
     DPRINTF("Forcing 1080i mode\n");
     gsGlobal->Mode = GS_MODE_DTV_1080I;
     gsGlobal->Interlace = GS_INTERLACED;
-    gsGlobal->Field = GS_FRAME; // Full-height frame; gsKit sets SMODE2 for 1080i
-    gsGlobal->Width = 640; // Scaled to 1920 on output
-    gsGlobal->Height = 1080;
+    gsGlobal->Field = GS_FRAME;
+    // 960x540 is magnified 2x in both axes by gsKit for a correctly shaped
+    // 1920x1080i output. Rendering 640x1080 stretched X by 3x and Y by 1x.
+    gsGlobal->Width = 960;
+    gsGlobal->Height = 540;
     gsGlobal->PSM = GS_PSM_CT16S;
-    // Two 640x1080 buffers plus Z would exceed 4 MB of VRAM
     gsGlobal->DoubleBuffering = GS_SETTING_OFF;
+    gsGlobal->ZBuffering = GS_SETTING_OFF;
+    gsGlobal->Dithering = GS_SETTING_ON;
     break;
   default:
   }
@@ -241,6 +381,21 @@ int uiInit() {
   // Applied after the defaults above: HD modes override PSM/DoubleBuffering
   // to fit their larger framebuffers into VRAM
   initVMode(gsGlobal);
+
+  // Establish all scaled metrics before resources and layout are created.
+  // 720p's 640x360 canvas is magnified evenly by the GS. A slightly compact
+  // logical scale preserves roughly the same physical text size as SD while
+  // retaining enough rows for the title list.
+  float uiScale = 1.0f;
+  if (gsGlobal->Mode == GS_MODE_DTV_720P)
+    uiScale = 0.85f;
+  else if (gsGlobal->Mode == GS_MODE_DTV_1080I)
+    uiScale = 1.25f;
+  setUIScale(uiScale);
+  keepoutArea = (int)(20 * uiScale);
+  headerHeight = getFontLineHeight() * 2 + (int)(8 * uiScale);
+  footerHeight = getFontLineHeight() + (int)(16 * uiScale);
+  titleRowHeight = getFontLineHeight() + (int)(2 * uiScale);
   // Setup TEST register to ignore fully transparent pixels
   gsGlobal->Test->ATST = 7;    // Set alpha test method to NOTEQUAL (pixels with A not equal to AREF pass)
   gsGlobal->Test->AREF = 0x00; // Set reference value to 0x00 (transparent)
@@ -273,6 +428,10 @@ int uiInit() {
   };
 
   // Set up blocking vsync waits (see uiSyncFlip)
+  int powerThreadResult = initPowerResetThread();
+  if (powerThreadResult < 0)
+    DPRINTF("WARN: failed to start power-reset thread: %d\n", powerThreadResult);
+
   ee_sema_t vsyncSema;
   vsyncSema.init_count = 0;
   vsyncSema.max_count = 1;
@@ -288,24 +447,21 @@ int uiInit() {
     }
   }
 
-  // Scale the UI for HD modes: fixed pixel sizes tuned for 448/512 lines
-  // look tiny at 720/1080 lines. Half-steps keep glyph scaling acceptable.
-  float uiScale = 1.0f;
-  if (gsGlobal->Height >= 1000)
-    uiScale = 2.0f;
-  else if (gsGlobal->Height >= 700)
-    uiScale = 1.5f;
-  setUIScale(uiScale);
-
   // Init cover art sprite coordinates and async loader.
-  // HD modes are 16:9: logical pixels are wider, so compensate the cover
-  // width to preserve the box art aspect ratio.
-  int coverW = (int)(COVER_ART_RES_W * uiScale * ((uiScale > 1.0f) ? 0.75f : 1.0f));
+  // All active canvases now have square logical pixels, so no per-mode aspect
+  // compensation is necessary.
+  int coverW = (int)(COVER_ART_RES_W * uiScale);
   int coverH = (int)(COVER_ART_RES_H * uiScale);
-  coverArtX2 = (gsGlobal->Width - keepoutArea - 10);
-  coverArtY2 = (gsGlobal->Height / 2) + (coverH / 2);
+  int contentTop = headerHeight + (int)(8 * uiScale);
+  int contentBottom = gsGlobal->Height - footerHeight - (int)(8 * uiScale);
+  int metadataHeight = getFontLineHeightScaled(uiScale * 0.82f) * 2 + (int)(6 * uiScale);
+  int coverAreaHeight = contentBottom - contentTop - metadataHeight;
+  coverArtX2 = gsGlobal->Width - keepoutArea;
+  coverArtY1 = contentTop + ((coverAreaHeight - coverH) / 2);
+  if (coverArtY1 < contentTop)
+    coverArtY1 = contentTop;
+  coverArtY2 = coverArtY1 + coverH;
   coverArtX1 = coverArtX2 - coverW;
-  coverArtY1 = coverArtY2 - coverH;
   if (coverArtInit()) {
     // Not fatal: the UI works without cover art
     DPRINTF("ERROR: Failed to start cover art loader\n");
@@ -346,7 +502,7 @@ int uiLoop(TargetList *titles) {
   // Init gamepad inputs
   initPad();
 
-  int maxTitlesPerPage = (gsGlobal->Height - (headerHeight + footerHeight)) / getFontLineHeight();
+  int maxTitlesPerPage = getMaxTitlesPerPage();
   Target *curTarget = titles->first;
 
   // Get last launched title and find it in the target list
@@ -410,6 +566,9 @@ int uiLoop(TargetList *titles) {
   uint32_t seed;
   asm volatile("mfc0 %0, $9" : "=r"(seed));
   srand(seed);
+
+  // Record the library size for the status bar (non-zero == server reachable)
+  libraryTotal = titles->total;
 
   // Load favorites/recently-played and build the initial view
   favoritesInit();
@@ -487,7 +646,7 @@ int uiLoop(TargetList *titles) {
     frameCount = 0;
     prevInput = input;
 
-    if ((input & (PAD_CROSS | PAD_CIRCLE)) && (viewTotal > 0)) {
+    if ((input & PAD_CROSS) && (viewTotal > 0)) {
       // Quiesce cover art IO before launching
       coverArtPause();
       // Copy target, free title list and launch
@@ -547,6 +706,9 @@ int uiLoop(TargetList *titles) {
       }
       selectedViewIdx = idx;
     } else if ((input & PAD_SQUARE) && (viewTotal > 0)) {
+      // Jump to a random title (press Cross to play it)
+      selectedViewIdx = rand() % viewTotal;
+    } else if ((input & PAD_CIRCLE) && (viewTotal > 0)) {
       // Toggle favorite for the selected title.
       // Pause cover art IO first: the favorites file write must not run
       // concurrently with the worker's file reads (device access is
@@ -560,11 +722,20 @@ int uiLoop(TargetList *titles) {
         if (selectedViewIdx >= viewTotal)
           selectedViewIdx = (viewTotal > 0) ? (viewTotal - 1) : 0;
       }
-    } else if (input & PAD_SELECT) {
+    } else if (input & PAD_LEFT) {
       // Cycle between All -> Favorites -> Recently Played views
       viewMode = (viewMode + 1) % VIEW_COUNT;
       viewTotal = buildTitleView(titles, viewList, viewMode);
       selectedViewIdx = 0;
+    } else if (input & PAD_TRIANGLE) {
+      // Search: on-screen keyboard filter
+      input = -1;    // Wait for fresh input after the keyboard returns
+      prevInput = 0;
+      if (uiSearchScreen()) {
+        viewMode = VIEW_SEARCH;
+        viewTotal = buildTitleView(titles, viewList, viewMode);
+        selectedViewIdx = 0;
+      }
     } else if ((input & PAD_RIGHT) && (viewTotal > 0)) {
       input = -1;    // Wait for fresh input after the pane returns
       prevInput = 0;
@@ -580,36 +751,43 @@ int uiLoop(TargetList *titles) {
         uiLaunchTitle(target, NULL);
         return -1;
       }
-    } else if ((input & PAD_L3) && (viewTotal > 0)) {
-      // Jump to a random title (press Cross to play it)
-      selectedViewIdx = rand() % viewTotal;
-    } else if (input & PAD_R3) {
-      // Settings (click the right stick): video mode picker + FTP server
+    } else if (input & PAD_SELECT) {
+      // Settings: title options, video, controls, FTP, and maintenance
       input = -1;    // Wait for fresh input after the picker returns
       prevInput = 0;
       coverArtPause();
-      int settingsResult = uiVideoModePicker();
+      int settingsResult = uiSettingsMenu(viewTotal > 0);
       if (settingsResult == 2) {
-        // FTP server mode: stops all device IO and reboots the IOP with the
-        // FTP stack. The only way back is a full dashboard relaunch, which
-        // uiFTPScreen performs; it never returns.
-        coverArtShutdown();
-        uiFTPScreen();
+        uiFtpSettings(); // Background FTP status; dashboard stays resident
+        settingsResult = 0;
+      } else if (settingsResult == 3) {
+        // Keep uLaunchELF available as a separate recovery/maintenance path.
+        // Stop the asynchronous file worker before DEV9/fileXio disappears;
+        // otherwise closeUI() can wait forever on an RPC that was reset.
+        coverArtPause();
+        // DEV9 must be stopped while fileXio is alive. The overlap-safe ELF
+        // loader then stages BOOT.ELF before it resets the IOP.
+        ftpShutdownNetwork();
+        closePad();
+        closeUI();
+        int execResult = launchExternalELF("mc0:/BOOT/BOOT.ELF");
+        init_scr();
+        scr_printf("\n\n\n  Failed to launch mc0:/BOOT/BOOT.ELF: %d\n", execResult);
+        SleepThread();
+      } else if (settingsResult == 4) {
+        uiControlsScreen();
+        settingsResult = 0;
+      } else if (settingsResult == 5) {
+        // Per-title launch options now live inside the one Settings menu.
+        // The cover-art worker is already paused for the settings flow, so
+        // title config reads/writes remain serialized with device access.
+        if ((res = uiTitleOptionsLoop(curTarget)) < 0)
+          return -1;
+        settingsResult = 0;
       }
       if (settingsResult) {
         // Display was reinitialized: recompute the layout
-        maxTitlesPerPage = (gsGlobal->Height - (headerHeight + footerHeight)) / getFontLineHeight();
-      }
-      coverArtResume();
-    } else if ((input & PAD_TRIANGLE) && (viewTotal > 0)) {
-      input = -1;    // Force UI loop to wait once uiTitleOptionsLoop returns
-      prevInput = 0; // Reset previous input
-      // Pause cover art IO while the options screens do file IO
-      coverArtPause();
-      // Enter title options screen
-      if ((res = uiTitleOptionsLoop(curTarget)) < 0) {
-        // Something went wrong, main loop must exit immediately
-        return -1;
+        maxTitlesPerPage = getMaxTitlesPerPage();
       }
       coverArtResume();
     } else if (input & PAD_START) {
@@ -638,47 +816,124 @@ static int drawButtonPill(int x, int y, const char *label) {
 }
 
 // Draws a button pill followed by its action label.
-// Returns the x coordinate after the group, including trailing spacing.
+// Returns the x coordinate immediately after the group.
 static int drawButtonHint(int x, int y, const char *button, const char *action) {
   x = drawButtonPill(x, y, button) + 4;
   drawText(x, y, 0, 0, 0, HeaderTextColor, action);
-  return x + (int)getLineWidth(action) + 14;
+  return x + (int)getLineWidth(action);
+}
+
+static int getButtonHintWidth(const char *button, const char *action) {
+  return (int)getLineWidth(button) + 8 + 4 + (int)getLineWidth(action);
+}
+
+// A controller glyph followed by its action label. These helpers keep every
+// full-screen menu consistent with the icon-based title/options footers rather
+// than spelling button names out as ordinary text.
+typedef struct {
+  IconType icon;
+  const char *action;
+} IconHint;
+
+static int getIconHintWidth(const IconHint *hint) {
+  return getIconWidth(hint->icon) + 4 + (int)getLineWidth(hint->action);
+}
+
+static int drawIconHintAt(int x, int y1, int y2, const IconHint *hint) {
+  int iconWidth = getIconWidth(hint->icon);
+  drawIconWindow(x, y1, x + iconWidth, y2, 0, FontMainColor,
+                 ALIGN_VCENTER | ALIGN_LEFT, hint->icon);
+  drawTextWindow(x + iconWidth + 4, y1, 0, y2, 0, HeaderTextColor,
+                 ALIGN_VCENTER, hint->action);
+  return x + getIconHintWidth(hint);
+}
+
+static void drawIconHintRow(int y1, int y2, const IconHint *hints, int count) {
+  const int spacing = 14;
+  int totalWidth = 0;
+  for (int i = 0; i < count; i++)
+    totalWidth += getIconHintWidth(&hints[i]);
+  if (count > 1)
+    totalWidth += spacing * (count - 1);
+
+  gsKit_prim_sprite(gsGlobal, 0, y1, gsGlobal->Width, y2, 0, PanelStrongColor);
+
+  int x = (gsGlobal->Width - totalWidth) / 2;
+  for (int i = 0; i < count; i++) {
+    x = drawIconHintAt(x, y1, y2, &hints[i]) + spacing;
+  }
 }
 
 void drawTitleListFooter(int baseX) {
-  // Row 1: primary actions (icons), kept above the hint row
-  int baseY = gsGlobal->Height - footerHeight;
-  int row1End = gsGlobal->Height - getFontLineHeight() - 2;
-  drawIconWindow(baseX, baseY, 0, row1End, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
-  drawIconWindow(baseX + getIconWidth(ICON_CIRCLE), baseY, 0, row1End, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
-  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), baseY, 0, row1End - 1, 0, HeaderTextColor, ALIGN_VCENTER,
-                 "Launch title");
+  (void)baseX;
 
-  drawIconWindow(0, baseY, gsGlobal->Width - getLineWidth("Exit") - 5, row1End, 0, FontMainColor, ALIGN_CENTER, ICON_START);
-  drawTextWindow(5 + getIconWidth(ICON_START), baseY, gsGlobal->Width, row1End - 1, 0, HeaderTextColor, ALIGN_CENTER, "Exit");
+  // One row, ordered by the user's primary workflow. Labels stay identical
+  // in every video mode so the footer never changes terminology.
+  const int spacing = (getUIScale() > 1.0f) ? 2 : 4;
+  const IconHint play = {ICON_CROSS, "Play"};
+  const IconHint search = {ICON_TRIANGLE, "Search"};
+  const IconHint random = {ICON_SQUARE, "Random"};
+  const IconHint favorite = {ICON_CIRCLE, "Fave"};
+  const IconHint settings = {ICON_SELECT, "Settings"};
 
-  drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Title options"), baseY, gsGlobal->Width - baseX,
-                 row1End, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
-  drawTextWindow(0, baseY, gsGlobal->Width - baseX, row1End - 1, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT, "Title options");
+  int totalWidth = getIconHintWidth(&play) + getIconHintWidth(&search) +
+                   getIconHintWidth(&random) + getIconHintWidth(&favorite) +
+                   getButtonHintWidth("<", "View") +
+                   getButtonHintWidth(">", "Info") +
+                   getIconHintWidth(&settings) + spacing * 6;
 
-  // Row 2: hints for the list navigation extras
-  // (button pill + action label groups, matching row 1's icon+label style)
-  int hintY = gsGlobal->Height - getFontLineHeight() - 3;
-  int hx = baseX;
-  drawIconWindow(hx, hintY, 0, gsGlobal->Height - 2, 0, FontMainColor, ALIGN_VCENTER, ICON_SQUARE);
-  hx += getIconWidth(ICON_SQUARE) + 4;
-  drawText(hx, hintY, 0, 0, 0, HeaderTextColor, "Favorite");
-  hx += (int)getLineWidth("Favorite") + 14;
-  hx = drawButtonHint(hx, hintY, "SEL", "View");
-  hx = drawButtonPill(hx, hintY, "L2") + 2;
-  hx = drawButtonHint(hx, hintY, "R2", "A-Z");
-  hx = drawButtonHint(hx, hintY, "L3", "Random");
-  hx = drawButtonHint(hx, hintY, "R3", "Video");
+  int y1 = gsGlobal->Height - footerHeight;
+  int y2 = gsGlobal->Height;
+  int x = (gsGlobal->Width - totalWidth) / 2;
+  gsKit_prim_sprite(gsGlobal, 0, y1, gsGlobal->Width, y2, 0, PanelStrongColor);
+  int pillY = y1 + ((footerHeight - getFontLineHeight() - 1) / 2);
+  x = drawIconHintAt(x, y1, y2, &play) + spacing;
+  x = drawIconHintAt(x, y1, y2, &search) + spacing;
+  x = drawIconHintAt(x, y1, y2, &random) + spacing;
+  x = drawIconHintAt(x, y1, y2, &favorite) + spacing;
+  x = drawButtonHint(x, pillY, "<", "View") + spacing;
+  x = drawButtonHint(x, pillY, ">", "Info") + spacing;
+  drawIconHintAt(x, y1, y2, &settings);
+}
+
+// Copies text into out and adds an ellipsis when it cannot fit in maxWidth.
+// This is deliberate truncation, not a draw-time clip, so no glyph can bleed
+// beneath the cover card and the user still gets a visible continuation cue.
+static void ellipsizeText(const char *text, int maxWidth, float scale, char *out, int outSize) {
+  if (outSize <= 0)
+    return;
+
+  snprintf(out, outSize, "%s", text);
+  if (getLineWidthScaled(out, scale) <= maxWidth)
+    return;
+
+  const char *ellipsis = "...";
+  int len = strlen(out);
+  int ellipsisWidth = (int)getLineWidthScaled(ellipsis, scale);
+  while ((len > 0) && ((getLineWidthScaled(out, scale) + ellipsisWidth) > maxWidth))
+    out[--len] = '\0';
+
+  if (len + 3 < outSize)
+    strcat(out, ellipsis);
 }
 
 // Draws the title list for the active view
 void drawTitleView(Target **view, int viewTotal, const char *viewName, int selectedIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover) {
   int curPage = (viewTotal > 0) ? (selectedIdx / maxTitlesPerPage) : 0;
+  float scale = getUIScale();
+  float metaScale = scale * 0.82f;
+  float headingScale = scale * 1.10f;
+  int baseX = keepoutArea;
+  int gap = (int)(12 * scale);
+  int coverPad = (int)(10 * scale);
+  int contentTop = headerHeight + (int)(6 * scale);
+  int contentBottom = gsGlobal->Height - footerHeight - (int)(6 * scale);
+  int listRight = coverArtX1 - coverPad - gap;
+  int coverPanelLeft = coverArtX1 - coverPad;
+  int coverPanelRight = coverArtX2 + coverPad;
+  int coverPanelBottom = coverArtY2 + coverPad;
+  if (coverPanelBottom > contentBottom)
+    coverPanelBottom = contentBottom;
 
   // Draw the custom background first (dimmed so text stays readable).
   // Alpha blending is disabled for the same reason as cover art: PNG alpha
@@ -691,13 +946,39 @@ void drawTitleView(Target **view, int viewTotal, const char *viewName, int selec
     gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
   }
 
-  // Draw header and footer
-  int titleY = headerHeight;
-  int baseX = keepoutArea + 10;
-  drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, viewName);
+  // Structured surfaces: a compact header, a dedicated list column, a cover
+  // card, and one footer row. They also provide hard visual boundaries for
+  // the clipping rules below.
+  gsKit_prim_sprite(gsGlobal, 0, 0, gsGlobal->Width, headerHeight, 0, PanelStrongColor);
+  gsKit_prim_sprite(gsGlobal, 0, headerHeight - 1, gsGlobal->Width, headerHeight, 0, AccentColor);
+  gsKit_prim_sprite(gsGlobal, baseX - (int)(8 * scale), contentTop - (int)(4 * scale),
+                    listRight + (int)(6 * scale), contentBottom, 0, PanelColor);
+  gsKit_prim_sprite(gsGlobal, coverPanelLeft, coverArtY1 - coverPad,
+                    coverPanelRight, coverPanelBottom, 0, PanelColor);
+
+  // Shared-network status: UDPFS and FTP use the same PS2IP/SMAP interface
+  // while the dashboard is open.
+  int netOnline = (libraryTotal > 0);
+  uint64_t netColor = netOnline ? GS_SETREG_RGBA(0x40, 0xC0, 0x40, 0x80) : GS_SETREG_RGBA(0xC0, 0x40, 0x40, 0x80);
+  snprintf(lineBuffer, 255, "%s %s | FTP %s",
+           (LAUNCHER_OPTIONS.udpfsIp[0] != '\0') ? LAUNCHER_OPTIONS.udpfsIp : "no IP",
+           netOnline ? "online" : "offline",
+           ftpIsBackgroundRunning() ? "on" : "off");
+  int statusDot = (int)(6 * scale);
+  int leftHeaderEnd = gsGlobal->Width * 42 / 100;
+  int rightHeaderStart = gsGlobal->Width * 70 / 100;
+  gsKit_prim_sprite(gsGlobal, baseX, (headerHeight - statusDot) / 2,
+                    baseX + statusDot, (headerHeight + statusDot) / 2, 1, netColor);
+  drawTextWindowScaled(baseX + statusDot + (int)(7 * scale), 0, leftHeaderEnd,
+                       headerHeight, 1, FontMainColor, ALIGN_VCENTER, lineBuffer, metaScale);
+
+  drawTextWindowScaled(leftHeaderEnd, 0, rightHeaderStart, headerHeight, 1,
+                       ColorSelected, ALIGN_CENTER, viewName, headingScale);
   if (viewTotal > 0) {
-    snprintf(lineBuffer, 255, "Page %d/%d\nTitle %d/%d", curPage + 1, DIV_ROUND(viewTotal, maxTitlesPerPage), selectedIdx + 1, viewTotal);
-    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_RIGHT, lineBuffer);
+    snprintf(lineBuffer, 255, "%d/%d pages  |  %d/%d titles",
+             curPage + 1, DIV_ROUND(viewTotal, maxTitlesPerPage), selectedIdx + 1, viewTotal);
+    drawTextWindowScaled(rightHeaderStart, 0, gsGlobal->Width - baseX, headerHeight, 1,
+                         HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT, lineBuffer, metaScale);
   }
 
   drawTitleListFooter(baseX);
@@ -705,45 +986,54 @@ void drawTitleView(Target **view, int viewTotal, const char *viewName, int selec
   if (viewTotal == 0) {
     // Empty view: favorites/recents have no entries yet
     drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER,
-                   "Nothing here yet\nPress Square on a title to add it to Favorites");
+                   "Nothing here yet\nAdd a title to Favorites from the All view");
     return;
   }
 
-  // Draw title list
+  // Draw title list. Every display string is measured and ellipsized before
+  // rendering, so even an unusually long ISO name cannot enter the cover card.
   int pageEnd = (curPage + 1) * maxTitlesPerPage;
   if (pageEnd > viewTotal)
     pageEnd = viewTotal;
 
-  titleY += getFontLineHeight() / 2;
+  int titleY = contentTop;
+  int textX = baseX + (int)(8 * scale);
+  int textWidth = listRight - textX - (int)(8 * scale);
+  char rawTitle[255];
+  char displayTitle[255];
   for (int i = curPage * maxTitlesPerPage; i < pageEnd; i++) {
     Target *curTitle = view[i];
 
-    // Draw title ID for selected title
+    if (favoritesIsFavorite(curTitle))
+      snprintf(rawTitle, sizeof(rawTitle), "* %s", curTitle->name);
+    else
+      snprintf(rawTitle, sizeof(rawTitle), "%s", curTitle->name);
+    ellipsizeText(rawTitle, textWidth, scale, displayTitle, sizeof(displayTitle));
+
     if (i == selectedIdx) {
-      // Draw title ID and device type under the cover art
-      drawTextWindow(coverArtX1,
-                     drawTextWindow(coverArtX1, coverArtY2 + 5, coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER,
-                                    curTitle->id), // Use y coordinate return by title ID drawing function as an argument
-                     coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER, modeToString(curTitle->device->mode));
+      gsKit_prim_sprite(gsGlobal, baseX - (int)(2 * scale), titleY - 1,
+                        listRight, titleY + titleRowHeight - 1, 1, SelectionPanelColor);
+      gsKit_prim_sprite(gsGlobal, baseX - (int)(2 * scale), titleY - 1,
+                        baseX + (int)(2 * scale), titleY + titleRowHeight - 1, 2, AccentColor);
     }
 
-    // Draw title name, marking favorites with a star
-    if (favoritesIsFavorite(curTitle)) {
-      snprintf(lineBuffer, 255, "* %s", curTitle->name);
-      titleY = drawText(baseX, titleY, 0, coverArtX1 - 5, 0, ((i == selectedIdx) ? ColorSelected : FontMainColor), lineBuffer);
-    } else {
-      titleY = drawText(baseX, titleY, 0, coverArtX1 - 5, 0, ((i == selectedIdx) ? ColorSelected : FontMainColor), curTitle->name);
-    }
+    drawText(textX, titleY, 3, listRight - (int)(4 * scale), 0,
+             (i == selectedIdx) ? ColorSelected : FontMainColor, displayTitle);
+    titleY += titleRowHeight;
   }
 
   // Draw cover art placeholder/frame
-  gsKit_prim_sprite(gsGlobal, coverArtX1 - 2, coverArtY1 - 2, coverArtX2 + 2, coverArtY2 + 2, 1, FontMainColor);
+  gsKit_prim_sprite(gsGlobal, coverArtX1 - 2, coverArtY1 - 2, coverArtX2 + 2, coverArtY2 + 2, 1, AccentColor);
 
   // Draw cover art if it exists
   if (selectedTitleCover != NULL) {
     // Temporaily disable alpha blending
     // Some PNGs require inverted alpha channel value to display properly
     // Since cover art has nothing to blend, we can bypass the issue altogether
+    // Text and controller glyphs bind other textures after coverArtGet(). Bind
+    // the selected cover again at the point of use so an eviction can never
+    // leave this sprite reading a stale GS VRAM address.
+    gsKit_TexManager_bind(gsGlobal, selectedTitleCover);
     gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
     gsKit_prim_sprite_texture(gsGlobal, selectedTitleCover, coverArtX1, coverArtY1, 0.0f, 0.0f, coverArtX2, coverArtY2, selectedTitleCover->Width,
                               selectedTitleCover->Height, 2, FontMainColor);
@@ -753,6 +1043,7 @@ void drawTitleView(Target **view, int viewTotal, const char *viewName, int selec
     // "Loading..." while the async load is in flight, "No cover art" if it failed
     drawTextWindow(coverArtX1, coverArtY1, coverArtX2, coverArtY2, 1, FontMainColor, ALIGN_CENTER, coverArtStatusText());
   }
+
 }
 
 // Word-wraps text into out (inserting newlines) so each line fits maxWidth.
@@ -866,154 +1157,358 @@ static int uiDetailPane(TargetList *titles, Target *target) {
     // Description text
     drawText(textX, coverY1, 0, 0, gsGlobal->Height - footerHeight - coverY1, FontMainColor, infoWrapped);
 
-    // Footer
-    drawIconWindow(baseX, gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
-    drawTextWindow(baseX + 5 + getIconWidth(ICON_CROSS), gsGlobal->Height - footerHeight, 0, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_VCENTER,
-                   "Launch title");
-    drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Back"), gsGlobal->Height - footerHeight,
-                   gsGlobal->Width - baseX, gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
-    drawTextWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width - baseX, gsGlobal->Height - 1, 0, HeaderTextColor,
-                   ALIGN_VCENTER | ALIGN_RIGHT, "Back");
+    const IconHint detailHints[] = {
+        {ICON_CROSS, "Play"},
+        {ICON_CIRCLE, "Back"},
+    };
+    drawIconHintRow(gsGlobal->Height - footerHeight, gsGlobal->Height - 1,
+                    detailHints, sizeof(detailHints) / sizeof(detailHints[0]));
 
     gsKit_queue_exec(gsGlobal);
     gsKit_finish();
     uiSyncFlip();
 
     int input = waitForInput(-1);
-    if (input & (PAD_CROSS | PAD_CIRCLE))
+    if (input & PAD_CROSS)
       return 1;
-    if (input & (PAD_TRIANGLE | PAD_LEFT))
+    if (input & (PAD_CIRCLE | PAD_LEFT))
       return 0;
   }
 }
 
-// FTP server screen. Reboots the IOP with the FTP module stack (killing all
-// other device backends), shows the connection info, and on exit relaunches
-// the dashboard ELF for a clean re-initialization. NEVER RETURNS.
-static void uiFTPScreen() {
-  char ip[16] = "";
+// On-screen keyboard for the search filter (opened with Triangle).
+// Returns 1 if a non-empty query was confirmed, 0 if cancelled.
+static int uiSearchScreen() {
+  static const char *kbRows[] = {"ABCDEFGHIJ", "KLMNOPQRST", "UVWXYZ0123", "456789 .-'"};
+  const int rowCount = 4;
+  int curRow = 0, curCol = 0;
+  int baseX = keepoutArea + 10;
 
-  // Show a starting frame before the IOP goes down
-  gsKit_clear(gsGlobal, BGColor);
-  gsKit_TexManager_nextFrame(gsGlobal);
-  drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, "Starting FTP server...");
-  gsKit_queue_exec(gsGlobal);
-  gsKit_finish();
-  uiSyncFlip();
-
-  int res = ftpStartServer(ip, sizeof(ip));
-  if (res == 0)
-    initPad(); // The pad driver was reloaded with the IOP
-
-  int failFrames = 0;
   while (1) {
     gsKit_clear(gsGlobal, BGColor);
     gsKit_TexManager_nextFrame(gsGlobal);
-    if (res == 0) {
-      snprintf(lineBuffer, 255,
-               "FTP server running\n\nftp://%s\nMemory card: /mc/0/\n\n"
-               "Game browsing is paused while FTP is active.",
-               ip);
-      drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, lineBuffer);
-      drawTextWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_CENTER,
-                     "Triangle: restart dashboard");
-    } else {
-      snprintf(lineBuffer, 255, "Failed to start FTP server (%d)\nRestarting dashboard...", res);
-      drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, ErrorTextColor, ALIGN_CENTER, lineBuffer);
-      if (failFrames++ > 240) // ~4 seconds
-        break;
+
+    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, "Search");
+    snprintf(lineBuffer, 255, "Search: %s_", searchQuery);
+    int y = drawText(baseX, headerHeight + getFontLineHeight(), 0, 0, 0, FontMainColor, lineBuffer);
+    y += getFontLineHeight();
+
+    // Draw the keyboard grid
+    int cellW = getLineWidth("W") + 14;
+    for (int r = 0; r < rowCount; r++) {
+      int x = baseX + 10;
+      for (int c = 0; kbRows[r][c] != '\0'; c++) {
+        char key[4];
+        // Show space visibly
+        if (kbRows[r][c] == ' ')
+          snprintf(key, sizeof(key), "sp");
+        else
+          snprintf(key, sizeof(key), "%c", kbRows[r][c]);
+        drawText(x, y, 0, 0, 0, (((r == curRow) && (c == curCol)) ? ColorSelected : FontMainColor), key);
+        x += cellW;
+      }
+      y += getFontLineHeight() + 4;
     }
+
+    const IconHint searchHints[] = {
+        {ICON_CROSS, "Type"},
+        {ICON_SQUARE, "Delete"},
+        {ICON_START, "Search"},
+        {ICON_CIRCLE, "Cancel"},
+    };
+    drawIconHintRow(gsGlobal->Height - footerHeight, gsGlobal->Height - 1,
+                    searchHints, sizeof(searchHints) / sizeof(searchHints[0]));
+
     gsKit_queue_exec(gsGlobal);
     gsKit_finish();
     uiSyncFlip();
 
-    if (res == 0) {
-      int input = pollInput();
-      if (input & PAD_TRIANGLE)
-        break;
-    }
-  }
-
-  // Relaunch the dashboard for a clean re-init (restores UDPFS browsing)
-  char *selfPath = (SELF_ELF_PATH[0] != '\0') ? SELF_ELF_PATH : "mc0:/APPS/nhddl.elf";
-  LoadExecPS2(selfPath, 0, NULL);
-  // Unreachable
-  while (1) {
-  }
-}
-
-// Writes (or removes, when configValue is NULL) the video option in the
-// first device's nhddl/nhddl.yaml so the picked mode persists across boots
-static void persistVideoMode(const char *configValue) {
-  char yamlPath[PATH_MAX];
-  char dirPath[PATH_MAX];
-  static char contents[2048];
-
-  for (int i = 0; i < MAX_DEVICES; i++) {
-    if ((deviceModeMap[i].mode == MODE_NONE) || (deviceModeMap[i].mode == MODE_ALL) || (deviceModeMap[i].mountpoint == NULL))
-      continue;
-    struct DeviceMapEntry *device = &deviceModeMap[i];
-    if (device->metadev)
-      device = device->metadev;
-    buildConfigFilePath(dirPath, device->mountpoint, NULL);
-    buildConfigFilePath(yamlPath, device->mountpoint, "/nhddl.yaml");
-
-    // Read the existing file, dropping any current video option
-    int len = 0;
-    contents[0] = '\0';
-    FILE *file = fopen(yamlPath, "rb");
-    if (file != NULL) {
-      char line[256];
-      while (fgets(line, sizeof(line), file) != NULL) {
-        if (!strncmp(line, "video:", 6))
-          continue;
-        int lineLen = strlen(line);
-        if ((len + lineLen) >= (int)(sizeof(contents) - 32))
-          break;
-        memcpy(&contents[len], line, lineLen);
-        len += lineLen;
+    int input = waitForInput(-1);
+    int rowLen = strlen(kbRows[curRow]);
+    if (input & PAD_UP) {
+      curRow = (curRow - 1 + rowCount) % rowCount;
+    } else if (input & PAD_DOWN) {
+      curRow = (curRow + 1) % rowCount;
+    } else if (input & PAD_LEFT) {
+      curCol = (curCol - 1 + rowLen) % rowLen;
+    } else if (input & PAD_RIGHT) {
+      curCol = (curCol + 1) % rowLen;
+    } else if (input & PAD_CROSS) {
+      int len = strlen(searchQuery);
+      if (len < (int)(sizeof(searchQuery) - 1)) {
+        searchQuery[len] = kbRows[curRow][curCol];
+        searchQuery[len + 1] = '\0';
       }
-      fclose(file);
-    } else {
-      // Make sure the config directory exists
-      struct stat st;
-      if (stat(dirPath, &st) == -1)
-        mkdir(dirPath, 0777);
+    } else if (input & PAD_SQUARE) {
+      int len = strlen(searchQuery);
+      if (len > 0)
+        searchQuery[len - 1] = '\0';
+    } else if (input & PAD_START) {
+      if (searchQuery[0] != '\0')
+        return 1;
+    } else if (input & PAD_CIRCLE) {
+      searchQuery[0] = '\0';
+      return 0;
     }
-    if ((len > 0) && (contents[len - 1] != '\n'))
-      contents[len++] = '\n';
-    if (configValue != NULL)
-      len += snprintf(&contents[len], sizeof(contents) - len, "video: %s\n", configValue);
-
-    if ((file = fopen(yamlPath, "wb")) == NULL) {
-      DPRINTF("ERROR: Failed to write %s\n", yamlPath);
-      return;
-    }
-    fwrite(contents, 1, len, file);
-    fclose(file);
-    return; // First device only
+    // Clamp the column when moving between rows of different lengths
+    rowLen = strlen(kbRows[curRow]);
+    if (curCol >= rowLen)
+      curCol = rowLen - 1;
   }
 }
 
-// Settings screen (opened with R3 from the title list): video mode picker
-// plus the FTP server toggle. Chosen video modes apply immediately, then
-// auto-revert unless confirmed within ~12 seconds so picking a mode the
-// display can't show never strands the UI.
-// Returns 1 if the display was reinitialized (caller must recompute layout),
-// 2 if the user chose to start the FTP server.
-static int uiVideoModePicker() {
-  // Menu = video modes + one extra entry for the FTP server
-  const int itemsTotal = (int)VIDEO_MODES_TOTAL + 1;
-  const int ftpItem = (int)VIDEO_MODES_TOTAL;
-  int selected = 0;
-  int reinited = 0;
+// Background FTP status. UDPFS and ps2ftpd share one PS2IP stack, so leaving
+// this screen returns directly to the live game browser; no IOP reset or ELF
+// handoff is involved.
+static int uiFtpSettings() {
   int baseX = keepoutArea + 10;
 
-  // Preselect the active mode
-  for (int i = 0; i < (int)VIDEO_MODES_TOTAL; i++) {
-    if (videoModes[i].mode == LAUNCHER_OPTIONS.vmode)
-      selected = i;
+  while (1) {
+    gsKit_clear(gsGlobal, BGColor);
+    gsKit_TexManager_nextFrame(gsGlobal);
+
+    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, "Memory Card FTP");
+    if (ftpIsBackgroundRunning()) {
+      const char *ip = ftpGetBackgroundIP();
+      if (ip[0] == '\0')
+        ip = LAUNCHER_OPTIONS.udpfsIp;
+      snprintf(lineBuffer, 255,
+               "FTP server is running automatically\n\n"
+               "ftp://%s\nMemory card: /mc/0/\n\n"
+               "UDPFS game browsing and FTP are sharing the network.",
+               ip);
+    } else {
+      snprintf(lineBuffer, 255,
+               "Background FTP is not running (error %d)\n\n"
+               "%s\n\n"
+               "Game browsing remains available. Card Maintenance still\n"
+               "provides the separate uLaunchELF recovery path.",
+               ftpGetBackgroundError(), ftpGetLastDiagnostic());
+    }
+    drawTextWindow(baseX, headerHeight, gsGlobal->Width - baseX, gsGlobal->Height - footerHeight, 0,
+                   ftpIsBackgroundRunning() ? FontMainColor : ErrorTextColor,
+                   ALIGN_CENTER, lineBuffer);
+
+    const IconHint backHint[] = {{ICON_CIRCLE, "Back to games"}};
+    drawIconHintRow(gsGlobal->Height - footerHeight, gsGlobal->Height - 1,
+                    backHint, sizeof(backHint) / sizeof(backHint[0]));
+    gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
+    uiSyncFlip();
+
+    int input = waitForInput(-1);
+    if (input & PAD_CIRCLE)
+      return 0;
   }
+}
+
+// Writes (or removes, when configValue is NULL) the video option in the exact
+// nhddl.yaml chosen by loadOptions(). This avoids accidentally writing a
+// similarly named file on UDPFS while the dashboard boots from memory card.
+static int persistVideoMode(const char *configValue) {
+  char yamlPath[PATH_MAX + 1];
+  char tempPath[PATH_MAX + 8];
+  char line[512];
+  size_t capacity = 1024;
+  size_t len = 0;
+  char *contents = malloc(capacity);
+  if (contents == NULL)
+    return -ENOMEM;
+
+  if (OPTIONS_FILE_PATH[0] != '\0') {
+    strlcpy(yamlPath, OPTIONS_FILE_PATH, sizeof(yamlPath));
+  } else if (SELF_ELF_PATH[0] != '\0') {
+    strlcpy(yamlPath, SELF_ELF_PATH, sizeof(yamlPath));
+    char *slash = strrchr(yamlPath, '/');
+    if (slash == NULL) {
+      free(contents);
+      return -ENOENT;
+    }
+    strlcpy(slash + 1, "nhddl.yaml", sizeof(yamlPath) - (slash + 1 - yamlPath));
+  } else {
+    free(contents);
+    return -ENOENT;
+  }
+
+  FILE *file = fopen(yamlPath, "rb");
+  if (file != NULL) {
+    while (fgets(line, sizeof(line), file) != NULL) {
+      char *key = line;
+      while ((*key == ' ') || (*key == '\t'))
+        key++;
+      if (!strncmp(key, "video:", 6))
+        continue;
+
+      size_t lineLen = strlen(line);
+      if (len + lineLen + 32 > capacity) {
+        size_t newCapacity = capacity * 2;
+        while (len + lineLen + 32 > newCapacity)
+          newCapacity *= 2;
+        char *larger = realloc(contents, newCapacity);
+        if (larger == NULL) {
+          fclose(file);
+          free(contents);
+          return -ENOMEM;
+        }
+        contents = larger;
+        capacity = newCapacity;
+      }
+      memcpy(contents + len, line, lineLen);
+      len += lineLen;
+    }
+    fclose(file);
+  }
+
+  if ((len > 0) && (contents[len - 1] != '\n'))
+    contents[len++] = '\n';
+  if (configValue != NULL)
+    len += snprintf(contents + len, capacity - len, "video: %s\n", configValue);
+
+  snprintf(tempPath, sizeof(tempPath), "%s.tmp", yamlPath);
+  file = fopen(tempPath, "wb");
+  if (file == NULL) {
+    free(contents);
+    return -EIO;
+  }
+  size_t written = fwrite(contents, 1, len, file);
+  int closeResult = fclose(file);
+  if ((written != len) || (closeResult != 0)) {
+    remove(tempPath);
+    free(contents);
+    return -EIO;
+  }
+
+  // Prefer a single rename. Some PS2 filesystems cannot replace an existing
+  // file, so fall back to a full direct rewrite without deleting the target.
+  if (rename(tempPath, yamlPath) != 0) {
+    file = fopen(yamlPath, "wb");
+    if (file == NULL) {
+      remove(tempPath);
+      free(contents);
+      return -EIO;
+    }
+    written = fwrite(contents, 1, len, file);
+    closeResult = fclose(file);
+    remove(tempPath);
+    if ((written != len) || (closeResult != 0)) {
+      free(contents);
+      return -EIO;
+    }
+  }
+
+  strlcpy(OPTIONS_FILE_PATH, yamlPath, sizeof(OPTIONS_FILE_PATH));
+  free(contents);
+  DPRINTF("Saved video mode to %s\n", yamlPath);
+  return 0;
+}
+
+static int drawControlIconLine(int x, int y, IconType icon, const char *action) {
+  IconHint hint = {icon, action};
+  drawIconHintAt(x, y, y + getFontLineHeight() + 8, &hint);
+  return y + getFontLineHeight() + 8;
+}
+
+static int drawControlIconPairLine(int x, int y, IconType first, IconType second, const char *action) {
+  int rowHeight = getFontLineHeight() + 8;
+  int firstWidth = getIconWidth(first);
+  int secondWidth = getIconWidth(second);
+  drawIconWindow(x, y, x + firstWidth, y + rowHeight, 0, FontMainColor,
+                 ALIGN_VCENTER | ALIGN_LEFT, first);
+  x += firstWidth + 3;
+  drawIconWindow(x, y, x + secondWidth, y + rowHeight, 0, FontMainColor,
+                 ALIGN_VCENTER | ALIGN_LEFT, second);
+  x += secondWidth + 5;
+  drawTextWindow(x, y, 0, y + rowHeight, 0, HeaderTextColor,
+                 ALIGN_VCENTER, action);
+  return y + rowHeight;
+}
+
+static int drawControlPillLine(int x, int y, const char *button, const char *action) {
+  int rowHeight = getFontLineHeight() + 8;
+  int pillY = y + ((rowHeight - getFontLineHeight() - 1) / 2);
+  drawButtonHint(x, pillY, button, action);
+  return y + rowHeight;
+}
+
+// Discoverability page for bindings deliberately omitted from the compact
+// title-list footer. It uses the same controller glyphs and pills as the rest
+// of the dashboard, so prompts do not fall back to plain button-name text.
+static void uiControlsScreen() {
+  while (1) {
+    gsKit_clear(gsGlobal, BGColor);
+    gsKit_TexManager_nextFrame(gsGlobal);
+
+    int margin = keepoutArea;
+    int gap = (int)(12 * getUIScale());
+    int columnWidth = (gsGlobal->Width - margin * 2 - gap) / 2;
+    int leftX = margin + (int)(8 * getUIScale());
+    int rightX = margin + columnWidth + gap + (int)(8 * getUIScale());
+    int panelTop = headerHeight + (int)(8 * getUIScale());
+    int panelBottom = gsGlobal->Height - footerHeight - (int)(8 * getUIScale());
+
+    gsKit_prim_sprite(gsGlobal, 0, 0, gsGlobal->Width, headerHeight, 0, PanelStrongColor);
+    gsKit_prim_sprite(gsGlobal, 0, headerHeight - 1, gsGlobal->Width, headerHeight, 1, AccentColor);
+    drawTextWindow(0, 0, gsGlobal->Width, headerHeight, 1, ColorSelected,
+                   ALIGN_CENTER, "Controls & shortcuts");
+    gsKit_prim_sprite(gsGlobal, margin, panelTop, margin + columnWidth,
+                      panelBottom, 0, PanelColor);
+    gsKit_prim_sprite(gsGlobal, margin + columnWidth + gap, panelTop,
+                      gsGlobal->Width - margin, panelBottom, 0, PanelColor);
+
+    int yLeft = panelTop + (int)(8 * getUIScale());
+    int yRight = yLeft;
+    yLeft = drawText(leftX, yLeft, 1, 0, 0, ColorSelected, "Navigation");
+    yLeft += (int)(3 * getUIScale());
+    yLeft = drawControlPillLine(leftX, yLeft, "UP / DOWN", "Browse titles");
+    yLeft = drawControlPillLine(leftX, yLeft, "LEFT", "Switch view");
+    yLeft = drawControlPillLine(leftX, yLeft, "RIGHT", "Game info");
+    yLeft = drawControlIconPairLine(leftX, yLeft, ICON_L1, ICON_R1,
+                                    "Previous / next page");
+    yLeft = drawControlPillLine(leftX, yLeft, "L2 / R2", "Previous / next letter");
+    drawControlPillLine(leftX, yLeft, "LEFT STICK", "Fast scroll");
+
+    yRight = drawText(rightX, yRight, 1, 0, 0, ColorSelected, "Actions");
+    yRight += (int)(3 * getUIScale());
+    yRight = drawControlIconLine(rightX, yRight, ICON_CROSS, "Play title");
+    yRight = drawControlIconLine(rightX, yRight, ICON_TRIANGLE, "Search titles");
+    yRight = drawControlIconLine(rightX, yRight, ICON_SQUARE, "Random title");
+    yRight = drawControlIconLine(rightX, yRight, ICON_CIRCLE, "Toggle favorite");
+    yRight = drawControlIconLine(rightX, yRight, ICON_SELECT, "Settings + title options");
+    drawControlIconLine(rightX, yRight, ICON_START, "Exit dashboard");
+
+    const IconHint backHint[] = {{ICON_CIRCLE, "Back"}};
+    drawIconHintRow(gsGlobal->Height - footerHeight, gsGlobal->Height - 1,
+                    backHint, sizeof(backHint) / sizeof(backHint[0]));
+
+    gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
+    uiSyncFlip();
+
+    int input = waitForInput(-1);
+    if (input & PAD_CIRCLE)
+      return;
+  }
+}
+
+// Unified Settings screen (opened with Select from the title list): selected
+// title options, video mode, controls reference, embedded FTP, and uLaunchELF
+// maintenance. Chosen video modes apply immediately, then auto-revert unless
+// confirmed within ~12 seconds so picking a mode the display can't show never
+// strands the UI.
+// Returns 1 if the display was reinitialized (caller must recompute layout),
+// 2 for FTP settings, 3 for uLaunchELF card maintenance, 4 for controls, or 5
+// for the selected title's launch options.
+static int uiSettingsMenu(int hasSelectedTitle) {
+  // Menu = optional title options + video modes + controls + FTP + maintenance.
+  const int videoItemBase = hasSelectedTitle ? 1 : 0;
+  const int titleOptionsItem = 0;
+  const int controlsItem = videoItemBase + (int)VIDEO_MODES_TOTAL;
+  const int ftpItem = controlsItem + 1;
+  const int cardItem = ftpItem + 1;
+  const int itemsTotal = cardItem + 1;
+  int selected = hasSelectedTitle ? titleOptionsItem : videoItemBase;
+  int reinited = 0;
+  int baseX = keepoutArea + 10;
 
   while (1) {
     gsKit_clear(gsGlobal, BGColor);
@@ -1021,16 +1516,33 @@ static int uiVideoModePicker() {
 
     drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, "Settings");
     int y = headerHeight + 2 * getFontLineHeight();
+    if (hasSelectedTitle) {
+      y = drawText(baseX, y, 0, 0, 0,
+                   ((selected == titleOptionsItem) ? ColorSelected : FontMainColor),
+                   "Selected title options");
+      y += getFontLineHeight() / 2;
+    }
     drawText(baseX, y, 0, 0, 0, HeaderTextColor, "Video mode:");
     y += getFontLineHeight();
     for (int i = 0; i < (int)VIDEO_MODES_TOTAL; i++) {
       snprintf(lineBuffer, 255, "%s%s", videoModes[i].label, ((videoModes[i].mode == LAUNCHER_OPTIONS.vmode) ? "  (current)" : ""));
-      y = drawText(baseX + 20, y, 0, 0, 0, ((i == selected) ? ColorSelected : FontMainColor), lineBuffer);
+      y = drawText(baseX + 20, y, 0, 0, 0,
+                   (((videoItemBase + i) == selected) ? ColorSelected : FontMainColor),
+                   lineBuffer);
     }
     y += getFontLineHeight() / 2;
-    y = drawText(baseX, y, 0, 0, 0, ((selected == ftpItem) ? ColorSelected : FontMainColor), "Start FTP server (pauses game browsing)");
-    drawTextWindow(0, gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_CENTER,
-                   "Cross: select (video modes auto-revert unless kept)\nTriangle: back");
+    y = drawText(baseX, y, 0, 0, 0, ((selected == controlsItem) ? ColorSelected : FontMainColor), "Controls & shortcuts");
+    snprintf(lineBuffer, 255, "FTP server (automatic: %s)", ftpIsBackgroundRunning() ? "running" : "failed");
+    y = drawText(baseX, y, 0, 0, 0, ((selected == ftpItem) ? ColorSelected : FontMainColor), lineBuffer);
+    y = drawText(baseX, y, 0, 0, 0, ((selected == cardItem) ? ColorSelected : FontMainColor), "Card Maintenance (uLaunchELF)");
+    drawText(baseX, y + getFontLineHeight() / 2, 0, 0, 0, HeaderTextColor,
+             "Video changes auto-revert unless confirmed.");
+    const IconHint settingsHints[] = {
+        {ICON_CROSS, "Select"},
+        {ICON_CIRCLE, "Back"},
+    };
+    drawIconHintRow(gsGlobal->Height - footerHeight, gsGlobal->Height - 1,
+                    settingsHints, sizeof(settingsHints) / sizeof(settingsHints[0]));
 
     gsKit_queue_exec(gsGlobal);
     gsKit_finish();
@@ -1041,17 +1553,27 @@ static int uiVideoModePicker() {
       selected = (selected - 1 + itemsTotal) % itemsTotal;
     } else if (input & PAD_DOWN) {
       selected = (selected + 1) % itemsTotal;
-    } else if (input & PAD_TRIANGLE) {
+    } else if (input & PAD_CIRCLE) {
       return reinited;
-    } else if (input & (PAD_CROSS | PAD_CIRCLE)) {
+    } else if (input & PAD_CROSS) {
+      if (hasSelectedTitle && (selected == titleOptionsItem))
+        return 5;
+      if (selected == controlsItem)
+        return 4;
       if (selected == ftpItem)
         return 2;
-      if (videoModes[selected].mode == LAUNCHER_OPTIONS.vmode)
+      if (selected == cardItem)
+        return 3;
+
+      const int videoIndex = selected - videoItemBase;
+      if ((videoIndex < 0) || (videoIndex >= (int)VIDEO_MODES_TOTAL))
+        continue;
+      if (videoModes[videoIndex].mode == LAUNCHER_OPTIONS.vmode)
         continue; // Already active
 
       // Apply the new mode immediately
       VModeType prevMode = LAUNCHER_OPTIONS.vmode;
-      LAUNCHER_OPTIONS.vmode = videoModes[selected].mode;
+      LAUNCHER_OPTIONS.vmode = videoModes[videoIndex].mode;
       uiInit();
       reinited = 1;
 
@@ -1061,8 +1583,18 @@ static int uiVideoModePicker() {
       for (int frames = totalFrames; frames > 0; frames--) {
         gsKit_clear(gsGlobal, BGColor);
         gsKit_TexManager_nextFrame(gsGlobal);
-        snprintf(lineBuffer, 255, "%s\n\nPress Cross to KEEP this mode\nReverting in %d...", videoModes[selected].label, (frames / 60) + 1);
-        drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, lineBuffer);
+        snprintf(lineBuffer, 255, "%s", videoModes[videoIndex].label);
+        drawTextWindow(0, gsGlobal->Height / 2 - 3 * getFontLineHeight(),
+                       gsGlobal->Width, gsGlobal->Height / 2 - getFontLineHeight(),
+                       0, FontMainColor, ALIGN_CENTER, lineBuffer);
+        const IconHint keepHint[] = {{ICON_CROSS, "Keep this mode"}};
+        drawIconHintRow(gsGlobal->Height / 2 - getFontLineHeight(),
+                        gsGlobal->Height / 2 + getFontLineHeight(),
+                        keepHint, sizeof(keepHint) / sizeof(keepHint[0]));
+        snprintf(lineBuffer, 255, "Reverting in %d...", (frames / 60) + 1);
+        drawTextWindow(0, gsGlobal->Height / 2 + getFontLineHeight(),
+                       gsGlobal->Width, gsGlobal->Height / 2 + 3 * getFontLineHeight(),
+                       0, FontMainColor, ALIGN_CENTER, lineBuffer);
         gsKit_queue_exec(gsGlobal);
         gsKit_finish();
         uiSyncFlip();
@@ -1072,16 +1604,33 @@ static int uiVideoModePicker() {
         // applied the mode may still be held down)
         if (frames > (totalFrames - 30))
           continue;
-        if (cInput & (PAD_CROSS | PAD_CIRCLE)) {
+        if (cInput & PAD_CROSS) {
           confirmed = 1;
           break;
         }
-        if (cInput & PAD_TRIANGLE)
+        if (cInput & PAD_CIRCLE)
           break; // Revert immediately
       }
 
       if (confirmed) {
-        persistVideoMode(videoModes[selected].configValue);
+        int saveResult = persistVideoMode(videoModes[videoIndex].configValue);
+        if (saveResult < 0) {
+          while (1) {
+            gsKit_clear(gsGlobal, BGColor);
+            snprintf(lineBuffer, 255, "Video mode is active, but the setting could not be saved (%d).", saveResult);
+            drawTextWindow(keepoutArea, headerHeight, gsGlobal->Width - keepoutArea,
+                           gsGlobal->Height - footerHeight, 0, ErrorTextColor,
+                           ALIGN_CENTER, lineBuffer);
+            const IconHint backHint[] = {{ICON_CIRCLE, "Back"}};
+            drawIconHintRow(gsGlobal->Height - footerHeight, gsGlobal->Height - 1,
+                            backHint, sizeof(backHint) / sizeof(backHint[0]));
+            gsKit_queue_exec(gsGlobal);
+            gsKit_finish();
+            uiSyncFlip();
+            if (waitForInput(-1) & PAD_CIRCLE)
+              break;
+          }
+        }
         return 1;
       }
       // Not confirmed: revert to the previous mode
@@ -1092,9 +1641,8 @@ static int uiVideoModePicker() {
 }
 
 void drawTitleOptionsFooter(int baseX) {
-  drawIconWindow(baseX, gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
-  drawIconWindow(baseX + getIconWidth(ICON_CIRCLE), gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
-  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), gsGlobal->Height - 1 - footerHeight, 0, gsGlobal->Height, 0,
+  drawIconWindow(baseX, gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
+  drawTextWindow(baseX + 5 + getIconWidth(ICON_CROSS), gsGlobal->Height - 1 - footerHeight, 0, gsGlobal->Height, 0,
                  HeaderTextColor, ALIGN_VCENTER, "Toggle");
 
   drawIconWindow((gsGlobal->Width * 3 / 8) - getIconWidth(ICON_SQUARE), gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height, 0,
@@ -1107,10 +1655,10 @@ void drawTitleOptionsFooter(int baseX) {
   drawTextWindow((gsGlobal->Width * 5 / 8) + 5 + getIconWidth(ICON_START), gsGlobal->Height - 1 - footerHeight, gsGlobal->Width, gsGlobal->Height, 0,
                  HeaderTextColor, ALIGN_VCENTER, "Save");
 
-  drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Cancel"), gsGlobal->Height - footerHeight,
-                 gsGlobal->Width - baseX, gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
+  drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_CIRCLE) - getLineWidth("Back"), gsGlobal->Height - footerHeight,
+                 gsGlobal->Width - baseX, gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_CIRCLE);
   drawTextWindow(0, gsGlobal->Height - 1 - footerHeight, gsGlobal->Width - baseX, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT,
-                 "Cancel");
+                 "Back");
 
   drawTextWindow(0, gsGlobal->Height - 1 - footerHeight - getFontLineHeight() / 2, gsGlobal->Width, gsGlobal->Height, 0, HeaderTextColor,
                  ALIGN_TOP | ALIGN_HCENTER, "Switch views");
@@ -1175,7 +1723,7 @@ int uiTitleOptionsLoop(Target *target) {
     } else if (input & PAD_START) {
       updateTitleLaunchArguments(target, titleArguments);
       goto exit;
-    } else if (input & PAD_TRIANGLE) {
+    } else if (input & PAD_CIRCLE) {
       // Quit to title list
       goto exit;
     } else {
@@ -1269,15 +1817,15 @@ int uiArgumentListLoop(Target *target, ArgumentList *titleArguments) {
     } else if (input & PAD_START) {
       updateTitleLaunchArguments(target, titleArguments);
       return 1;
-    } else if (input & PAD_TRIANGLE) {
-      return 1;
+    } else if (input & PAD_CIRCLE) {
+      return 0;
     }
 
     // Ignore inputs when the argument is not initialized
     if (!curArgument)
       continue;
 
-    if (input & (PAD_CROSS | PAD_CIRCLE)) {
+    if (input & PAD_CROSS) {
       // Toggle argument
       curArgument->isDisabled = !curArgument->isDisabled;
       // If the argument was disabled, reset global flag

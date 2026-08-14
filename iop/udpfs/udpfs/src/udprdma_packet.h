@@ -20,7 +20,9 @@
  */
 
 #include <stdint.h>
+#ifndef FEATURE_UDPFS_PS2IP
 #include "ministack_udp.h"
+#endif
 
 
 /* Packet types */
@@ -98,9 +100,8 @@ typedef union {
 #define UDPRDMA_MAX_APP_HDR  32
 
 
-/*
- * Complete packet structures
- */
+/* Complete raw-Ethernet packet structures used by the ministack transport. */
+#ifndef FEATURE_UDPFS_PS2IP
 
 /* Discovery packet */
 typedef struct {
@@ -123,6 +124,7 @@ typedef struct {
     udprdma_hdr_data_t data; /*  4 bytes */
     uint8_t           extra[UDPRDMA_MAX_APP_HDR]; /* App-level header for scatter-gather send */
 } __attribute__((packed, aligned(4))) udprdma_pkt_data_t;
+#endif
 
 
 #endif /* UDPRDMA_PACKET_H */

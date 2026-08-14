@@ -47,25 +47,34 @@ int initGraphics();
 // Sets the UI scale factor applied to all text and icon metrics/draws
 // (1.0 for SD modes; >1 for HD modes where fixed pixel sizes look tiny)
 void setUIScale(float scale);
+float getUIScale();
 
 // Draws the text with specified max dimensions relative to x and y
 // Returns the bottom Y coordinate of the last line that can be used to draw the next text
 int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, const char *text);
+
+// Text variants with an explicit scale. These are used for typographic
+// hierarchy (compact metadata, normal list rows, and larger headings) without
+// changing the controller-icon scale or the rest of the active layout.
+int drawTextScaled(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, const char *text, float scale);
 
 // Draws the text in [x1,y1],[x2,y2] window.
 // Doesn't draw the glyphs that do not fit in the set window.
 // Returns the bottom Y coordinate of the last line that can be used to draw the next text.
 // Use the faster drawText method if window limits are not important.
 int drawTextWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_t alignment, const char *text);
+int drawTextWindowScaled(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_t alignment, const char *text, float scale);
 
 // Frees memory used by the font
 void closeFont();
 
 // Returns line height for used font
 uint8_t getFontLineHeight();
+int getFontLineHeightScaled(float scale);
 
 // Gets the line width for the first line in text
 float getLineWidth(const char *text);
+float getLineWidthScaled(const char *text, float scale);
 
 // Returns icon height
 int getIconHeight(IconType iconType);

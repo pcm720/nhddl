@@ -2,3 +2,5 @@
 mode: ata # supported modes: ata, mx4sio, udpfs, usb, ilink, mmce, hdl. If not present or commented out, all devices will be used to search for ISO files
 mode: mmce # multiple modes are supported via multiple mode strings
 #udpfs_ip: 192.168.1.6 # PS2 IP address for UDPFS mode (commented out)
+#power_button_reset: true # optional: short front-panel press restarts NHDDL; default is normal power-off
+#safe_fallback: mc0:/path/to/known-good-launcher.elf # optional startup recovery ELF; no path is assumed by default
