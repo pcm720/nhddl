@@ -2,8 +2,12 @@
 #include "devices/devices.h"
 #include "devices/init.h"
 #include "dprintf.h"
+#include "favorites.h"
+#include "ftp.h"
 #include "options.h"
 #include <debug.h>
+#include <elf-loader.h>
+#include <errno.h>
 #include <kernel.h>
 #include <loadfile.h>
 #include <sifrpc.h>
@@ -29,6 +33,8 @@ static char neutrinoStorageFallbackPath[] = "/neutrino/neutrino.elf";
 static char isoArgument[] = "dvd";
 static char bsdArgument[] = "bsd";
 static char bsdfsArgument[] = "bsdfs";
+static char igrPathArgument[] = "igr-path";
+static char igrPowerArgument[] = "igr-power";
 
 // Neutrino bsd values
 #define BSD_ATA "ata"
@@ -42,6 +48,129 @@ static char bsdfsArgument[] = "bsdfs";
 #define BSDFS_HDL "hdl"
 
 int launchELF(int argc, char *argv[]);
+
+/*
+ * elf-loader2 deliberately keeps its prepared-image API internal, although
+ * the symbols are exported by the library. NHDDL uses the same ABI here to
+ * keep one packed copy of itself staged in EE RAM. A front-panel reset can
+ * then ExecPS2 that image without making another fileXio/UDPFS request --
+ * crucial when the button is being used to recover from a stuck IOP startup.
+ */
+#define DASHBOARD_ELF_MAX_PROGRAM_HEADERS 32
+#define DASHBOARD_ELF_MAX_LOAD_ITEMS (DASHBOARD_ELF_MAX_PROGRAM_HEADERS + 3)
+typedef struct {
+  void *dest_addr;
+  void *src_addr;
+  u32 size;
+} DashboardELFLoadItem;
+typedef struct {
+  DashboardELFLoadItem items[DASHBOARD_ELF_MAX_LOAD_ITEMS];
+} DashboardELFLoadInfo;
+typedef struct {
+  int argc;
+  char *argv[16];
+  char payload[256];
+} DashboardELFArgInfo;
+typedef struct {
+  DashboardELFArgInfo arginfo;
+  DashboardELFLoadInfo loaderinfo;
+} DashboardELFExecInfo;
+
+extern int elf_loader_exec_elf_prepare_loadinfo(DashboardELFExecInfo *execinfo, const void *buf, size_t buf_size);
+extern int elf_loader_exec_elf_prepare_arginfo(DashboardELFExecInfo *execinfo, const char *filename, const char *partition, int argc,
+                                               char *argv[]);
+extern int elf_loader_exec_elf(DashboardELFExecInfo *execinfo);
+
+static DashboardELFExecInfo dashboardRestartInfo;
+static void *dashboardRestartImage = NULL;
+static char dashboardRestartPath[PATH_MAX + 1] = {0};
+static int dashboardRestartPrepared = 0;
+
+int launchExternalELF(const char *path) {
+  if ((path == NULL) || (path[0] == '\0'))
+    return -1;
+
+  // LoadELFFromFile gives the target argv[0] automatically. It first stages
+  // the ELF, then resets the IOP and executes it through a low-memory loader,
+  // so a normal 0x00100000-linked ELF cannot overwrite this launcher.
+  return LoadELFFromFile(path, 0, NULL);
+}
+
+int prepareDashboardRestart(const char *path) {
+  if ((path == NULL) || (path[0] == '\0'))
+    return -EINVAL;
+  if (dashboardRestartPrepared && !strcmp(path, dashboardRestartPath))
+    return 0;
+
+  FILE *file = fopen(path, "rb");
+  if (file == NULL)
+    return -ENOENT;
+  if ((fseek(file, 0, SEEK_END) != 0)) {
+    fclose(file);
+    return -EIO;
+  }
+  long imageSize = ftell(file);
+  if ((imageSize <= 0) || (fseek(file, 0, SEEK_SET) != 0)) {
+    fclose(file);
+    return -EIO;
+  }
+
+  void *image = malloc((size_t)imageSize);
+  if (image == NULL) {
+    fclose(file);
+    return -ENOMEM;
+  }
+  if (fread(image, 1, (size_t)imageSize, file) != (size_t)imageSize) {
+    fclose(file);
+    free(image);
+    return -EIO;
+  }
+  fclose(file);
+
+  DashboardELFExecInfo info;
+  memset(&info, 0, sizeof(info));
+  int ret = elf_loader_exec_elf_prepare_loadinfo(&info, image, (size_t)imageSize);
+  if (ret == 0)
+    ret = elf_loader_exec_elf_prepare_arginfo(&info, path, NULL, 0, NULL);
+  if (ret < 0) {
+    free(image);
+    return ret;
+  }
+
+  if (dashboardRestartImage != NULL)
+    free(dashboardRestartImage);
+  dashboardRestartImage = image;
+  dashboardRestartInfo = info;
+  strlcpy(dashboardRestartPath, path, sizeof(dashboardRestartPath));
+  dashboardRestartPrepared = 1;
+  DPRINTF("Power reset: staged %ld-byte dashboard image from %s\n", imageSize, path);
+  return 0;
+}
+
+int restartDashboardNow(void) {
+  // Release the shared PS2IP/SMAP owner while its fileXio DEV9 control path
+  // still exists. The staged loader resets the IOP next; powering DEV9 down
+  // first prevents the next dashboard from inheriting a half-live adapter.
+  if (LAUNCHER_OPTIONS.mode & MODE_UDPFS)
+    ftpShutdownNetwork();
+
+  if (dashboardRestartPrepared) {
+    DPRINTF("Power reset: executing staged dashboard image\n");
+    int ret = elf_loader_exec_elf(&dashboardRestartInfo);
+    DPRINTF("Power reset: staged loader returned %d\n", ret);
+  }
+
+  // Early-startup fallback if staging was not possible. This path still
+  // works while fileXio is healthy; the staged path above is IOP-independent.
+  // If a caller deliberately replaced the staged image (for example with the
+  // known-good startup fallback), keep using that path if the prepared-image
+  // execution unexpectedly returns. Do not silently relaunch the failed
+  // primary.
+  const char *path = (dashboardRestartPrepared && dashboardRestartPath[0] != '\0')
+                         ? dashboardRestartPath
+                         : ((SELF_ELF_PATH[0] != '\0') ? SELF_ELF_PATH : NULL);
+  return (path != NULL) ? launchExternalELF(path) : -ENOENT;
+}
 
 // Assembles argument lists into argv for loader.elf.
 // Expects argv to be initialized with at least (arguments->total) elements.
@@ -112,6 +241,8 @@ void launchTitle(Target *target, ArgumentList *arguments) {
   if (updateLastLaunchedTitle(target->device, target->fullPath)) {
     DPRINTF("ERROR: Failed to update last launched title\n");
   }
+  // Record the launch in the recently-played list
+  favoritesAddRecent(target->device, target->fullPath);
 
   // Sync storage device before loading Neutrino
   if (target->device->sync)
@@ -123,8 +254,22 @@ void launchTitle(Target *target, ArgumentList *arguments) {
   // Append bsd and ISO path
   appendArgument(arguments, newArgument(bsdArgument, bsdValue));
   appendArgument(arguments, newArgument(isoArgument, target->fullPath));
-  // Use quickboot to reduce load times (except for HDL mode because it requires hdlfs module)
-  if (target->device->mode != MODE_HDL)
+  // The resident reset core must not assume a memory-card layout. Pass the
+  // ELF path that actually launched this dashboard, plus the explicit choice
+  // for front-panel interception. The controller combo stays independent.
+  if (SELF_ELF_PATH[0] != '\0')
+    appendArgument(arguments, newArgument(igrPathArgument, SELF_ELF_PATH));
+  appendArgument(arguments, newArgument(igrPowerArgument,
+                                        LAUNCHER_OPTIONS.powerButtonReset ? "1" : "0"));
+  // QuickBoot reuses the launcher's current IOP load environment. That was
+  // safe when NHDDL and Neutrino both used the same ministack-backed UDPFS
+  // modules, but the dashboard now uses PS2IP so UDPFS and ps2ftpd can share
+  // SMAP. Neutrino's in-game FHI still uses its own ministack stack, so a
+  // UDPFS title must take the normal LE reboot path and start those matching
+  // modules before it opens the ISO. Reusing the PS2IP file handle/DEV9 state
+  // here black-screens titles such as Medal of Honor: European Assault.
+  if ((target->device->mode != MODE_HDL) &&
+      (target->device->mode != MODE_UDPFS))
     appendArgument(arguments, newArgument("qb", ""));
 
   // Assemble argv
@@ -266,6 +411,24 @@ int launchELF(int argc, char *argv[]) {
     scr_clear();
     scr_printf(".\n\n\n\tFailed to load neutrino.elf: %d\n", ret);
     __builtin_trap();
+  }
+
+  // The shared PS2IP/ps2ftpd stack owns DEV9 until this point. Neutrino itself
+  // is now resident and UDPFS launches deliberately do not use QuickBoot, so
+  // it no longer needs the dashboard's UDPFS file handle. Shut DEV9 down while
+  // its dev9x/fileXio RPC path is still alive; Neutrino will reboot into its
+  // matching ministack load environment and initialize the adapter cleanly.
+  // Either half of this handoff on its own is unsafe: DDIOC_OFF plus QuickBoot
+  // destroys the inherited backend, while no DDIOC_OFF leaves the PS2IP SMAP
+  // hardware state for the replacement driver.
+  if (LAUNCHER_OPTIONS.mode & MODE_UDPFS) {
+    int shutdownResult = ftpShutdownNetwork();
+    if (shutdownResult < 0) {
+      init_scr();
+      scr_clear();
+      scr_printf(".\n\n\n\tFailed to stop dashboard network: %d\n", shutdownResult);
+      SleepThread();
+    }
   }
 
   // Copy launch arguments from user memory into kernel memory

@@ -9,17 +9,46 @@ lists them and boots selected ISO via Neutrino.
 
 It displays visual Game ID to trigger per-title settings on the Pixel FX line of products and triggers per-title memory cards on SD2PSX and MemCard PRO2.
 
-Note that this not an attempt at making a Neutrino-based Open PS2 Loader replacement.  
-Since NHDDL only launches Neutrino, PADEMU, IGR, IGS, cheats and other features supported by OPL are _out-of-scope_ unless they are implemented in Neutrino.
+Note that this is not an attempt at making a Neutrino-based Open PS2 Loader replacement.
+Features that must remain resident after a game starts belong in Neutrino. The
+matching Neutrino build in this workspace includes an OPL-derived in-game reset
+path; other OPL features remain out of scope unless implemented in Neutrino.
 
 ## Usage
 
 ### Title list controls
 
- - Press **Up** on the d-pad to select the **previous title** in the list
- - Press **Down** on the d-pad to select the **next title** in the list
- - Press **L1** to switch to the **previous page** or go to the **start of the list**
- - Press **R1** to switch to the **next page** or go to the **end of the list**
+- **Up / Down**: browse titles
+- **Left**: cycle title-list views
+- **Right**: description and details
+- **Cross**: play
+- **Triangle**: search
+- **Square**: select a random title
+- **Circle**: toggle favorite
+- **Select**: settings
+- **L1 / R1**: previous / next page
+- **L2 / R2**: previous / next letter
+- **Left stick**: fast scroll
+- **Start**: exit the dashboard
+- **Circle**: back or cancel inside menus
+
+The video-mode picker writes the confirmed mode back to the exact
+`nhddl.yaml` loaded at startup, so it persists across restarts.
+
+### UDPFS and background FTP
+
+In UDPFS mode, NHDDL starts an anonymous FTP server automatically on the same
+PS2IP/SMAP network stack used by the title list. No separate application or
+button press is required; the Settings FTP page reports the active address and
+the game list remains usable while a client is connected. Memory card 0 is at
+`/mc/0/` on the FTP server.
+
+The shared server uses `udpfs_ip` for the PS2 address and reads the netmask and
+gateway from `SYS-CONF/IPCONFIG.DAT`. It currently uses static IPv4; DNS is not
+required because UDPFS and FTP clients connect to numeric addresses. If no
+Ethernet cable or UDPFS server is available during boot, startup reports the
+network/backend failure; reconnecting later cannot populate a title list that
+was never discovered, so restart NHDDL after restoring the link/server.
 
 ### Important notes
 
@@ -208,8 +237,20 @@ Configuration file is loaded from one of the following paths:
 - `mmceX:/nhddl/nhddl.yaml` (MMCE devices, will work even if MMCE mode is _not_ enabled unless MX4SIO mode is set)
 - `mcX:/APP_NHDDL/nhddl.yaml` (memory cards, __case-sensitive__)
 
-This file is _completely optional_ and must be used only to force video mode in NHDDL UI or set NHDDL device mode.  
-By default, default video mode is used and all BDM devices are used to look for ISO files.
+This file is completely optional. It can select the UI video mode and device
+backends, opt into short-press power-button reset, and name a safe startup
+fallback. By default, the console video mode and normal power-off behavior are
+used, and all BDM devices are searched for ISO files.
+
+`power_button_reset: true` changes a short front-panel power-button press into
+a dashboard restart both in NHDDL and in games launched through the matching
+Neutrino build. The controller reset combo
+**L1+L2+R1+R2+Start+Select** remains available independently. NHDDL passes its
+actual launch path to Neutrino; no memory-card location is hard-coded.
+
+`safe_fallback` may point to a separately tested dashboard ELF used after a
+startup failure. It is empty by default so community installations do not
+assume a particular memory-card layout.
 
 To disable a flag, you can just comment it out with `#`.
 

@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 // Launcher options
@@ -29,6 +30,8 @@ static const char rootFallbackPath[] = "/nhddl/nhddl.yaml";
 #define OPTION_UDPFS_IP "udpfs_ip"
 #define OPTION_IMAGE "dvd"
 #define OPTION_NO_INIT "noinit"
+#define OPTION_POWER_BUTTON_RESET "power_button_reset"
+#define OPTION_SAFE_FALLBACK "safe_fallback"
 
 #ifndef GIT_VERSION
 #define GIT_VERSION "v-0.0.0-unknown"
@@ -47,12 +50,22 @@ void parseArgv(int argc, char *argv[]);
 ModeType parseFilename(const char *path);
 // Tries to load IPCONFIG.DAT from memory card
 void parseIPConfig();
+static int parseBoolean(const char *value);
+
+char SELF_ELF_PATH[PATH_MAX + 1] = {0};
+char OPTIONS_FILE_PATH[PATH_MAX + 1] = {0};
 
 int main(int argc, char *argv[]) {
+  int splashRunning = 0;
+
   DPRINTF("*************\nNHDDL %s\nA Neutrino launcher by pcm720\n*************\n", GIT_VERSION);
 
   for (int i = 0; i < argc; i++)
     DPRINTF("argv[%d] = %s\n", i, argv[i]);
+
+  // Remember our own ELF path for relaunching (FTP mode exit)
+  if ((argc > 0) && (argv[0][0] != '-'))
+    strlcpy(SELF_ELF_PATH, argv[0], sizeof(SELF_ELF_PATH));
 
   // Parse arguments
   if ((argc > 0 && argv[0][0] == '-') || (argc > 1 && argv[1][0] == '-'))
@@ -79,6 +92,7 @@ int main(int argc, char *argv[]) {
     logString("\n\nERROR: Failed to start splash screen thread: %d\n", res);
     goto fail;
   }
+  splashRunning = 1;
 
   if ((argc > 0 && argv[0][0] == '-') || (argc > 1 && argv[1][0] == '-'))
     // If argv contains arguments, use them for init
@@ -90,6 +104,13 @@ int main(int argc, char *argv[]) {
 
   if (res)
     goto fail;
+
+  // Configuration is loaded during init(), after the UI is created. Arm the
+  // callback now so a disabled default remains a normal power-off and an
+  // explicitly enabled installation gets the proven restart behavior.
+  int powerResult = uiInitPowerReset();
+  if (powerResult < 0)
+    DPRINTF("WARN: failed to arm front-panel reset: %d\n", powerResult);
 
   uiSplashLogString(LEVEL_INFO_NODELAY, "Building target list...\n");
 
@@ -120,6 +141,7 @@ int main(int argc, char *argv[]) {
   }
 
   stopUISplashThread();
+  splashRunning = 0;
   if ((res = uiLoop(titles))) {
     init_scr();
     logString("\n\nERROR: UI loop failed: %d\n", res);
@@ -130,8 +152,52 @@ int main(int argc, char *argv[]) {
   return 0;
 
 fail:
-  sleep(10);
-  return 1;
+  // Experimental images are launched explicitly under a separate filename.
+  // Never chain from one of those into another ELF after a network failure:
+  // PS2 DEV9 state survives IOP/ELF resets, so even a known-good dashboard can
+  // inherit the failed experiment's hardware state and then return to the
+  // FreeMcBoot auto-boot target. Parking here keeps the working primary
+  // untouched and makes the recovery behavior deterministic.
+  if (strstr(SELF_ELF_PATH, "NHDDL-TEST") != NULL ||
+      strstr(SELF_ELF_PATH, "nhddl-test") != NULL) {
+    if (splashRunning)
+      uiSplashLogString(LEVEL_ERROR, "Test build stopped safely (%d)\nPower-cycle to return to the working dashboard.\n", res);
+    else {
+      init_scr();
+      logString("\n\nTest build stopped safely: %d\n", res);
+      logString("Power-cycle to return to the working dashboard.\n");
+    }
+    while (1)
+      SleepThread();
+  }
+
+  // Never return into FreeMcBoot's auto-boot after a startup failure: that
+  // simply launches this same broken primary again.  Replace the already
+  // staged self-image with a known-good dashboard, then execute it from EE
+  // RAM so recovery does not depend on the half-initialized IOP network.
+  if (splashRunning)
+    uiSplashLogString(LEVEL_WARN, "Startup failed (%d)\nLoading safe dashboard...\n", res);
+  else
+    DPRINTF("Startup failed (%d); loading safe dashboard\n", res);
+
+  int recoveryResult = -ENOENT;
+  if (LAUNCHER_OPTIONS.safeFallbackPath[0] != '\0')
+    recoveryResult = prepareDashboardRestart(LAUNCHER_OPTIONS.safeFallbackPath);
+  if (recoveryResult == 0) {
+    if (splashRunning) {
+      stopUISplashThread();
+      splashRunning = 0;
+    }
+    recoveryResult = restartDashboardNow();
+  }
+
+  // A successful ELF handoff never returns. If staging or execution failed,
+  // stay on a stable error screen instead of entering another auto-boot loop.
+  init_scr();
+  logString("\n\nERROR: Safe dashboard recovery failed: %d\n", recoveryResult);
+  logString("Power-cycle while holding R1 to enter uLaunchELF.\n");
+  while (1)
+    SleepThread();
 }
 
 // Initializes device map while logging errors
@@ -166,6 +232,12 @@ int argInit() {
   if ((res = initModules(LAUNCHER_OPTIONS.mode)) != 0)
     return res;
 
+  // Keep an IOP-independent recovery image for the front-panel reset thread.
+  if (SELF_ELF_PATH[0] != '\0') {
+    if ((res = prepareDashboardRestart(SELF_ELF_PATH)) < 0)
+      DPRINTF("WARN: could not stage dashboard reset image: %d\n", res);
+  }
+
   // Initialize device map
   if (initDevices() < 0)
     return -EIO;
@@ -188,6 +260,16 @@ int init(char *elfPath) {
   if (elfPath) {
     // Guess root device
     elfPath = resolveRootDevice(elfPath);
+
+    // resolveRootDevice has initialized the storage backend that contains us,
+    // but the slower UDPFS/backend initialization has not started yet. Stage
+    // the reset image at this safe point so the physical button can recover a
+    // later startup hang without asking the IOP to read another file.
+    const char *selfPath = (SELF_ELF_PATH[0] != '\0') ? SELF_ELF_PATH : elfPath;
+    int stageResult = prepareDashboardRestart(selfPath);
+    if (stageResult < 0)
+      DPRINTF("WARN: could not stage dashboard reset image: %d\n", stageResult);
+
     char *path = strrchr(elfPath, '/');
     if (path)
       *(++path) = '\0'; // Terminate the path at directory
@@ -199,6 +281,24 @@ int init(char *elfPath) {
       DPRINTF("Failed to load options file, will use defaults\n");
       // Default to loading all devices
       LAUNCHER_OPTIONS.mode = MODE_ALL;
+    }
+
+    // MODE_BASIC has already loaded poweroff.irx. Rebind immediately after
+    // reading nhddl.yaml, before UDPFS/network startup can block, so an
+    // explicitly enabled short press remains a recovery path during boot.
+    int powerResult = uiInitPowerReset();
+    if (powerResult < 0)
+      DPRINTF("WARN: failed to arm front-panel reset before backend init: %d\n",
+              powerResult);
+
+    // Clean up any SPU2 state left behind by a game only after the dashboard
+    // ELF is staged in EE memory and the front-panel callback is armed.  The
+    // one-shot IOP module is deliberately outside Neutrino's critical reset
+    // path.  Failure stays nonfatal so it can never block UDPFS startup.
+    int audioResult = resetSpuOnce();
+    if (audioResult < 0) {
+      uiSplashLogString(LEVEL_WARN, "Audio reset skipped: %d\n", audioResult);
+      DPRINTF("Audio reset failed: %d\n", audioResult);
     }
   }
 
@@ -282,7 +382,20 @@ VModeType parseVMode(const char *modeStr) {
     return VMODE_PAL;
   if (!strncmp(modeStr, "480p", 4))
     return VMODE_480P;
+  if (!strncmp(modeStr, "576p", 4))
+    return VMODE_576P;
+  if (!strncmp(modeStr, "720p", 4))
+    return VMODE_720P;
+  if (!strncmp(modeStr, "1080i", 5))
+    return VMODE_1080I;
   return VMODE_NONE;
+}
+
+static int parseBoolean(const char *value) {
+  if (value == NULL)
+    return 0;
+  return !strcasecmp(value, "true") || !strcasecmp(value, "yes") ||
+         !strcasecmp(value, "on") || !strcmp(value, "1");
 }
 
 // Attempts to parse argv into LAUNCHER_OPTIONS
@@ -315,6 +428,11 @@ void parseArgv(int argc, char *argv[]) {
     } else if (val && !strcmp(OPTION_IMAGE, arg)) {
       DPRINTF("Using image %s\n", val);
       LAUNCHER_OPTIONS.image = strdup(val);
+    } else if (val && !strcmp(OPTION_POWER_BUTTON_RESET, arg)) {
+      LAUNCHER_OPTIONS.powerButtonReset = parseBoolean(val);
+      DPRINTF("Front-panel reset %s\n", LAUNCHER_OPTIONS.powerButtonReset ? "enabled" : "disabled");
+    } else if (val && !strcmp(OPTION_SAFE_FALLBACK, arg)) {
+      strlcpy(LAUNCHER_OPTIONS.safeFallbackPath, val, sizeof(LAUNCHER_OPTIONS.safeFallbackPath));
     } else if (!strcmp(OPTION_NO_INIT, arg)) {
       DPRINTF("Skipping IOP init\n");
       LAUNCHER_OPTIONS.noInit = 1;
@@ -330,8 +448,9 @@ int loadOptions(char *cwdPath) {
   char lineBuffer[PATH_MAX + sizeof(optionsFile) + 1];
   if (cwdPath[0] != '\0') {
     // If path is valid, try it
-    strcpy(lineBuffer, cwdPath);
-    strcat(lineBuffer, optionsFile);
+    snprintf(lineBuffer, sizeof(lineBuffer), "%s%s", cwdPath, optionsFile);
+    // Even when no file exists yet, Settings can create one beside the ELF.
+    strlcpy(OPTIONS_FILE_PATH, lineBuffer, sizeof(OPTIONS_FILE_PATH));
     if (tryFile(lineBuffer)) {
       DPRINTF("Trying device fallback path\n");
       char *mountpoint = strchr(lineBuffer, '/');
@@ -340,6 +459,7 @@ int loadOptions(char *cwdPath) {
         strcat(lineBuffer, rootFallbackPath);
         if (tryFile(lineBuffer))
           return -ENOENT;
+        strlcpy(OPTIONS_FILE_PATH, lineBuffer, sizeof(OPTIONS_FILE_PATH));
       } else
         return -ENOENT;
     }
@@ -368,6 +488,11 @@ int loadOptions(char *cwdPath) {
       } else if (strcmp(OPTION_UDPFS_IP, arg->arg) == 0) {
         printf("Using UDPFS IP %s\n", arg->value);
         strlcpy(LAUNCHER_OPTIONS.udpfsIp, arg->value, sizeof(LAUNCHER_OPTIONS.udpfsIp));
+      } else if (strcmp(OPTION_POWER_BUTTON_RESET, arg->arg) == 0) {
+        LAUNCHER_OPTIONS.powerButtonReset = parseBoolean(arg->value);
+        printf("Front-panel reset %s\n", LAUNCHER_OPTIONS.powerButtonReset ? "enabled" : "disabled");
+      } else if (strcmp(OPTION_SAFE_FALLBACK, arg->arg) == 0) {
+        strlcpy(LAUNCHER_OPTIONS.safeFallbackPath, arg->value, sizeof(LAUNCHER_OPTIONS.safeFallbackPath));
       }
     }
     arg = arg->next;

@@ -25,6 +25,9 @@ typedef enum {
   VMODE_NTSC = GS_MODE_NTSC,
   VMODE_PAL = GS_MODE_PAL,
   VMODE_480P = GS_MODE_DTV_480P,
+  VMODE_576P = GS_MODE_DTV_576P,
+  VMODE_720P = GS_MODE_DTV_720P,   // Requires component cables
+  VMODE_1080I = GS_MODE_DTV_1080I, // Requires component cables
 } VModeType;
 
 // Launcher options
@@ -34,10 +37,18 @@ typedef struct {
   char udpfsIp[16];
   char *image; // Used along with the mode argument to turn NHDDL into a simple Neutrino forwarder
   int noInit;
+  // When enabled, a short front-panel power-button press restarts NHDDL.
+  // Disabled by default so a stock installation retains normal power-off.
+  int powerButtonReset;
+  char safeFallbackPath[PATH_MAX + 1];
 } LauncherOptions;
 
 // Path to Neutrino ELF. Initialized in main() during init.
 extern char NEUTRINO_ELF_PATH[PATH_MAX + 1];
+// Path this NHDDL ELF was launched from (argv[0]). Used for relaunching.
+extern char SELF_ELF_PATH[PATH_MAX + 1];
+// Exact nhddl.yaml path selected by loadOptions(). Settings write back here.
+extern char OPTIONS_FILE_PATH[PATH_MAX + 1];
 // Options
 extern LauncherOptions LAUNCHER_OPTIONS;
 

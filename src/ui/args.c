@@ -100,7 +100,7 @@ int gcDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int max
 }
 
 ActionType gcInput(NeutrinoArgument *arg, int input) {
-  if (input & (PAD_CROSS | PAD_CIRCLE)) {
+  if (input & PAD_CROSS) {
     arg->state ^= gcValueMap[arg->activeElementIdx].mode;
     return ACTION_CHANGED;
   } else if (input & PAD_UP) {
@@ -209,7 +209,7 @@ int gsmDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int ma
 }
 
 ActionType gsmInput(NeutrinoArgument *arg, int input) {
-  if (input & (PAD_CROSS | PAD_CIRCLE)) {
+  if (input & PAD_CROSS) {
     switch (arg->activeElementIdx) {
     case 0: // 240/288p
       arg->state &= ~gsmValueMap[4].mode;
@@ -435,7 +435,7 @@ int toggleDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int
 }
 
 ActionType toggleInput(NeutrinoArgument *arg, int input) {
-  if (input & (PAD_CROSS | PAD_CIRCLE)) {
+  if (input & PAD_CROSS) {
     arg->state ^= 1;
     return ACTION_CHANGED;
   } else if (input & PAD_UP) {

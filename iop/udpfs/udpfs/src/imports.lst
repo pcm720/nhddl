@@ -1,3 +1,14 @@
+#ifdef FEATURE_UDPFS_PS2IP
+ps2ip_IMPORTS_start
+I_lwip_bind
+I_lwip_close
+I_lwip_recvfrom
+I_lwip_sendto
+I_lwip_setsockopt
+I_lwip_socket
+I_lwip_select
+ps2ip_IMPORTS_end
+#else
 mstack_IMPORTS_start
 I_udp_bind
 I_udp_packet_init
@@ -13,6 +24,16 @@ I_SetAlarm
 I_CancelAlarm
 I_USec2SysClock
 thbase_IMPORTS_end
+
+thevent_IMPORTS_start
+I_CreateEventFlag
+I_WaitEventFlag
+I_SetEventFlag
+I_iSetEventFlag
+I_ClearEventFlag
+I_DeleteEventFlag
+thevent_IMPORTS_end
+#endif
 
 stdio_IMPORTS_start
 I_printf
@@ -45,15 +66,6 @@ bdm_IMPORTS_end
 loadcore_IMPORTS_start
 I_RegisterLibraryEntries
 loadcore_IMPORTS_end
-
-thevent_IMPORTS_start
-I_CreateEventFlag
-I_WaitEventFlag
-I_SetEventFlag
-I_iSetEventFlag
-I_ClearEventFlag
-I_DeleteEventFlag
-thevent_IMPORTS_end
 
 thsemap_IMPORTS_start
 I_CreateSema

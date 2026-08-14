@@ -18,11 +18,14 @@ set(SOURCES
     src/neutrino.c
     src/target.c
     src/forwarder.c
+    src/favorites.c
+    src/ftp.c
 
     # UI
     src/ui/gui.c
     src/ui/graphics.c
     src/ui/args.c
+    src/ui/coverart.c
     src/ui/pad.c
 
     # Devices
@@ -37,18 +40,24 @@ set(SOURCES
 )
 include(irx.cmake)
 
-# Get git version for build info
-find_package(Git QUIET)
-if(GIT_FOUND)
-  execute_process(
-        COMMAND ${GIT_EXECUTABLE} describe --always --dirty --tags --exclude nightly
-        OUTPUT_VARIABLE GIT_VERSION
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    )
+# Get git version for build info. Release/build scripts can provide an
+# explicit value so artifacts made from an intentionally dirty handoff tree
+# do not accidentally advertise a transient Git description.
+if(DEFINED GIT_VERSION_OVERRIDE AND NOT GIT_VERSION_OVERRIDE STREQUAL "")
+  set(GIT_VERSION "${GIT_VERSION_OVERRIDE}")
 else()
-  set(GIT_VERSION "unknown")
+  find_package(Git QUIET)
+  if(GIT_FOUND)
+    execute_process(
+          COMMAND ${GIT_EXECUTABLE} describe --always --dirty --tags --exclude nightly
+          OUTPUT_VARIABLE GIT_VERSION
+          OUTPUT_STRIP_TRAILING_WHITESPACE
+          ERROR_QUIET
+          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      )
+  else()
+    set(GIT_VERSION "unknown")
+  endif()
 endif()
 
 # Set compiler flags
@@ -78,6 +87,9 @@ target_link_options(${EE_BIN}
 
 # Link libraries
 target_link_libraries(${EE_BIN}
+    elf-loader2
+    ps2ips
+    poweroff
     pad
     patches
     fileXio

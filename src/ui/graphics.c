@@ -21,6 +21,15 @@ GSTEXTURE *logo;
 // Used font
 const struct BMFont font = BMFONT_DEJAVU_SANS;
 
+// UI scale factor for HD video modes: fonts and icons render at fixed pixel
+// sizes tuned for 448/512-line modes and would look tiny at 720/1080 lines.
+// All text/icon metrics and draws are multiplied by this factor.
+static float uiScale = 1.0f;
+
+// Sets the UI scale factor (1.0 for SD modes; >1 for HD modes)
+void setUIScale(float scale) { uiScale = scale; }
+float getUIScale() { return uiScale; }
+
 // Initializes and uploads graphics resources to GS VRAM
 int initGraphics() {
   if (font.pageCount == 0) {
@@ -36,6 +45,9 @@ int initGraphics() {
       DPRINTF("ERROR: Failed to load page %d\n", i);
       return -1;
     }
+    // Non-integer HD scaling needs filtering. At 1.0 this remains a 1:1
+    // sample, while 1.25/1.5 no longer turns the bitmap atlas into stair-steps.
+    fontPages[i]->Filter = GS_FILTER_LINEAR;
   }
 
   // Upload icons texture to GS
@@ -44,6 +56,7 @@ int initGraphics() {
     DPRINTF("ERROR: Failed to load icons texture\n");
     return -1;
   }
+  icons->Filter = GS_FILTER_LINEAR;
 
   // Upload logo texture to GS
   logo = calloc(sizeof(GSTEXTURE), 1);
@@ -59,7 +72,7 @@ int initGraphics() {
 // Frees memory used by font pages, logo and icon textures
 void closeFont() {
   for (int i = 0; i < font.pageCount; i++) {
-    free(fontPages[0]->Mem);
+    free(fontPages[i]->Mem);
     free(fontPages[i]);
   }
   free(fontPages);
@@ -72,26 +85,29 @@ void closeFont() {
 }
 
 // Returns icon height
-int getIconHeight(IconType iconType) { return ICONS[iconType].height; }
+int getIconHeight(IconType iconType) { return (int)(ICONS[iconType].height * uiScale); }
 
 // Returns icon width
-int getIconWidth(IconType iconType) { return ICONS[iconType].width; }
+int getIconWidth(IconType iconType) { return (int)(ICONS[iconType].width * uiScale); }
 
 // Draws the icon at specified coordinates
 void drawIcon(float x, float y, int z, uint64_t color, IconType iconType) {
   Icon icon = ICONS[iconType];
 
+  // Keep the texture resident: cover art binds can evict it from VRAM,
+  // and an evicted texture would otherwise draw garbage from a stale address
+  gsKit_TexManager_bind(gsGlobal, icons);
   gsKit_set_primalpha(gsGlobal, GS_BLEND_BACK2FRONT, 0);
   gsKit_set_test(gsGlobal, GS_ATEST_OFF);
-  gsKit_prim_sprite_texture(gsGlobal, icons,          // font page
-                            x,                        // x1 (destination)
-                            y,                        // y1
-                            icon.x,                   // u1 (source texture)
-                            icon.y,                   // v1
-                            x + icon.width,           // x2 (destination)
-                            y + icon.height,          // y2
-                            icon.x + icon.width + 1,  // u2 (source texture)
-                            icon.y + icon.height + 1, // v2
+  gsKit_prim_sprite_texture(gsGlobal, icons,               // font page
+                            x,                             // x1 (destination)
+                            y,                             // y1
+                            icon.x,                        // u1 (source texture)
+                            icon.y,                        // v1
+                            x + icon.width * uiScale,      // x2 (destination)
+                            y + icon.height * uiScale,     // y2
+                            icon.x + icon.width + 1,       // u2 (source texture)
+                            icon.y + icon.height + 1,      // v2
                             z, color);
   gsKit_set_test(gsGlobal, GS_ATEST_ON);
   gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
@@ -105,6 +121,8 @@ int getLogoWidth() { return logo->Width; }
 
 // Draws the logo at specified coordinates
 void drawLogo(float x, float y, int z) {
+  // Keep the texture resident (see drawIcon)
+  gsKit_TexManager_bind(gsGlobal, logo);
   gsKit_set_primalpha(gsGlobal, GS_BLEND_BACK2FRONT, 0);
   gsKit_set_test(gsGlobal, GS_ATEST_OFF);
   gsKit_prim_sprite_texture(gsGlobal, logo,   // Logo texture
@@ -125,21 +143,23 @@ void drawLogo(float x, float y, int z) {
 void drawIconWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_t alignment, IconType iconType) {
   Icon icon = ICONS[iconType];
 
-  // Apply vertical alignment
+  // Apply vertical alignment (using scaled icon dimensions)
+  int iconW = getIconWidth(iconType);
+  int iconH = getIconHeight(iconType);
   if (y2) {
     if (alignment & ALIGN_VCENTER) {
-      y1 += ((y2 - y1) - icon.height) / 2;
+      y1 += ((y2 - y1) - iconH) / 2;
     } else if (alignment & ALIGN_BOTTOM) {
-      y1 = y2 - icon.height;
+      y1 = y2 - iconH;
     }
   }
 
   // Apply horizontal alignment
   if (x2) {
     if (alignment & ALIGN_HCENTER) {
-      x1 = x1 + (((x2 - x1) - icon.width) / 2);
+      x1 = x1 + (((x2 - x1) - iconW) / 2);
     } else if (alignment & ALIGN_RIGHT) {
-      x1 = x2 - icon.width;
+      x1 = x2 - iconW;
     }
   }
 
@@ -147,7 +167,8 @@ void drawIconWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8
 }
 
 // Returns line height for used font
-uint8_t getFontLineHeight() { return font.lineHeight; }
+int getFontLineHeightScaled(float scale) { return (int)(font.lineHeight * scale + 0.5f); }
+uint8_t getFontLineHeight() { return (uint8_t)getFontLineHeightScaled(uiScale); }
 
 // Returns pointer to the glyph or NULL if the font doesn't have a glyph for this character
 const BMFontChar *getGlyph(uint32_t character) {
@@ -160,23 +181,26 @@ const BMFontChar *getGlyph(uint32_t character) {
 }
 
 // Draws glyph at specified coordinates
-static void drawGlyph(const BMFontChar *glyph, float x, float y, int z, uint64_t color) {
-  gsKit_prim_sprite_texture(gsGlobal, fontPages[glyph->page],   // font page
-                            x + glyph->xoffset,                 // x1 (destination)
-                            y + glyph->yoffset,                 // y1
-                            glyph->x,                           // u1 (source texture)
-                            glyph->y,                           // v1
-                            x + glyph->xoffset + glyph->width,  // x2 (destination)
-                            y + glyph->yoffset + glyph->height, // y2
-                            glyph->x + glyph->width + 1,        // u2 (source texture, without +1 all characters are cut off on real hardware)
-                            glyph->y + glyph->height + 1,       // v2
+static void drawGlyphScaled(const BMFontChar *glyph, float x, float y, int z, uint64_t color, float scale) {
+  // Keep the font page resident: cover art binds can evict it from VRAM,
+  // and an evicted texture would otherwise draw garbage from a stale address
+  gsKit_TexManager_bind(gsGlobal, fontPages[glyph->page]);
+  gsKit_prim_sprite_texture(gsGlobal, fontPages[glyph->page],                       // font page
+                            x + glyph->xoffset * scale,                             // x1 (destination)
+                            y + glyph->yoffset * scale,                             // y1
+                            glyph->x,                                               // u1 (source texture)
+                            glyph->y,                                               // v1
+                            x + (glyph->xoffset + glyph->width) * scale,            // x2 (destination)
+                            y + (glyph->yoffset + glyph->height) * scale,           // y2
+                            glyph->x + glyph->width + 1,                            // u2 (source texture, without +1 all characters are cut off on real hardware)
+                            glyph->y + glyph->height + 1,                           // v2
                             z, color);
 }
 
 // Draws the text with specified max dimensions relative to x and y
 // Returns the bottom Y coordinate of the last line that can be used to draw the next text
-int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, const char *text) {
-  int curX = x;
+int drawTextScaled(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, const char *text, float scale) {
+  float curX = x;
   const BMFontChar *glyph;
 
   // Set alpha
@@ -184,14 +208,11 @@ int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, c
   gsKit_set_test(gsGlobal, GS_ATEST_OFF);
 
   int curHeight = 0;
+  int lineHeight = getFontLineHeightScaled(scale);
   for (int i = 0; text[i] != '\0'; i++) {
     if (text[i] == '\n') {
       curX = x;
-      curHeight += font.lineHeight;
-      continue;
-    }
-
-    if (maxWidth && (curX > maxWidth)) {
+      curHeight += lineHeight;
       continue;
     }
 
@@ -200,18 +221,23 @@ int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, c
       continue;
     }
 
-    if (maxHeight && ((curHeight + font.lineHeight) > maxHeight)) {
+    if (maxHeight && ((curHeight + lineHeight) > maxHeight)) {
       break;
     }
 
-    drawGlyph(glyph, curX, y + curHeight, z, color);
-    curX += glyph->xadvance;
+    // maxWidth is an absolute right edge. Stop before any part of a glyph can
+    // enter the neighboring panel instead of drawing one character too far.
+    if (maxWidth && (curX + (glyph->xoffset + glyph->width) * scale > maxWidth))
+      break;
+
+    drawGlyphScaled(glyph, curX, y + curHeight, z, color, scale);
+    curX += glyph->xadvance * scale;
 
     // Account for kerning if kernings are present and next char is not a null terminator
     if (glyph->kernings && (text[i + 1] != '\0')) {
       for (int i = 0; i < glyph->kerningsCount; i++) {
         if (glyph->kernings[i].secondChar == text[i + 1]) {
-          curX += glyph->kernings[i].amount;
+          curX += glyph->kernings[i].amount * scale;
         }
       }
     }
@@ -221,11 +247,15 @@ int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, c
   gsKit_set_test(gsGlobal, GS_ATEST_ON);
   gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
 
-  return (y + curHeight + font.lineHeight);
+  return (y + curHeight + lineHeight);
+}
+
+int drawText(int x, int y, int z, int maxWidth, int maxHeight, uint64_t color, const char *text) {
+  return drawTextScaled(x, y, z, maxWidth, maxHeight, color, text, uiScale);
 }
 
 // Gets the line width for the first line in text
-float getLineWidth(const char *text) {
+float getLineWidthScaled(const char *text, float scale) {
   float lineWidth = 0;
   const BMFontChar *glyph;
   for (int i = 0; text[i] != '\0'; i++) {
@@ -238,12 +268,12 @@ float getLineWidth(const char *text) {
       continue;
     }
 
-    lineWidth += glyph->xadvance;
+    lineWidth += glyph->xadvance * scale;
     // Account for kerning
     if (glyph->kernings && (text[i + 1] != '\0')) {
       for (int i = 0; i < glyph->kerningsCount; i++) {
         if (glyph->kernings[i].secondChar == text[i + 1]) {
-          lineWidth += glyph->kernings[i].amount;
+          lineWidth += glyph->kernings[i].amount * scale;
         }
       }
     }
@@ -251,30 +281,33 @@ float getLineWidth(const char *text) {
   return lineWidth;
 }
 
+float getLineWidth(const char *text) { return getLineWidthScaled(text, uiScale); }
+
 // Draws the text in [x1,y1],[x2,y2] window.
 // Doesn't draw the glyphs that do not fit in the set window.
 // Returns the bottom Y coordinate of the last line that can be used to draw the next text.
 // Use the faster drawText method if window limits are not important.
-int drawTextWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_t alignment, const char *text) {
+int drawTextWindowScaled(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_t alignment, const char *text, float scale) {
   if (!x2 && !y2) {
     // If window limits are not set, use faster drawing function
-    return drawText(x1, x2, z, 0, 0, color, text);
+    return drawTextScaled(x1, y1, z, 0, 0, color, text, scale);
   }
   float curX = x1;
   float curY = y1;
+  int lineHeight = getFontLineHeightScaled(scale);
 
   // Determine text height
-  int maxHeight = font.lineHeight;
+  int maxHeight = lineHeight;
   for (int i = 0; text[i] != '\0'; i++) {
     if (text[i] == '\n')
-      maxHeight += font.lineHeight;
+      maxHeight += lineHeight;
   }
 
   // Apply vertical alignment if text fits within set y2
   if (y2) {
-    if ((alignment & ALIGN_VCENTER) && (maxHeight < y2)) {
+    if ((alignment & ALIGN_VCENTER) && (maxHeight < (y2 - y1))) {
       curY += ((y2 - y1) - maxHeight) / 2;
-    } else if ((alignment & ALIGN_BOTTOM) && (maxHeight < y2)) {
+    } else if ((alignment & ALIGN_BOTTOM) && (maxHeight < (y2 - y1))) {
       curY = y2 - maxHeight;
     }
   }
@@ -284,7 +317,7 @@ int drawTextWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_
   gsKit_set_test(gsGlobal, GS_ATEST_OFF);
 
   // Get the width of the first line
-  int lineWidth = getLineWidth(text);
+  int lineWidth = getLineWidthScaled(text, scale);
   // Determine line offset according to alignment
   if (x2) {
     if (alignment & ALIGN_HCENTER) {
@@ -298,9 +331,9 @@ int drawTextWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_
   for (int i = 0; text[i] != '\0'; i++) {
     if (text[i] == '\n') {
       curX = x1;
-      curY += font.lineHeight;
+      curY += lineHeight;
       // Get the width of the next line
-      lineWidth = getLineWidth(&text[i + 1]);
+      lineWidth = getLineWidthScaled(&text[i + 1], scale);
       // Set line offset according to alignment
       if (x2) {
         if (alignment & ALIGN_HCENTER) {
@@ -317,22 +350,24 @@ int drawTextWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_
       continue;
     }
 
-    if (y2 && ((curY + font.lineHeight) > y2)) {
+    if (y2 && ((curY + lineHeight) > y2)) {
       // If window bottom border has been reached, break
       break;
     }
 
     // Skip drawing glyph if doesn't fit in the window
-    if (!((curY < y1) || (curX < x1) || (x2 && (curX + 1 >= x2)))) {
-      drawGlyph(glyph, curX, curY, z, color);
+    float glyphLeft = curX + glyph->xoffset * scale;
+    float glyphRight = curX + (glyph->xoffset + glyph->width) * scale;
+    if (!((curY < y1) || (glyphLeft < x1) || (x2 && (glyphRight > x2)))) {
+      drawGlyphScaled(glyph, curX, curY, z, color, scale);
     }
 
-    curX += glyph->xadvance;
+    curX += glyph->xadvance * scale;
     // Account for kerning if kernings are present and next char is not a null terminator
     if (glyph->kernings && (text[i + 1] != '\0')) {
       for (int i = 0; i < glyph->kerningsCount; i++) {
         if (glyph->kernings[i].secondChar == text[i + 1]) {
-          curX += glyph->kernings[i].amount;
+          curX += glyph->kernings[i].amount * scale;
         }
       }
     }
@@ -342,7 +377,11 @@ int drawTextWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_
   gsKit_set_test(gsGlobal, GS_ATEST_ON);
   gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
 
-  return curY + font.lineHeight;
+  return curY + lineHeight;
+}
+
+int drawTextWindow(int x1, int y1, int x2, int y2, int z, uint64_t color, uint8_t alignment, const char *text) {
+  return drawTextWindowScaled(x1, y1, x2, y2, z, color, alignment, text, uiScale);
 }
 
 // Loads 32-bit RGBA PNG texture from memory into GSTEXTURE and uploads it to GS VRAM.

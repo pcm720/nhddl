@@ -1,6 +1,7 @@
 #include "devices/init.h"
 #include "common.h"
 #include "dprintf.h"
+#include "ftp.h"
 #include "ui/ui.h"
 #include <ctype.h>
 #include <debug.h>
@@ -33,6 +34,8 @@ IRX_DEFINE(sio2man);
 IRX_DEFINE(mcman);
 IRX_DEFINE(mcserv);
 IRX_DEFINE(freepad);
+IRX_DEFINE(poweroff);
+IRX_DEFINE(resetspu);
 IRX_DEFINE(mmceman);
 IRX_DEFINE(ps2dev9);
 IRX_DEFINE(bdm);
@@ -46,6 +49,11 @@ IRX_DEFINE(IEEE1394_bd_mini);
 IRX_DEFINE(smap);
 IRX_DEFINE(ministack);
 IRX_DEFINE(udpfs_ioman);
+IRX_DEFINE(ps2ip);
+IRX_DEFINE(ps2ips);
+IRX_DEFINE(smap_ps2ip);
+IRX_DEFINE(udpfs_ioman_ps2ip);
+IRX_DEFINE(ps2ftpd);
 IRX_DEFINE(ps2hdd_bdm);
 IRX_DEFINE(ps2fs);
 
@@ -64,8 +72,8 @@ typedef struct ModuleListEntry {
   ModeType mode;                  // Used to ignore modules not required for target mode
 } ModuleListEntry;
 
-// Initializes ministack arguments
-char *initMinistackArguments(uint32_t *argLength);
+// Initializes ps2ftpd arguments
+char *initFtpArguments(uint32_t *argLength);
 // Initializes PS2HDD arguments
 char *initPS2HDDArguments(uint32_t *argLength);
 // Initializes PS2FS arguments
@@ -82,6 +90,7 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(mcman, MODE_ALL, NULL),
     INT_MODULE(mcserv, MODE_ALL, NULL),
     INT_MODULE(freepad, MODE_ALL, NULL),
+    INT_MODULE(poweroff, MODE_ALL, NULL),
     INT_MODULE(mmceman, MODE_ALL, NULL), // MMCE driver
     //
     // Backend modules
@@ -92,10 +101,14 @@ static ModuleListEntry moduleList[] = {
     INT_MODULE(bdm, MODE_BDM, NULL),
     // FAT/exFAT
     INT_MODULE(bdmfs_fatfs, MODE_BDM, NULL),
-    // UDPFS
-    INT_MODULE(smap, MODE_UDPFS, NULL),
-    INT_MODULE(ministack, MODE_UDPFS, &initMinistackArguments),
-    INT_MODULE(udpfs_ioman, MODE_UDPFS, NULL),
+    // UDPFS + background FTP share one PS2IP/SMAP interface. The dashboard
+    // uses a socket-backed UDPFS transport; Neutrino replaces this stack with
+    // its optimized ministack when a game launches.
+    INT_MODULE(ps2ip, MODE_UDPFS, NULL),
+    INT_MODULE(smap_ps2ip, MODE_UDPFS, &ftpBuildSmapArguments),
+    INT_MODULE(ps2ips, MODE_UDPFS, NULL),
+    INT_MODULE(udpfs_ioman_ps2ip, MODE_UDPFS, NULL),
+    INT_MODULE(ps2ftpd, MODE_UDPFS, &initFtpArguments),
     // ATA
     INT_MODULE(ata_bd, MODE_ATA | MODE_HDL, NULL),
     // USBD
@@ -120,6 +133,21 @@ int loadModule(ModuleListEntry *mod);
 
 uint32_t loadedModules = 0;
 uint8_t isWarmReboot = 0;
+
+int resetSpuOnce(void) {
+  int iopret = 0;
+  int moduleId = SifExecModuleBuffer(resetspu_irx, size_resetspu_irx, 0, NULL, &iopret);
+  if (moduleId < 0)
+    return moduleId;
+
+  // resetspu is deliberately one-shot. IOP result 1 is
+  // MODULE_NO_RESIDENT_END: the reset completed and the module exited.
+  if (iopret != 1)
+    return -EIO;
+
+  DPRINTF("SPU2 reset completed\n");
+  return 0;
+}
 
 // Initializes IOP modules
 int initModules(ModeType modeType) {
@@ -191,6 +219,14 @@ int initModules(ModeType modeType) {
 
     if ((moduleList[i].irx != NULL) && (moduleList[i].size != NULL)) {
       if ((ret = loadModule(&moduleList[i]))) {
+        // FTP is optional: a daemon failure must never take the game browser
+        // down with it. UDPFS/network failures remain fatal as before.
+        if ((modeType & MODE_UDPFS) && !strcmp(moduleList[i].name, "ps2ftpd")) {
+          ftpSetBackgroundStatus(ret);
+          uiSplashLogString(LEVEL_WARN, "Background FTP failed to start: %d\n", ret);
+          DPRINTF("Background FTP failed to start: %d\n", ret);
+          continue;
+        }
         if ((modeType == MODE_ALL) && (moduleList[i].mode != MODE_ALL)) {
           // Ignore errors and disable the failed mode when loading all modes
           modeType &= ~(moduleList[i].mode);
@@ -211,6 +247,33 @@ int initModules(ModeType modeType) {
       // Explicitly init fileXio
       if (!strcmp(moduleList[i].name, "fileXio"))
         fileXioInit();
+
+      // ps2ips exposes the IOP netif to the EE. Verify/apply the address now,
+      // before udpfs_ioman's module start performs service discovery.
+      if ((modeType & MODE_UDPFS) && !strcmp(moduleList[i].name, "ps2ips")) {
+        char ip[16];
+        ret = ftpAttachSharedNetwork(ip, sizeof(ip));
+        if (ret < 0) {
+          uiSplashLogString(LEVEL_ERROR, "Failed to configure shared network: %d\n", ret);
+          return ret;
+        }
+        uiSplashLogString(LEVEL_INFO_NODELAY, "Shared network ready at %s\n", ip);
+      }
+
+      if ((modeType & MODE_UDPFS) && !strcmp(moduleList[i].name, "ps2ftpd"))
+        ftpSetBackgroundStatus(0);
+
+      // poweroff.irx owns the front-panel interrupt and forwards a short
+      // press to an EE callback. Rebind after each IOP reboot; polling the
+      // Mechacon register from VBLANK left stale events latched and caused
+      // unexplained second dashboard restarts.
+      if (!strcmp(moduleList[i].name, "poweroff")) {
+        ret = uiInitPowerReset();
+        if (ret < 0) {
+          uiSplashLogString(LEVEL_WARN, "Failed to initialize power reset: %d\n", ret);
+          DPRINTF("Failed to initialize power reset: %d\n", ret);
+        }
+      }
     }
     // Clean up arguments
     if (moduleList[i].argStr != NULL)
@@ -278,18 +341,15 @@ int parseIPConfig() {
   return strlen(LAUNCHER_OPTIONS.udpfsIp);
 }
 
-// Builds IP address argument for network modules
-char *initMinistackArguments(uint32_t *argLength) {
-  // If udpfs_ip was not set, try to get IP from IPCONFIG.DAT
-  if ((LAUNCHER_OPTIONS.udpfsIp[0] == '\0') && (parseIPConfig() <= 0)) {
+char *initFtpArguments(uint32_t *argLength) {
+  static const char args[] = "-anonymous";
+  char *argStr = malloc(sizeof(args));
+  if (argStr == NULL)
     return NULL;
-  }
-
-  char ipArg[19]; // 15 bytes for IP string + 3 bytes for 'ip='
-  *argLength = 19;
-  char *argStr = calloc(sizeof(char), 19);
-  snprintf(argStr, sizeof(ipArg), "ip=%s", LAUNCHER_OPTIONS.udpfsIp);
-  DPRINTF("with argument: %s\n", argStr);
+  memcpy(argStr, args, sizeof(args));
+  // Match wLaunchELF: modload supplies termination; excluding the final NUL
+  // avoids it being interpreted as an extra empty argument by older IOPs.
+  *argLength = strlen(args);
   return argStr;
 }
 
