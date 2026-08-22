@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
   if (res)
     goto fail;
 
-  uiSplashLogString(LEVEL_INFO_NODELAY, "Building target list...\n");
+  uiSplashLogString(LEVEL_INFO_NODELAY, "Construyendo lista de objetivos...\n");
 
   TargetList *titles = malloc(sizeof(TargetList));
   titles->total = 0;
@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
 
   if (titles->total == 0) {
     freeTargetList(titles);
-    uiSplashLogString(LEVEL_WARN, "No targets found\n");
+    uiSplashLogString(LEVEL_WARN, "No se encontraron objetivos\n");
     goto fail;
   }
 
@@ -136,14 +136,14 @@ fail:
 
 // Initializes device map while logging errors
 int initDevices() {
-  uiSplashLogString(LEVEL_INFO, "Waiting for storage devices...\n");
+  uiSplashLogString(LEVEL_INFO, "Esperando dispositivos de almacenamiento...\n");
   int res = initDeviceMap();
   if ((res < 0)) {
-    uiSplashLogString(LEVEL_ERROR, "Failed to initialize devices\n");
+    uiSplashLogString(LEVEL_ERROR, "Fallo al inicializar dispositivos\n");
     return -EIO;
   }
   if (!res) {
-    uiSplashLogString(LEVEL_ERROR, "No devices found\n");
+    uiSplashLogString(LEVEL_ERROR, "No se encontraron dispositivos\n");
     return -ENODEV;
   }
   return 0;
@@ -154,7 +154,7 @@ void showNeutrinoSplash() {
   // Get Neturino version
   char *neutrinoVersion = getNeutrinoVersion();
   uiSplashSetNeutrinoVersion(neutrinoVersion);
-  uiSplashLogString(LEVEL_INFO, "Found Neutrino at\n%s\n", NEUTRINO_ELF_PATH);
+  uiSplashLogString(LEVEL_INFO, "Neutrino encontrado en\n%s\n", NEUTRINO_ELF_PATH);
   free(neutrinoVersion);
 }
 
@@ -173,7 +173,7 @@ int argInit() {
   // Search for neutrino.elf
   getcwd(cwdPath, PATH_MAX + 1);
   if (findNeutrinoELF(cwdPath)) {
-    uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
+    uiSplashLogString(LEVEL_ERROR, "No se pudo encontrar neutrino.elf\n");
     return -ENOENT;
   }
 
@@ -183,7 +183,7 @@ int argInit() {
 
 // Initializes modules, NHDDL configuraton, Neutrino path and device map
 int init(char *elfPath) {
-  uiSplashLogString(LEVEL_INFO_NODELAY, "Initializing...\n");
+  uiSplashLogString(LEVEL_INFO_NODELAY, "Inicializando...\n");
   int initialModules = 0;
   if (elfPath) {
     // Guess root device
@@ -221,7 +221,7 @@ int init(char *elfPath) {
   res = findNeutrinoELF(elfPath);
   free(elfPath);
   if (res < 0) {
-    uiSplashLogString(LEVEL_ERROR, "Couldn't find neutrino.elf\n");
+    uiSplashLogString(LEVEL_ERROR, "No se pudo encontrar neutrino.elf\n");
     return -ENOENT;
   }
 
