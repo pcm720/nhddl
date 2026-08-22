@@ -16,7 +16,6 @@
 #include <ps2sdkapi.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <math.h>
 
 #define DIV_ROUND(n, d) (n + (d - 1)) / d
 
@@ -67,15 +66,6 @@ typedef struct {
 
 static CarouselSlot carousel[CAROUSEL_VISIBLE];
 static int carouselVisible = CAROUSEL_VISIBLE;
-
-// Animation state
-static int animating = 0;           // 0 = idle, 1 = animating
-static int anim_dir = 0;            // +1 = move next (down), -1 = move prev (up)
-static int anim_frame = 0;
-static int anim_frames = CAROUSEL_ANIM_FRAMES;
-static float anim_t = 0.0f;         // eased progress 0..1
-static int targetSelectedIdx = 0;
-static const int slideDistance = 140; // horizontal slide distance per step (tweakable)
 
 // Helper: load PNG into provided GSTEXTURE, returning 0 on success, -1 on failure
 static int loadCoverIntoTex(GSTEXTURE *tex, struct DeviceMapEntry *device, char *titleID) {
@@ -234,13 +224,6 @@ int uiInit() {
   coverArtY1 = coverArtY2 - COVER_ART_RES_H;
   coverTexture->Delayed = 1;
 
-  // reset animation state
-  animating = 0;
-  anim_dir = 0;
-  anim_frame = 0;
-  anim_t = 0.0f;
-  targetSelectedIdx = 0;
-
   return 0;
 }
 
@@ -259,6 +242,7 @@ int uiLoop(TargetList *titles) {
   // Init gamepad inputs
   initPad();
 
+  int isCoverUninitialized = 1;
   int selectedTitleIdx = 0;
   int maxTitlesPerPage = (gsGlobal->Height - (headerHeight + footerHeight)) / getFontLineHeight();
   Target *curTarget = titles->first;
@@ -314,21 +298,707 @@ int uiLoop(TargetList *titles) {
     gsKit_clear(gsGlobal, BGColor);
     gsKit_TexManager_nextFrame(gsGlobal);
 
-    // Advance animation if running
-    if (animating) {
-      anim_frame++;
-      if (anim_frame >= anim_frames) {
-        // finalize animation
-        animating = 0;
-        anim_t = 1.0f;
-        // commit selection
-        selectedTitleIdx = targetSelectedIdx;
-        // reload carousel around new selection to ensure textures match
-        for (int s = 0; s < carouselVisible; s++) {
-          int offset = s - CAROUSEL_HALF;
-          int idx = ((selectedTitleIdx + offset) % total + total) % total;
-          Target *t = getTargetByIdx(titles, idx);
-          if (!t) {
+    // Reload target if index has changed in the list data (not selection)
+    // (this keeps curTarget in sync if titles list mutated)
+    curTarget = getTargetByIdx(titles, selectedTitleIdx);
+    if (!curTarget) {
+      curTarget = titles->first;
+      selectedTitleIdx = curTarget->idx;
+    }
+
+    // Draw title list and carousel
+    drawTitleList(titles, selectedTitleIdx, maxTitlesPerPage, &carousel[0].tex, carouselVisible);
+
+    gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
+    gsKit_sync_flip(gsGlobal);
+
+    // Process user inputs:
+    if (input == -1)            // If input is -1, block until input changes
+      input = waitForInput(-1); // Used to ignore held inputs after returning from title options
+    else
+      input = pollInput();
+
+    if (gsGlobal->Mode == GS_MODE_PAL)
+      frameCount = (frameCount + 1) % 8; // Handle input only every 8th frame unless it changes
+    else
+      frameCount = (frameCount + 1) % 10; // Handle input only every 10th frame unless it changes
+
+    if (frameCount && (input == prevInput))
+      continue;
+
+    frameCount = 0;
+    prevInput = input;
+
+    if (input & (PAD_CROSS | PAD_CIRCLE)) {
+      // Copy target, free title list and launch
+      Target *target = copyTarget(curTarget);
+      freeTargetList(titles);
+      uiLaunchTitle(target, NULL);
+      // Something went wrong, main loop must exit immediately
+      return -1;
+    } else if (input & PAD_UP) {
+      // Point to the previous title
+      selectedTitleIdx = ((selectedTitleIdx - 1) + titles->total) % titles->total;
+
+      // Reload carousel completely (simple, safe)
+      for (int s = 0; s < carouselVisible; s++) {
+        int offset = s - CAROUSEL_HALF;
+        int idx = ((selectedTitleIdx + offset) % total + total) % total;
+        Target *t = getTargetByIdx(titles, idx);
+        if (!t) {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = -1;
+          continue;
+        }
+        if (carousel[s].titleIdx != idx || carousel[s].loaded != 1) {
+          // (re)load texture
+          if (carousel[s].tex->Mem) {
+            free(carousel[s].tex->Mem);
+            carousel[s].tex->Mem = NULL;
+          }
+          if (loadCoverIntoTex(carousel[s].tex, t->device, t->id) == 0) {
+            carousel[s].loaded = 1;
+            carousel[s].titleIdx = idx;
+          } else {
             carousel[s].loaded = -1;
-            carousel[s].titleIdx = -1;
-          Continue...
+            carousel[s].titleIdx = idx;
+          }
+        }
+      }
+
+    } else if (input & PAD_DOWN) {
+      // Advance to the next title
+      selectedTitleIdx = (selectedTitleIdx + 1) % titles->total;
+
+      // Reload carousel completely (simple, safe)
+      for (int s = 0; s < carouselVisible; s++) {
+        int offset = s - CAROUSEL_HALF;
+        int idx = ((selectedTitleIdx + offset) % total + total) % total;
+        Target *t = getTargetByIdx(titles, idx);
+        if (!t) {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = -1;
+          continue;
+        }
+        if (carousel[s].titleIdx != idx || carousel[s].loaded != 1) {
+          if (carousel[s].tex->Mem) {
+            free(carousel[s].tex->Mem);
+            carousel[s].tex->Mem = NULL;
+          }
+          if (loadCoverIntoTex(carousel[s].tex, t->device, t->id) == 0) {
+            carousel[s].loaded = 1;
+            carousel[s].titleIdx = idx;
+          } else {
+            carousel[s].loaded = -1;
+            carousel[s].titleIdx = idx;
+          }
+        }
+      }
+
+    } else if (input & PAD_R1) {
+      // Switch to the next page
+      if (selectedTitleIdx == titles->total - 1) {
+        selectedTitleIdx = 0; // Wrap around if the last title is selected
+      } else {
+        selectedTitleIdx += maxTitlesPerPage;
+        if (selectedTitleIdx >= titles->total)
+          selectedTitleIdx = titles->total - 1;
+      }
+
+      // reload carousel around new selection
+      for (int s = 0; s < carouselVisible; s++) {
+        int offset = s - CAROUSEL_HALF;
+        int idx = ((selectedTitleIdx + offset) % total + total) % total;
+        Target *t = getTargetByIdx(titles, idx);
+        if (!t) {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = -1;
+          continue;
+        }
+        if (carousel[s].tex->Mem) {
+          free(carousel[s].tex->Mem);
+          carousel[s].tex->Mem = NULL;
+        }
+        if (loadCoverIntoTex(carousel[s].tex, t->device, t->id) == 0) {
+          carousel[s].loaded = 1;
+          carousel[s].titleIdx = idx;
+        } else {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = idx;
+        }
+      }
+
+    } else if (input & PAD_L1) {
+      // Switch to the previous page
+      if (selectedTitleIdx == 0) {
+        selectedTitleIdx = titles->total - 1; // Wrap around if the first title is selected
+      } else {
+        selectedTitleIdx -= maxTitlesPerPage;
+        if (selectedTitleIdx < 0)
+          selectedTitleIdx = 0;
+      }
+
+      // reload carousel around new selection
+      for (int s = 0; s < carouselVisible; s++) {
+        int offset = s - CAROUSEL_HALF;
+        int idx = ((selectedTitleIdx + offset) % total + total) % total;
+        Target *t = getTargetByIdx(titles, idx);
+        if (!t) {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = -1;
+          continue;
+        }
+        if (carousel[s].tex->Mem) {
+          free(carousel[s].tex->Mem);
+          carousel[s].tex->Mem = NULL;
+        }
+        if (loadCoverIntoTex(carousel[s].tex, t->device, t->id) == 0) {
+          carousel[s].loaded = 1;
+          carousel[s].titleIdx = idx;
+        } else {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = idx;
+        }
+      }
+
+    } else if (input & PAD_TRIANGLE) {
+      input = -1;    // Force UI loop to wait once uiTitleOptionsLoop returns
+      prevInput = 0; // Reset previous input
+      // Enter title options screen
+      if ((res = uiTitleOptionsLoop(curTarget)) < 0) {
+        // Something went wrong, main loop must exit immediately
+        return -1;
+      }
+    } else if (input & PAD_START) {
+      // Quit
+      break;
+    }
+  }
+
+exit:
+  closePad();
+  closeUI();
+  return res;
+}
+
+void drawTitleListFooter(int baseX) {
+  int baseY = gsGlobal->Height - footerHeight;
+  drawIconWindow(baseX, baseY, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
+  drawIconWindow(baseX + getIconWidth(ICON_CIRCLE), baseY, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
+  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), baseY, 0, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_VCENTER,
+                 "Launch title");
+
+  drawIconWindow(0, baseY, gsGlobal->Width - getLineWidth("Exit") - 5, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_START);
+  drawTextWindow(5 + getIconWidth(ICON_START), baseY, gsGlobal->Width, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_CENTER, "Exit");
+
+  drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Title options"), baseY, gsGlobal->Width - baseX,
+                 gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
+  drawTextWindow(0, baseY, gsGlobal->Width - baseX, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT, "Title options");
+}
+
+// Draws title list with carousel covers
+void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPage, GSTEXTURE *covers[], int visibleCount) {
+  int curPage = selectedTitleIdx / maxTitlesPerPage;
+
+  // Draw header and footer
+  int titleY = headerHeight;
+  int baseX = keepoutArea + 10;
+  drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, "Title List");
+  snprintf(lineBuffer, 255, "Page %d/%d\nTitle %d/%d", curPage + 1, DIV_ROUND(titles->total, maxTitlesPerPage), selectedTitleIdx + 1, titles->total);
+  drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_RIGHT, lineBuffer);
+
+  drawTitleListFooter(baseX);
+
+  // Draw title list (names) on the left side
+  Target *curTitle = titles->first;
+  titleY += getFontLineHeight() / 2;
+  while (curTitle != NULL) {
+    // Do not display titles before the current page
+    if (curTitle->idx < maxTitlesPerPage * curPage) {
+      goto next;
+    }
+    // Do not display titles beyond the current page
+    if (curTitle->idx >= maxTitlesPerPage * (curPage + 1)) {
+      break;
+    }
+
+    // Draw title ID for selected title
+    if (selectedTitleIdx == curTitle->idx) {
+      // Draw title ID and device type under the cover art
+      drawTextWindow(coverArtX1,
+                     drawTextWindow(coverArtX1, coverArtY2 + 5, coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER,
+                                    curTitle->id), // Use y coordinate return by title ID drawing function as an argument
+                     coverArtX2, 0, 0, FontMainColor, ALIGN_HCENTER, modeToString(curTitle->device->mode));
+    }
+
+    // Draw title name
+    titleY = drawText(baseX, titleY, 0, coverArtX1 - 5, 0, ((selectedTitleIdx == curTitle->idx) ? ColorSelected : FontMainColor), curTitle->name);
+
+  next:
+    curTitle = curTitle->next;
+  }
+
+  // Carousel drawing area center (we keep main selected area near current cover bounding box)
+  int centerX = (coverArtX1 + coverArtX2) / 2;
+  int centerY = (coverArtY1 + coverArtY2) / 2;
+
+  // Parameters for the perspective "train" effect: positions offsets (x,y), scales and alpha for slots -2..2
+  // Order: slot 0 -> offset -2 (far left/back), slot 1 -> -1, slot 2 -> 0 (selected), slot 3 -> +1, slot 4 -> +2
+  float scales[CAROUSEL_VISIBLE] = {0.55f, 0.78f, 1.00f, 0.78f, 0.55f};
+  int offsetX[CAROUSEL_VISIBLE] = {-260, -140, 0, 110, 220}; // visual offsets relative to center (tweak as needed)
+  int offsetY[CAROUSEL_VISIBLE] = {-20, -8, 0, 10, 30};      // slight vertical offsets to simulate curve
+  float alphas[CAROUSEL_VISIBLE] = {0.35f, 0.60f, 1.00f, 0.60f, 0.35f};
+
+  // Draw farthest first to nearest last (so closest overlaps)
+  for (int s = 0; s < visibleCount; s++) {
+    int slot = s; // 0..4
+    GSTEXTURE *tex = covers[slot];
+    float scale = scales[slot];
+    float a = alphas[slot];
+    int w = (int)(COVER_ART_RES_W * scale);
+    int h = (int)(COVER_ART_RES_H * scale);
+    int x = centerX + offsetX[slot] - (w / 2);
+    int y = centerY + offsetY[slot] - (h / 2);
+
+    // Draw frame/backdrop
+    gsKit_prim_sprite(gsGlobal, x - 2, y - 2, x + w + 2, y + h + 2, 1, GS_SETREG_RGBA(0x20, 0x20, 0x20, (int)(0xFF * a)));
+
+    if (tex && tex->Width > 0 && tex->Height > 0) {
+      // compute color with alpha modulation
+      uint32_t color = GS_SETREG_RGBA(0xFF, 0xFF, 0xFF, (unsigned char)(a * 0xFF));
+      // Draw scaled texture
+      gsGlobal->PrimAlphaEnable = GS_SETTING_OFF; // match previous behavior when drawing textures
+      gsKit_prim_sprite_texture(gsGlobal, tex, x, y, 0.0f, 0.0f, x + w, y + h, tex->Width, tex->Height, 2, color);
+      gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+    } else {
+      // No cover art: draw placeholder box and text
+      gsKit_prim_sprite(gsGlobal, x, y, x + w, y + h, 1, BGColor);
+      drawTextWindow(x, y, x + w, y + h, 1, FontMainColor, ALIGN_CENTER, "No cover art");
+    }
+  }
+}
+
+void drawTitleOptionsFooter(int baseX) {
+  drawIconWindow(baseX, gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CIRCLE);
+  drawIconWindow(baseX + getIconWidth(ICON_CIRCLE), gsGlobal->Height - footerHeight, 0, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, ICON_CROSS);
+  drawTextWindow(baseX + 5 + getIconWidth(ICON_CIRCLE) + getIconWidth(ICON_CROSS), gsGlobal->Height - 1 - footerHeight, 0, gsGlobal->Height, 0,
+                 HeaderTextColor, ALIGN_VCENTER, "Toggle");
+
+  drawIconWindow((gsGlobal->Width * 3 / 8) - getIconWidth(ICON_SQUARE), gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height, 0,
+                 FontMainColor, ALIGN_VCENTER, ICON_SQUARE);
+  drawTextWindow((gsGlobal->Width * 3 / 8) + 5, gsGlobal->Height - footerHeight, gsGlobal->Width, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER,
+                 "Test");
+
+  drawIconWindow((gsGlobal->Width * 5 / 8), gsGlobal->Height - footerHeight, gsGlobal->Width - getLineWidth("Save") - 5, gsGlobal->Height, 0,
+                 FontMainColor, ALIGN_VCENTER, ICON_START);
+  drawTextWindow((gsGlobal->Width * 5 / 8) + 5 + getIconWidth(ICON_START), gsGlobal->Height - 1 - footerHeight, gsGlobal->Width, gsGlobal->Height, 0,
+                 HeaderTextColor, ALIGN_VCENTER, "Save");
+
+  drawIconWindow(gsGlobal->Width - baseX - 5 - getIconWidth(ICON_TRIANGLE) - getLineWidth("Cancel"), gsGlobal->Height - footerHeight,
+                 gsGlobal->Width - baseX, gsGlobal->Height, 0, FontMainColor, ALIGN_VCENTER | ALIGN_LEFT, ICON_TRIANGLE);
+  drawTextWindow(0, gsGlobal->Height - 1 - footerHeight, gsGlobal->Width - baseX, gsGlobal->Height, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT,
+                 "Cancel");
+
+  drawTextWindow(0, gsGlobal->Height - 1 - footerHeight - getFontLineHeight() / 2, gsGlobal->Width, gsGlobal->Height, 0, HeaderTextColor,
+                 ALIGN_TOP | ALIGN_HCENTER, "Switch views");
+  drawIconWindow(0, gsGlobal->Height - footerHeight - getFontLineHeight() / 2, (gsGlobal->Width - getLineWidth("Switch views")) / 2 - 5,
+                 gsGlobal->Height, 0, FontMainColor, ALIGN_TOP | ALIGN_RIGHT, ICON_L1);
+  drawIconWindow((gsGlobal->Width + getLineWidth("Switch views")) / 2 + 5, gsGlobal->Height - footerHeight - getFontLineHeight() / 2, gsGlobal->Width,
+                 gsGlobal->Height, 0, FontMainColor, ALIGN_TOP | ALIGN_LEFT, ICON_R1);
+}
+
+// Draws well-known Neutrino arguments
+// Returns -1 if error occurs
+int uiTitleOptionsLoop(Target *target) {
+  int res = 0;
+
+  // Load arguments from config files
+  ArgumentList *titleArguments = loadLaunchArgumentLists(target);
+  int input = 0;
+  int activeArgumentIdx = 0;
+
+  // Parse arguments
+  for (int i = 0; i < (uiArgumentsTotal); i++)
+    uiArguments[i].parse(&uiArguments[i], titleArguments);
+
+  int baseX = keepoutArea + 10;
+  int i = 0;
+  while (1) {
+    gsKit_clear(gsGlobal, BGColor);
+
+    // Draw header
+    snprintf(lineBuffer, 255, "%s\n%s", target->name, target->id);
+    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, lineBuffer);
+
+    int startY = headerHeight + 1.5 * getFontLineHeight();
+    for (i = 0; i < uiArgumentsTotal; i++) {
+      startY = getFontLineHeight() / 2 +
+               uiArguments[i].draw(&uiArguments[i], (i == activeArgumentIdx) ? 1 : 0, baseX, startY, 0, gsGlobal->Width - baseX, 0);
+    }
+
+    // Draw footer
+    drawTitleOptionsFooter(baseX);
+
+    gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
+    gsKit_sync_flip(gsGlobal);
+
+    // Process user inputs
+    input = waitForInput(-1);
+    if (input & (PAD_L1 | PAD_R1)) {
+      // Show full argument list
+      if ((res = uiArgumentListLoop(target, titleArguments)))
+        goto exit;
+
+      // Re-parse arguments
+      activeArgumentIdx = 0;
+      for (i = 0; i < uiArgumentsTotal; i++)
+        uiArguments[i].parse(&uiArguments[i], titleArguments);
+    } else if (input & PAD_SQUARE) {
+      // Launch title without saving arguments
+      uiLaunchTitle(target, titleArguments);
+      res = -1; // If this was somehow reached, something went terribly wrong
+      goto exit;
+    } else if (input & PAD_START) {
+      updateTitleLaunchArguments(target, titleArguments);
+      goto exit;
+    } else if (input & PAD_TRIANGLE) {
+      // Quit to title list
+      goto exit;
+    } else {
+      switch (uiArguments[activeArgumentIdx].handleInput(&uiArguments[activeArgumentIdx], input)) {
+      case ACTION_CHANGED:
+        uiArguments[activeArgumentIdx].marshal(&uiArguments[activeArgumentIdx], titleArguments);
+        break;
+      case ACTION_NEXT_ARGUMENT:
+        if (activeArgumentIdx < uiArgumentsTotal - 1)
+          activeArgumentIdx++;
+        break;
+      case ACTION_PREV_ARGUMENT:
+        if (activeArgumentIdx > 0)
+          activeArgumentIdx--;
+        break;
+      default:
+      }
+    }
+  }
+exit:
+  freeArgumentList(titleArguments);
+  return res;
+}
+
+// Handles all arguments in arugment list
+// Returns -1 if error occurs, 1 if parent needs to exit to title list
+int uiArgumentListLoop(Target *target, ArgumentList *titleArguments) {
+  int selectedArgIdx = 0;
+  int input = 0;
+
+  Argument *curArgument = titleArguments->first;
+  while (1) {
+    gsKit_clear(gsGlobal, BGColor);
+    int baseX = keepoutArea + 10;
+
+    // Draw header
+    snprintf(lineBuffer, 255, "%s\n%s", target->name, target->id);
+    drawTextWindow(baseX, headerHeight - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_HCENTER, lineBuffer);
+    drawTextWindow(baseX, headerHeight + 1.5 * getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, FontMainColor, ALIGN_HCENTER, "Launch arguments");
+
+    // Draw footer
+    drawTitleOptionsFooter(baseX);
+
+    int startY = headerHeight + 2.5 * getFontLineHeight();
+    int idx = 0;
+
+    // Set number of elements per page according to line height and available screen height
+    int maxArguments = (gsGlobal->Height - startY - footerHeight - getFontLineHeight() / 2) / getFontLineHeight();
+    int curPage = selectedArgIdx / maxArguments;
+
+    snprintf(lineBuffer, 255, "Page %d/%d", curPage + 1, (!titleArguments->total) ? 1 : DIV_ROUND(titleArguments->total, maxArguments));
+    startY = drawTextWindow(baseX, startY - getFontLineHeight(), gsGlobal->Width - baseX, 0, 0, HeaderTextColor, ALIGN_RIGHT, lineBuffer);
+
+    Argument *argument = titleArguments->first;
+    while (argument != NULL) {
+      // Do not display arguments before the current page
+      if (idx < maxArguments * curPage) {
+        idx++;
+        goto next;
+      }
+      // Do not display arguments beyond the current page
+      if (idx >= maxArguments * (curPage + 1)) {
+        break;
+      }
+
+      // Draw argument
+      if (!argument->isDisabled)
+        drawIconWindow(baseX, startY, 20, startY + getFontLineHeight(), 0, FontMainColor, ALIGN_CENTER, ICON_ENABLED);
+
+      snprintf(lineBuffer, 255, "%s%s%s %s", ((argument->isGlobal) ? "[G] " : ""), argument->arg, (!strlen(argument->value)) ? "" : ":",
+               argument->value);
+      startY = drawText(baseX + getIconWidth(ICON_ENABLED), startY, 0, 0, 0, ((selectedArgIdx == idx) ? ColorSelected : FontMainColor), lineBuffer);
+
+      idx++;
+    next:
+      argument = argument->next;
+    }
+
+    gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
+    gsKit_sync_flip(gsGlobal);
+
+    // Process user inputs
+    input = waitForInput(-1);
+    if (input & (PAD_L1 | PAD_R1)) {
+      return 0;
+    } else if (input & PAD_SQUARE) {
+      // Launch title without saving arguments
+      uiLaunchTitle(target, titleArguments);
+      return -1; // If this was somehow reached, something went terribly wrong
+    } else if (input & PAD_START) {
+      updateTitleLaunchArguments(target, titleArguments);
+      return 1;
+    } else if (input & PAD_TRIANGLE) {
+      return 1;
+    }
+
+    // Ignore inputs when the argument is not initialized
+    if (!curArgument)
+      continue;
+
+    if (input & (PAD_CROSS | PAD_CIRCLE)) {
+      // Toggle argument
+      curArgument->isDisabled = !curArgument->isDisabled;
+      // If the argument was disabled, reset global flag
+      if (curArgument->isDisabled)
+        curArgument->isGlobal = 0;
+    } else if (input & PAD_UP) {
+      // Point to the previous argument
+      selectedArgIdx = (selectedArgIdx - 1 + titleArguments->total) % titleArguments->total;
+      curArgument = (curArgument->prev) ? curArgument->prev : titleArguments->last;
+    } else if (input & PAD_DOWN) {
+      // Advance to the next argument
+      selectedArgIdx = (selectedArgIdx + 1) % titleArguments->total;
+      curArgument = (curArgument->next) ? curArgument->next : titleArguments->first;
+    }
+  }
+}
+
+// Displays Game ID and launches the title
+void uiLaunchTitle(Target *target, ArgumentList *arguments) {
+  // Initialize arugments if not set
+  if (arguments == NULL) {
+    arguments = loadLaunchArgumentLists(target);
+  }
+
+  gsKit_clear(gsGlobal, BGColor);
+
+  // Draw screen with GameID and title parameters
+  snprintf(lineBuffer, 255, "Launching\n%s\n%s\n\n%s", target->name, target->id, target->fullPath);
+  drawTextWindow(0, 0, gsGlobal->Width, gsGlobal->Height, 0, FontMainColor, ALIGN_CENTER, lineBuffer);
+  drawGameID(target->id);
+
+  gsKit_queue_exec(gsGlobal);
+  gsKit_finish();
+  gsKit_sync_flip(gsGlobal);
+
+  // Cleanup the UI and launch title
+  closePad();
+  closeUI();
+  launchTitle(target, arguments);
+}
+
+//
+// GameID code based on https://github.com/CosmicScale/Retro-GEM-PS2-Disc-Launcher
+//
+
+static uint8_t calculateCRC(const uint8_t *data, int len) {
+  uint8_t crc = 0x00;
+  for (int i = 0; i < len; i++) {
+    crc += data[i];
+  }
+  return 0x100 - crc;
+}
+
+void drawGameID(const char *gameID) {
+  uint8_t data[64] = {0};
+  int gidlen = strnlen(gameID, 11); // Ensure the length does not exceed 11 characters
+
+  int dpos = 0;
+  data[dpos++] = 0xA5; // detect word
+  data[dpos++] = 0x00; // address offset
+  dpos++;
+  data[dpos++] = gidlen;
+
+  memcpy(&data[dpos], gameID, gidlen);
+  dpos += gidlen;
+
+  data[dpos++] = 0x00;
+  data[dpos++] = 0xD5; // end word
+  data[dpos++] = 0x00; // padding
+
+  int data_len = dpos;
+  data[2] = calculateCRC(&data[3], data_len - 3);
+
+  int xstart = (gsGlobal->Width / 2) - (data_len * 8);
+  int ystart = gsGlobal->Height - (((gsGlobal->Height / 8) * 2) + 20);
+  int height = 2;
+
+  for (int i = 0; i < data_len; i++) {
+    for (int j = 7; j >= 0; j--) {
+      int x = xstart + (i * 16 + ((7 - j) * 2));
+      int x1 = x + 1;
+      gsKit_prim_sprite(gsGlobal, x, ystart, x1, ystart + height, 0, GS_SETREG_RGBA(0xFF, 0x00, 0xFF, 0x80));
+
+      uint32_t color = (data[i] >> j) & 1 ? GS_SETREG_RGBA(0x00, 0xFF, 0xFF, 0x80) : GS_SETREG_RGBA(0xFF, 0xFF, 0x00, 0x80);
+      gsKit_prim_sprite(gsGlobal, x1, ystart, x1 + 1, ystart + height, 0, color);
+    }
+  }
+}
+
+//
+// Splash screen functions
+//
+
+struct {
+  int32_t doneSema;          // Used to signal UI splash thread to exit
+  int32_t newStringSema;     // Used to signal UI splash thread that a new string is ready
+  int32_t drawnSema;         // Used to signal that UI splash thread has finished drawing or closed
+  UILogLevelType level;      // Log level
+  char neutrinoVersion[100]; // Neutrino version string
+  char buf[255];             // String buffer. String must be null-terminated
+} logBuffer = {};
+#define THREAD_STACK_SIZE 0x1000
+static uint8_t threadStack[THREAD_STACK_SIZE] __attribute__((aligned(16)));
+
+// Initializes and starts UI splash thread
+int startSplashScreen() {
+  DPRINTF("Starting UI splash thread\n");
+  // Initialize splash semaphores
+  ee_sema_t semaphore;
+  semaphore.init_count = 0;
+  semaphore.max_count = 1;
+  semaphore.option = 0;
+  logBuffer.drawnSema = CreateSema(&semaphore);
+  logBuffer.newStringSema = CreateSema(&semaphore);
+  logBuffer.doneSema = CreateSema(&semaphore);
+
+  // Initialize thread
+  ee_thread_t thread;
+  thread.func = uiSplashThread;
+  thread.stack = threadStack;
+  thread.stack_size = THREAD_STACK_SIZE;
+  thread.gp_reg = &_gp;
+  thread.initial_priority = 0x2;
+  thread.attr = thread.option = 0;
+
+  // Start thread
+  int32_t threadID;
+  if ((threadID = CreateThread(&thread)) >= 0) {
+    if (StartThread(threadID, NULL) < 0) {
+      DeleteThread(threadID);
+      threadID = -1;
+    }
+  }
+
+  return threadID;
+}
+
+// Draws loading splash screen in a separate thread
+void uiSplashThread() {
+  // Draw logo and version
+  gsKit_mode_switch(gsGlobal, GS_PERSISTENT);
+  gsKit_TexManager_nextFrame(gsGlobal);
+  gsKit_clear(gsGlobal, BGColor);
+  drawLogo((gsGlobal->Width - getLogoWidth()) / 2, gsGlobal->Height / 4, 2);
+  drawTextWindow(0, (gsGlobal->Height / 4 + getLogoHeight() + 10), gsGlobal->Width, 0, 0, GS_SETREG_RGBA(0x40, 0x40, 0x40, 0x80), ALIGN_HCENTER,
+                 GIT_VERSION);
+  gsKit_mode_switch(gsGlobal, GS_ONESHOT);
+
+  drawGameID("NHDDL");
+
+  uint64_t color = HeaderTextColor;
+  int logStartY = gsGlobal->Height - footerHeight - getFontLineHeight() * 3;
+  // Loop until something sends a signal
+  while (PollSema(logBuffer.doneSema) != logBuffer.doneSema) {
+    gsKit_queue_exec(gsGlobal);
+    gsKit_finish();
+    gsKit_sync_flip(gsGlobal);
+    // Wait until a new string is written to buffer
+    WaitSema(logBuffer.newStringSema);
+    gsKit_TexManager_nextFrame(gsGlobal);
+    switch (logBuffer.level) {
+    case LEVEL_INFO_NODELAY:
+    case LEVEL_INFO:
+      color = HeaderTextColor;
+      break;
+    case LEVEL_WARN:
+      color = WarnTextColor;
+      break;
+    case LEVEL_ERROR:
+      color = ErrorTextColor;
+      break;
+    }
+    drawTextWindow(0, logStartY, gsGlobal->Width, gsGlobal->Height - footerHeight, 0, color, ALIGN_CENTER, logBuffer.buf);
+    if (logBuffer.neutrinoVersion[0] != '\0')
+      drawTextWindow(0, (gsGlobal->Height / 4 + getLogoHeight() + getFontLineHeight() + 10), gsGlobal->Width, 0, 0,
+                     GS_SETREG_RGBA(0x40, 0x40, 0x40, 0x80), ALIGN_HCENTER, logBuffer.neutrinoVersion);
+    SignalSema(logBuffer.drawnSema);
+  }
+  gsKit_queue_reset(gsGlobal->Per_Queue);
+  DeleteSema(logBuffer.doneSema);
+  DeleteSema(logBuffer.newStringSema);
+  SignalSema(logBuffer.drawnSema);
+  ExitDeleteThread();
+}
+
+// Stops UI splash thread
+void stopUISplashThread() {
+  SignalSema(logBuffer.doneSema);
+  SignalSema(logBuffer.newStringSema);
+  WaitSema(logBuffer.drawnSema);
+  DeleteSema(logBuffer.drawnSema);
+}
+
+// Logs to splash screen and debug console in a thread-safe way
+void uiSplashLogString(UILogLevelType level, const char *str, ...) {
+  va_list args;
+  va_start(args, str);
+
+  logBuffer.level = level;
+  vsnprintf(logBuffer.buf, 255, str, args);
+  va_end(args);
+  DPRINTF(logBuffer.buf);
+
+  if (!gsGlobal)
+    return;
+
+  SignalSema(logBuffer.newStringSema);
+  WaitSema(logBuffer.drawnSema);
+
+  switch (level) {
+  case LEVEL_INFO_NODELAY:
+    return;
+  case LEVEL_INFO:
+    sleep(1);
+    return;
+  case LEVEL_WARN:
+  case LEVEL_ERROR:
+    sleep(2);
+    return;
+  }
+}
+
+// Sets Neutrino version on the splash screen
+void uiSplashSetNeutrinoVersion(const char *str) {
+  if (!gsGlobal)
+    return;
+
+  if (str[0] == '\0')
+    return;
+
+  strcpy(logBuffer.neutrinoVersion, "Neutrino");
+  strncat(logBuffer.neutrinoVersion, str, 100 - 10);
+
+  SignalSema(logBuffer.newStringSema);
+  WaitSema(logBuffer.drawnSema);
+}
