@@ -1,3 +1,4 @@
+// src/ui/gui.c
 #include "common.h"
 #include "dprintf.h"
 #include "neutrino.h"
@@ -26,7 +27,7 @@ void closeUI();
 int uiLoop(TargetList *titles);
 int uiTitleOptionsLoop(Target *title);
 int uiArgumentListLoop(Target *target, ArgumentList *titleArguments);
-void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover);
+void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPage, GSTEXTURE *covers[], int visibleCount);
 void uiLaunchTitle(Target *target, ArgumentList *arguments);
 void drawGameID(const char *game_id);
 int createSplashThread();
@@ -51,6 +52,88 @@ static int coverArtY1;
 static const int keepoutArea = 20;
 static const int headerHeight = 20 + keepoutArea;
 static const int footerHeight = 40 + keepoutArea;
+
+// Carousel defaults
+#define CAROUSEL_VISIBLE 5
+#define CAROUSEL_HALF ((CAROUSEL_VISIBLE)/2)
+#define CAROUSEL_ANIM_FRAMES 10
+
+typedef struct {
+  GSTEXTURE *tex;
+  int loaded;        // 0 = not loaded, 1 = loaded OK, -1 = missing
+  int titleIdx;      // which title index this slot represents
+} CarouselSlot;
+
+static CarouselSlot carousel[CAROUSEL_VISIBLE];
+static int carouselVisible = CAROUSEL_VISIBLE;
+
+// Helper: load PNG into provided GSTEXTURE, returning 0 on success, -1 on failure
+static int loadCoverIntoTex(GSTEXTURE *tex, struct DeviceMapEntry *device, char *titleID) {
+  if (!tex || !device || !titleID)
+    return -1;
+  if (device->metadev) { // fallback to metadata device
+    device = device->metadev;
+  }
+  snprintf(lineBuffer, sizeof(lineBuffer), "%s%s/%s_COV.png", device->mountpoint, artPath, titleID);
+  gsKit_TexManager_invalidate(gsGlobal, tex);
+  if (gsKit_texture_png(gsGlobal, tex, lineBuffer)) {
+    return -1;
+  }
+  gsKit_TexManager_bind(gsGlobal, tex);
+  if (tex->Mem) {
+    free(tex->Mem);
+    tex->Mem = NULL;
+  }
+  return 0;
+}
+
+// Backwards-compatible single-texture loader (kept for other code)
+int loadCoverArt(struct DeviceMapEntry *device, char *titleID) {
+  if (device->metadev) {
+    device = device->metadev;
+  }
+  snprintf(lineBuffer, 255, "%s%s/%s_COV.png", device->mountpoint, artPath, titleID);
+  gsKit_TexManager_invalidate(gsGlobal, coverTexture);
+  if (gsKit_texture_png(gsGlobal, coverTexture, lineBuffer)) {
+    return -1;
+  }
+  gsKit_TexManager_bind(gsGlobal, coverTexture);
+  if (coverTexture->Mem) {
+    free(coverTexture->Mem);
+    coverTexture->Mem = NULL;
+  }
+  return 0;
+}
+
+// Frees textures and deinits gsKit
+void closeUI() {
+  // Free carousel textures
+  for (int i = 0; i < carouselVisible; i++) {
+    if (carousel[i].tex) {
+      if (carousel[i].tex->Mem) {
+        free(carousel[i].tex->Mem);
+        carousel[i].tex->Mem = NULL;
+      }
+      free(carousel[i].tex);
+      carousel[i].tex = NULL;
+    }
+    carousel[i].loaded = 0;
+    carousel[i].titleIdx = -1;
+  }
+
+  if (coverTexture) {
+    if (coverTexture->Mem) {
+      free(coverTexture->Mem);
+      coverTexture->Mem = NULL;
+    }
+    free(coverTexture);
+    coverTexture = NULL;
+  }
+
+  gsKit_vram_clear(gsGlobal);
+  closeFont();
+  gsKit_deinit_global(gsGlobal);
+}
 
 void initVMode(GSGLOBAL *gsGlobal) {
   switch (LAUNCHER_OPTIONS.vmode) {
@@ -124,8 +207,17 @@ int uiInit() {
     return -1;
   };
 
-  // Init cover texture
+  // Init cover texture (legacy single texture kept)
   coverTexture = calloc(sizeof(GSTEXTURE), 1);
+
+  // Initialize carousel slots
+  for (int i = 0; i < carouselVisible; i++) {
+    carousel[i].tex = calloc(sizeof(GSTEXTURE), 1);
+    carousel[i].tex->Delayed = 1;
+    carousel[i].loaded = 0;
+    carousel[i].titleIdx = -1;
+  }
+
   coverArtX2 = (gsGlobal->Width - keepoutArea - 10);
   coverArtY2 = (gsGlobal->Height / 2) + (COVER_ART_RES_H / 2);
   coverArtX1 = coverArtX2 - COVER_ART_RES_W;
@@ -133,34 +225,6 @@ int uiInit() {
   coverTexture->Delayed = 1;
 
   return 0;
-}
-
-// Invalidates currently loaded texture and loads a new one
-int loadCoverArt(struct DeviceMapEntry *device, char *titleID) {
-  if (device->metadev) { // Fallback to metadata device
-    device = device->metadev;
-  }
-  // Reuse line buffer for building texture path
-  // Append cover art path to the mountpoint
-  snprintf(lineBuffer, 255, "%s%s/%s_COV.png", device->mountpoint, artPath, titleID);
-  // Upload new texture
-  gsKit_TexManager_invalidate(gsGlobal, coverTexture);
-  if (gsKit_texture_png(gsGlobal, coverTexture, lineBuffer)) {
-    return -1;
-  }
-  gsKit_TexManager_bind(gsGlobal, coverTexture);
-  // Free memory after the texture has been uploaded
-  free(coverTexture->Mem);
-  coverTexture->Mem = NULL;
-  return 0;
-}
-
-// Frees textures and deinits gsKit
-void closeUI() {
-  gsKit_vram_clear(gsGlobal);
-  closeFont();
-  free(coverTexture);
-  gsKit_deinit_global(gsGlobal);
 }
 
 // Main UI loop. Displays the target list.
@@ -206,8 +270,25 @@ int uiLoop(TargetList *titles) {
   }
   free(lastTitle);
 
-  // Load cover art
-  isCoverUninitialized = loadCoverArt(curTarget->device, curTarget->id);
+  // Initialize carousel: load visible covers around selectedTitleIdx
+  int total = titles->total;
+  for (int s = 0; s < carouselVisible; s++) {
+    int offset = s - CAROUSEL_HALF; // -2,-1,0,1,2 for CAROUSEL_VISIBLE=5
+    int idx = ((selectedTitleIdx + offset) % total + total) % total;
+    Target *t = getTargetByIdx(titles, idx);
+    if (!t) {
+      carousel[s].loaded = -1;
+      carousel[s].titleIdx = -1;
+      continue;
+    }
+    if (loadCoverIntoTex(carousel[s].tex, t->device, t->id) == 0) {
+      carousel[s].loaded = 1;
+      carousel[s].titleIdx = idx;
+    } else {
+      carousel[s].loaded = -1;
+      carousel[s].titleIdx = idx;
+    }
+  }
 
   // Main UI loop
   int frameCount = 0;
@@ -217,17 +298,16 @@ int uiLoop(TargetList *titles) {
     gsKit_clear(gsGlobal, BGColor);
     gsKit_TexManager_nextFrame(gsGlobal);
 
-    // Reload target if index has changed
-    if (curTarget->idx != selectedTitleIdx) {
-      curTarget = getTargetByIdx(titles, selectedTitleIdx);
-      isCoverUninitialized = loadCoverArt(curTarget->device, curTarget->id);
+    // Reload target if index has changed in the list data (not selection)
+    // (this keeps curTarget in sync if titles list mutated)
+    curTarget = getTargetByIdx(titles, selectedTitleIdx);
+    if (!curTarget) {
+      curTarget = titles->first;
+      selectedTitleIdx = curTarget->idx;
     }
 
-    // Draw title list
-    if (!isCoverUninitialized)
-      drawTitleList(titles, selectedTitleIdx, maxTitlesPerPage, coverTexture);
-    else
-      drawTitleList(titles, selectedTitleIdx, maxTitlesPerPage, NULL);
+    // Draw title list and carousel
+    drawTitleList(titles, selectedTitleIdx, maxTitlesPerPage, &carousel[0].tex, carouselVisible);
 
     gsKit_queue_exec(gsGlobal);
     gsKit_finish();
@@ -260,9 +340,62 @@ int uiLoop(TargetList *titles) {
     } else if (input & PAD_UP) {
       // Point to the previous title
       selectedTitleIdx = ((selectedTitleIdx - 1) + titles->total) % titles->total;
+
+      // Reload carousel completely (simple, safe)
+      for (int s = 0; s < carouselVisible; s++) {
+        int offset = s - CAROUSEL_HALF;
+        int idx = ((selectedTitleIdx + offset) % total + total) % total;
+        Target *t = getTargetByIdx(titles, idx);
+        if (!t) {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = -1;
+          continue;
+        }
+        if (carousel[s].titleIdx != idx || carousel[s].loaded != 1) {
+          // (re)load texture
+          if (carousel[s].tex->Mem) {
+            free(carousel[s].tex->Mem);
+            carousel[s].tex->Mem = NULL;
+          }
+          if (loadCoverIntoTex(carousel[s].tex, t->device, t->id) == 0) {
+            carousel[s].loaded = 1;
+            carousel[s].titleIdx = idx;
+          } else {
+            carousel[s].loaded = -1;
+            carousel[s].titleIdx = idx;
+          }
+        }
+      }
+
     } else if (input & PAD_DOWN) {
       // Advance to the next title
       selectedTitleIdx = (selectedTitleIdx + 1) % titles->total;
+
+      // Reload carousel completely (simple, safe)
+      for (int s = 0; s < carouselVisible; s++) {
+        int offset = s - CAROUSEL_HALF;
+        int idx = ((selectedTitleIdx + offset) % total + total) % total;
+        Target *t = getTargetByIdx(titles, idx);
+        if (!t) {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = -1;
+          continue;
+        }
+        if (carousel[s].titleIdx != idx || carousel[s].loaded != 1) {
+          if (carousel[s].tex->Mem) {
+            free(carousel[s].tex->Mem);
+            carousel[s].tex->Mem = NULL;
+          }
+          if (loadCoverIntoTex(carousel[s].tex, t->device, t->id) == 0) {
+            carousel[s].loaded = 1;
+            carousel[s].titleIdx = idx;
+          } else {
+            carousel[s].loaded = -1;
+            carousel[s].titleIdx = idx;
+          }
+        }
+      }
+
     } else if (input & PAD_R1) {
       // Switch to the next page
       if (selectedTitleIdx == titles->total - 1) {
@@ -272,6 +405,30 @@ int uiLoop(TargetList *titles) {
         if (selectedTitleIdx >= titles->total)
           selectedTitleIdx = titles->total - 1;
       }
+
+      // reload carousel around new selection
+      for (int s = 0; s < carouselVisible; s++) {
+        int offset = s - CAROUSEL_HALF;
+        int idx = ((selectedTitleIdx + offset) % total + total) % total;
+        Target *t = getTargetByIdx(titles, idx);
+        if (!t) {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = -1;
+          continue;
+        }
+        if (carousel[s].tex->Mem) {
+          free(carousel[s].tex->Mem);
+          carousel[s].tex->Mem = NULL;
+        }
+        if (loadCoverIntoTex(carousel[s].tex, t->device, t->id) == 0) {
+          carousel[s].loaded = 1;
+          carousel[s].titleIdx = idx;
+        } else {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = idx;
+        }
+      }
+
     } else if (input & PAD_L1) {
       // Switch to the previous page
       if (selectedTitleIdx == 0) {
@@ -281,6 +438,30 @@ int uiLoop(TargetList *titles) {
         if (selectedTitleIdx < 0)
           selectedTitleIdx = 0;
       }
+
+      // reload carousel around new selection
+      for (int s = 0; s < carouselVisible; s++) {
+        int offset = s - CAROUSEL_HALF;
+        int idx = ((selectedTitleIdx + offset) % total + total) % total;
+        Target *t = getTargetByIdx(titles, idx);
+        if (!t) {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = -1;
+          continue;
+        }
+        if (carousel[s].tex->Mem) {
+          free(carousel[s].tex->Mem);
+          carousel[s].tex->Mem = NULL;
+        }
+        if (loadCoverIntoTex(carousel[s].tex, t->device, t->id) == 0) {
+          carousel[s].loaded = 1;
+          carousel[s].titleIdx = idx;
+        } else {
+          carousel[s].loaded = -1;
+          carousel[s].titleIdx = idx;
+        }
+      }
+
     } else if (input & PAD_TRIANGLE) {
       input = -1;    // Force UI loop to wait once uiTitleOptionsLoop returns
       prevInput = 0; // Reset previous input
@@ -316,8 +497,8 @@ void drawTitleListFooter(int baseX) {
   drawTextWindow(0, baseY, gsGlobal->Width - baseX, gsGlobal->Height - 1, 0, HeaderTextColor, ALIGN_VCENTER | ALIGN_RIGHT, "Title options");
 }
 
-// Draws title list
-void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPage, GSTEXTURE *selectedTitleCover) {
+// Draws title list with carousel covers
+void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPage, GSTEXTURE *covers[], int visibleCount) {
   int curPage = selectedTitleIdx / maxTitlesPerPage;
 
   // Draw header and footer
@@ -329,9 +510,8 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
 
   drawTitleListFooter(baseX);
 
-  // Draw title list
+  // Draw title list (names) on the left side
   Target *curTitle = titles->first;
-
   titleY += getFontLineHeight() / 2;
   while (curTitle != NULL) {
     // Do not display titles before the current page
@@ -359,21 +539,43 @@ void drawTitleList(TargetList *titles, int selectedTitleIdx, int maxTitlesPerPag
     curTitle = curTitle->next;
   }
 
-  // Draw cover art placeholder/frame
-  gsKit_prim_sprite(gsGlobal, coverArtX1 - 2, coverArtY1 - 2, coverArtX2 + 2, coverArtY2 + 2, 1, FontMainColor);
+  // Carousel drawing area center (we keep main selected area near current cover bounding box)
+  int centerX = (coverArtX1 + coverArtX2) / 2;
+  int centerY = (coverArtY1 + coverArtY2) / 2;
 
-  // Draw cover art if it exists
-  if (selectedTitleCover != NULL) {
-    // Temporaily disable alpha blending
-    // Some PNGs require inverted alpha channel value to display properly
-    // Since cover art has nothing to blend, we can bypass the issue altogether
-    gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
-    gsKit_prim_sprite_texture(gsGlobal, selectedTitleCover, coverArtX1, coverArtY1, 0.0f, 0.0f, coverArtX2, coverArtY2, selectedTitleCover->Width,
-                              selectedTitleCover->Height, 2, FontMainColor);
-    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
-  } else {
-    gsKit_prim_sprite(gsGlobal, coverArtX1, coverArtY1, coverArtX2, coverArtY2, 1, BGColor);
-    drawTextWindow(coverArtX1, coverArtY1, coverArtX2, coverArtY2, 1, FontMainColor, ALIGN_CENTER, "No cover art");
+  // Parameters for the perspective "train" effect: positions offsets (x,y), scales and alpha for slots -2..2
+  // Order: slot 0 -> offset -2 (far left/back), slot 1 -> -1, slot 2 -> 0 (selected), slot 3 -> +1, slot 4 -> +2
+  float scales[CAROUSEL_VISIBLE] = {0.55f, 0.78f, 1.00f, 0.78f, 0.55f};
+  int offsetX[CAROUSEL_VISIBLE] = {-260, -140, 0, 110, 220}; // visual offsets relative to center (tweak as needed)
+  int offsetY[CAROUSEL_VISIBLE] = {-20, -8, 0, 10, 30};      // slight vertical offsets to simulate curve
+  float alphas[CAROUSEL_VISIBLE] = {0.35f, 0.60f, 1.00f, 0.60f, 0.35f};
+
+  // Draw farthest first to nearest last (so closest overlaps)
+  for (int s = 0; s < visibleCount; s++) {
+    int slot = s; // 0..4
+    GSTEXTURE *tex = covers[slot];
+    float scale = scales[slot];
+    float a = alphas[slot];
+    int w = (int)(COVER_ART_RES_W * scale);
+    int h = (int)(COVER_ART_RES_H * scale);
+    int x = centerX + offsetX[slot] - (w / 2);
+    int y = centerY + offsetY[slot] - (h / 2);
+
+    // Draw frame/backdrop
+    gsKit_prim_sprite(gsGlobal, x - 2, y - 2, x + w + 2, y + h + 2, 1, GS_SETREG_RGBA(0x20, 0x20, 0x20, (int)(0xFF * a)));
+
+    if (tex && tex->Width > 0 && tex->Height > 0) {
+      // compute color with alpha modulation
+      uint32_t color = GS_SETREG_RGBA(0xFF, 0xFF, 0xFF, (unsigned char)(a * 0xFF));
+      // Draw scaled texture
+      gsGlobal->PrimAlphaEnable = GS_SETTING_OFF; // match previous behavior when drawing textures
+      gsKit_prim_sprite_texture(gsGlobal, tex, x, y, 0.0f, 0.0f, x + w, y + h, tex->Width, tex->Height, 2, color);
+      gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+    } else {
+      // No cover art: draw placeholder box and text
+      gsKit_prim_sprite(gsGlobal, x, y, x + w, y + h, 1, BGColor);
+      drawTextWindow(x, y, x + w, y + h, 1, FontMainColor, ALIGN_CENTER, "No cover art");
+    }
   }
 }
 
