@@ -29,7 +29,7 @@ void toggleMarshal(NeutrinoArgument *arg, ArgumentList *list);
 void toggleParse(NeutrinoArgument *arg, ArgumentList *list);
 
 NeutrinoArgument uiArguments[] = {
-    {.name = "Compatibility modes",
+    {.name = "Modos de compatibilidad",
      .arg = "gc",
      .activeElementIdx = 0,
      .state = 0,
@@ -37,7 +37,7 @@ NeutrinoArgument uiArguments[] = {
      .handleInput = gcInput,
      .parse = gcParse,
      .marshal = gcMarshal},
-    {.name = "Video mode",
+    {.name = "Modo de video",
      .arg = "gsm",
      .activeElementIdx = 0,
      .state = 0,
@@ -45,7 +45,7 @@ NeutrinoArgument uiArguments[] = {
      .handleInput = gsmInput,
      .parse = gsmParse,
      .marshal = gsmMarshal},
-    {.name = "Show PS2 logo",
+    {.name = "Mostrar logo PS2",
      .arg = "logo",
      .activeElementIdx = 0,
      .state = 0,
@@ -53,7 +53,7 @@ NeutrinoArgument uiArguments[] = {
      .handleInput = toggleInput,
      .parse = toggleParse,
      .marshal = toggleMarshal},
-    {.name = "Enable debug colors",
+    {.name = "Habilitar colores de depuración",
      .arg = "dbc",
      .activeElementIdx = 0,
      .state = 0,
@@ -73,11 +73,11 @@ typedef struct ArgValueMap {
 
 #define ARG_GC_NUM_MODES (sizeof(gcValueMap) / sizeof(ArgValueMap))
 static const ArgValueMap gcValueMap[] = {
-    {(1 << 0), "0", "IOP: Fast reads"},
-    {(1 << 2), "2", "IOP: Sync reads"},
-    {(1 << 3), "3", "EE : Unhook syscalls"},
-    {(1 << 5), "5", "IOP: Emulate DVD-DL"},
-    {(1 << 7), "7", "IOP: Fix game buffer overrun"},
+    {(1 << 0), "0", "IOP: Lecturas rápidas"},
+    {(1 << 2), "2", "IOP: Lecturas sincronizadas"},
+    {(1 << 3), "3", "EE : Desenganche de syscalls"},
+    {(1 << 5), "5", "IOP: Emular DVD-DL"},
+    {(1 << 7), "7", "IOP: Reparar desbordamiento de buffer"},
 };
 
 //
@@ -188,10 +188,10 @@ void gcParse(NeutrinoArgument *arg, ArgumentList *list) {
 // GSM arguments
 //
 static const ArgValueMap gsmValueMap[] = {
-    {(1 << 0), "fp1", "Force progressive (240p/288p)"}, {(1 << 1), "fp2", "Force progressive (480p/576p)"},
-    {(1 << 2), "1080ix1", "Force 1080i with x1 scale"}, {(1 << 3), "1080ix2", "Force 1080i with x2 scale"},
-    {(1 << 4), "1080ix3", "Force 1080i with x3 scale"}, {(1 << 5), ":1", "Field flipping type 1 (GSM/OPL)"},
-    {(1 << 6), ":2", "Field flipping type 2"},          {(1 << 7), ":3", "Field flipping type 3"},
+    {(1 << 0), "fp1", "Forzar progresivo (240p/288p)"}, {(1 << 1), "fp2", "Forzar progresivo (480p/576p)"},
+    {(1 << 2), "1080ix1", "Forzar 1080i con escala x1"}, {(1 << 3), "1080ix2", "Forzar 1080i con escala x2"},
+    {(1 << 4), "1080ix3", "Forzar 1080i con escala x3"}, {(1 << 5), ":1", "Inversión de campo tipo 1 (GSM/OPL)"},
+    {(1 << 6), ":2", "Inversión de campo tipo 2"},          {(1 << 7), ":3", "Inversión de campo tipo 3"},
 };
 
 int gsmDraw(NeutrinoArgument *arg, uint8_t isActive, int x, int y, int z, int maxWidth, int maxHeight) {
