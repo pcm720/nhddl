@@ -11,6 +11,8 @@ set(EE_BIN_PKD "nhddl.elf")
 option(ENABLE_PRINTF "Enable printf debugging output" OFF)
 # Print debug output to EE SIO
 option(USE_EESIO "Use EE SIO for debugging" OFF)
+# Disable -s flag if requested
+option(NO_STRIP "Strip debug info from ELF" OFF)
 
 # Source files
 set(SOURCES
@@ -83,6 +85,9 @@ set(SOURCES
 )
 include(embed.cmake)
 
+# Vendored FreeType library
+add_subdirectory(third_party/freetype)
+
 # Get git version for build info
 find_package(Git QUIET)
 if(GIT_FOUND)
@@ -114,8 +119,14 @@ add_executable(${EE_BIN} ${SOURCES})
 target_include_directories(${EE_BIN}
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    $ENV{PS2SDK}/ports/include/freetype2
 )
+
+if(NOT NO_STRIP)
+  target_link_options(${EE_BIN}
+      PRIVATE
+      -s
+  )
+endif()
 
 # Custom linker script
 separate_arguments(LINKER_FLAGS UNIX_COMMAND ${CMAKE_EXE_LINKER_FLAGS})
@@ -137,15 +148,9 @@ set(EE_LIBS
     dmakit
     png
     z
-    tiff
     freetype
 )
 target_link_libraries(${EE_BIN} ${EE_LIBS})
-
-# # Set link flags for PS2
-# set_target_properties(${EE_BIN} PROPERTIES
-#     LINK_FLAGS "-s"
-# )
 
 # Create packed binary
 add_custom_command(
