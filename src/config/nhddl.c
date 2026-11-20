@@ -1,6 +1,7 @@
 #include "config/nhddl.h"
 #include "backends/backends.h"
 #include "config/arguments.h"
+#include "config/common.h"
 #include "config/config.h"
 #include "dprintf.h"
 #include <ctype.h>
@@ -10,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 const char optionsFile[] = "nhddl.cnf";
 
@@ -25,7 +27,9 @@ const char optionsFile[] = "nhddl.cnf";
 // UI flags
 #define OPTION_VMODE "video"
 #define OPTION_WIDESCREEN "widescreen"
+#define OPTION_FOLDER_VIEW "folder_view"
 #define OPTION_AUTOLAUNCH "autolaunch"
+#define OPTION_LANG "lang"
 
 // Config file line formats
 #define FMT_OPTION_STR "-%s=%s\n"
@@ -114,15 +118,29 @@ static const char *deviceToStr(DeviceType type) {
   return NULL;
 }
 
+// Writes one line to fd. Returns 0 on success, -EIO on write failure.
+static int writeOptionLine(int fd, const char *line) {
+  int len = (int)strlen(line);
+  if (len <= 0)
+    return 0;
+  if (write(fd, line, len) != len)
+    return -EIO;
+  return 0;
+}
+
 // Writes one -device=<name> line for each bit set in mask. Returns 0 on success.
-static int writeDeviceOptions(FILE *f, DeviceType mask) {
+static int writeDeviceOptions(int fd, DeviceType mask) {
   static const DeviceType bits[] = {
       Device_ATA, Device_HDD, Device_MX4SIO, Device_UDPFS, Device_USB, Device_iLink, Device_MMCE,
   };
+  char line[64];
   for (size_t i = 0; i < sizeof(bits) / sizeof(bits[0]); i++) {
     if (mask & bits[i]) {
       const char *name = deviceToStr(bits[i]);
-      if (name && fprintf(f, FMT_OPTION_STR, OPTION_DEVICE, name) < 0)
+      if (!name)
+        continue;
+      snprintf(line, sizeof(line), FMT_OPTION_STR, OPTION_DEVICE, name);
+      if (writeOptionLine(fd, line))
         return -EIO;
     }
   }
@@ -172,9 +190,15 @@ void parseArgv(int argc, char *argv[]) {
     } else if (!strcmp(OPTION_WIDESCREEN, arg)) {
       DPRINTF("config/nhddl: using widescreen\n", val);
       setWidescreen(1);
+    } else if (!strcmp(OPTION_FOLDER_VIEW, arg)) {
+      DPRINTF("config/nhddl: using folder view\n");
+      setFolderView(1);
     } else if (!strcmp(OPTION_AUTOLAUNCH, arg)) {
       DPRINTF("config/nhddl: using autolaunch timeout %s\n", val);
       setAutolaunchTimeout(val ? atoi(val) : 0);
+    } else if (val && !strcmp(OPTION_LANG, arg)) {
+      DPRINTF("config/nhddl: using language %s\n", val);
+      setLang(val);
     }
   }
 }
@@ -185,7 +209,7 @@ int loadOptions(void) {
   if (!root || root[0] == '\0')
     return -ENOENT;
   char lineBuffer[PATH_MAX];
-  snprintf(lineBuffer, sizeof(lineBuffer), "%s%s", root, optionsFile);
+  joinDevicePath(lineBuffer, sizeof(lineBuffer), root, optionsFile);
 
   DPRINTF("config/nhddl: loading options file from %s\n", lineBuffer);
   ArgumentList *options = calloc(1, sizeof(ArgumentList));
@@ -210,8 +234,12 @@ int loadOptions(void) {
         setNeutrinoPath(arg->value);
       } else if (!strcmp(OPTION_WIDESCREEN, arg->arg)) {
         setWidescreen(1);
+      } else if (!strcmp(OPTION_FOLDER_VIEW, arg->arg)) {
+        setFolderView(1);
       } else if (!strcmp(OPTION_AUTOLAUNCH, arg->arg)) {
         setAutolaunchTimeout(arg->value ? atoi(arg->value) : 0);
+      } else if (!strcmp(OPTION_LANG, arg->arg) && arg->value && arg->value[0]) {
+        setLang(arg->value);
       }
     }
     arg = arg->next;
@@ -221,54 +249,73 @@ int loadOptions(void) {
   return 0;
 }
 
-// Saves current config to optionsFile in config root path
+// Saves current config to optionsFile in config root path.
+// Returns 0 on success, -ENOENT if no root, -EBADF on open failure, -EIO on write/close failure.
 int saveOptions(void) {
   const char *root = getNHDDLRoot();
   if (!root || root[0] == '\0')
     return -ENOENT;
   char path[PATH_MAX];
-  snprintf(path, sizeof(path), "%s%s", root, optionsFile);
+  joinDevicePath(path, sizeof(path), root, optionsFile);
 
   DPRINTF("config/nhddl: saving options to %s\n", path);
-  FILE *f = fopen(path, "w");
-  if (!f) {
+  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC);
+  if (fd < 0) {
     DPRINTF("config/nhddl: failed to open %s\n", path);
-    return -EIO;
+    return -EBADF;
   }
 
+  char line[PATH_MAX];
   int err = 0;
   VModeType vmode = getVMode();
   if (vmode != VMode_NONE) {
-    if (fprintf(f, FMT_OPTION_STR, OPTION_VMODE, vmodeToStr(vmode)) < 0)
+    snprintf(line, sizeof(line), FMT_OPTION_STR, OPTION_VMODE, vmodeToStr(vmode));
+    if (writeOptionLine(fd, line))
       err = -EIO;
   }
-  if (writeDeviceOptions(f, getEnabledDevices()))
+  if (!err && writeDeviceOptions(fd, getEnabledDevices()))
     err = -EIO;
-  if (getIPAddress()[0] != '\0') {
-    if (fprintf(f, FMT_OPTION_STR, OPTION_IP_ADDRESS, getIPAddress()) < 0)
+  if (!err && getIPAddress()[0] != '\0') {
+    snprintf(line, sizeof(line), FMT_OPTION_STR, OPTION_IP_ADDRESS, getIPAddress());
+    if (writeOptionLine(fd, line))
       err = -EIO;
   }
-  if (getProbeDelay() > 0) {
-    if (fprintf(f, FMT_OPTION_INT, OPTION_PROBE_DELAY, getProbeDelay()) < 0)
+  if (!err && getProbeDelay() > 0) {
+    snprintf(line, sizeof(line), FMT_OPTION_INT, OPTION_PROBE_DELAY, getProbeDelay());
+    if (writeOptionLine(fd, line))
       err = -EIO;
   }
-  if (getNeutrinoPath()[0] != '\0') {
-    if (fprintf(f, FMT_OPTION_STR, OPTION_NEUTRINO, getNeutrinoPath()) < 0)
+  if (!err && getNeutrinoPath()[0] != '\0') {
+    snprintf(line, sizeof(line), FMT_OPTION_STR, OPTION_NEUTRINO, getNeutrinoPath());
+    if (writeOptionLine(fd, line))
       err = -EIO;
   }
-  if (getNoInit()) {
-    if (fprintf(f, FMT_OPTION_FLAG, OPTION_NO_INIT) < 0)
+  if (!err && getNoInit()) {
+    snprintf(line, sizeof(line), FMT_OPTION_FLAG, OPTION_NO_INIT);
+    if (writeOptionLine(fd, line))
       err = -EIO;
   }
-  if (getWidescreen()) {
-    if (fprintf(f, FMT_OPTION_FLAG, OPTION_WIDESCREEN) < 0)
+  if (!err && getWidescreen()) {
+    snprintf(line, sizeof(line), FMT_OPTION_FLAG, OPTION_WIDESCREEN);
+    if (writeOptionLine(fd, line))
       err = -EIO;
   }
-  if (getAutolaunchTimeout() > 0) {
-    if (fprintf(f, FMT_OPTION_INT, OPTION_AUTOLAUNCH, getAutolaunchTimeout()) < 0)
+  if (!err && getFolderView()) {
+    snprintf(line, sizeof(line), FMT_OPTION_FLAG, OPTION_FOLDER_VIEW);
+    if (writeOptionLine(fd, line))
       err = -EIO;
   }
-  if (fclose(f))
+  if (!err && getAutolaunchTimeout() > 0) {
+    snprintf(line, sizeof(line), FMT_OPTION_INT, OPTION_AUTOLAUNCH, getAutolaunchTimeout());
+    if (writeOptionLine(fd, line))
+      err = -EIO;
+  }
+  if (!err && strcmp(getLang(), "en") != 0) {
+    snprintf(line, sizeof(line), FMT_OPTION_STR, OPTION_LANG, getLang());
+    if (writeOptionLine(fd, line))
+      err = -EIO;
+  }
+  if (close(fd))
     err = -EIO;
   return err;
 }

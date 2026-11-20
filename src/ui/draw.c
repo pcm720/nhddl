@@ -5,6 +5,8 @@
 #include <gsKit.h>
 #include <gsPrimitive.h>
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
 
 #define ARC_SEGMENTS 48
 #define ARC_MAX_VERTS (1 + ARC_SEGMENTS + 1)
@@ -68,7 +70,7 @@ void uiDrawRectRounded(GSGLOBAL *gs, int vx1, int vy1, int vx2, int vy2, int rad
   int cy2 = vy2 - r;
   // Center rectangle
   uiDrawRect(gs, cx1, cy1, cx2, cy2, z, color);
-  // Top / bottom / left / right strips
+  // Top/bottom/left/right strips
   uiDrawRect(gs, cx1, vy1, cx2, cy1, z, color);
   uiDrawRect(gs, cx1, cy2, cx2, vy2, z, color);
   uiDrawRect(gs, vx1, cy1, cx1, cy2, z, color);
@@ -110,10 +112,51 @@ void uiDrawCircleFilled(GSGLOBAL *gs, int cx_v, int cy_v, int radius_v, int z, u
   circleFilledUniform(gs, cx_v, cy_v, radius_v, z, color);
 }
 
+int uiSelectionIndicatorCenterY(int rowY, int rowH) { return rowY + rowH / 2 + UI_SEL_INDICATOR_OPTICAL_NUDGE; }
+
 // Draw a selection indicator: small filled circle when selected, nothing when not. Center (vx, vy) and radius_v in virtual coords.
 void uiDrawSelectionIndicator(GSGLOBAL *gs, int vx, int vy, int radius_v, int z, uint64_t color, int selected) {
   if (selected)
     uiDrawCircleFilled(gs, vx, vy, radius_v, z, color);
+}
+
+void uiDrawChoiceRow(GSGLOBAL *gs, int leftX, int rightX, int entryY, int rowH, int z, uint64_t color, int on, const char *label) {
+  uiDrawSelectionIndicator(gs, leftX + UI_SEL_INDICATOR_R, uiSelectionIndicatorCenterY(entryY, rowH), UI_SEL_INDICATOR_R, z, color, on);
+  fontRenderInRect(FONT_DEFAULT, leftX + UI_SEL_LABEL_INDENT, entryY, rightX, entryY + rowH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, z + 1,
+                   label ? label : "", color);
+}
+
+void uiTrimPathMiddle(const char *src, char *out, size_t outSize, const char *emptyLabel) {
+  if (!out || outSize == 0)
+    return;
+  if (!src || !src[0]) {
+    snprintf(out, outSize, "%s", emptyLabel ? emptyLabel : "");
+    return;
+  }
+  size_t len = strlen(src);
+  if (len < outSize) {
+    snprintf(out, outSize, "%s", src);
+    return;
+  }
+  if (outSize < 8) {
+    out[0] = '\0';
+    return;
+  }
+  size_t head = (outSize - 4) / 2;
+  size_t tail = outSize - 4 - head;
+  snprintf(out, outSize, "%.*s...%s", (int)head, src, src + len - tail);
+}
+
+int uiContentPanelWidth(void) {
+  int panelW = SCENE_VW - 4 * SCENE_KEEPOUT;
+  if (panelW < 320)
+    panelW = SCENE_VW - 2 * SCENE_KEEPOUT;
+  return panelW;
+}
+
+int uiContentPanelLeft(void) {
+  int panelW = uiContentPanelWidth();
+  return (SCENE_VW - panelW) / 2;
 }
 
 void uiDrawIcon(GSGLOBAL *gs, int vx, int vy, int z, uint64_t color, IconType iconType) {
@@ -142,15 +185,15 @@ void uiDrawIconScaled(GSGLOBAL *gs, int vx, int vy, int vw, int vh, int z, uint6
 }
 
 #define PROMPT_ICON_TEXT_GAP 4
+#define PROMPT_ICON_ICON_GAP 3
 #define PROMPT_ICON_SIZE_V 22
 // Font VCENTER is baseline-centric, so drawn text sits low in the rect. Offset text rect up so it aligns with icon.
 #define PROMPT_TEXT_SLOT_OFFSET_UP 3
 
-void uiDrawPrompt(GSGLOBAL *gs, int x, int y, int z, uint64_t color, IconType iconType, const char *label) {
+static void promptIconVirtualSize(IconType iconType, int *outW, int *outH) {
   int iconW_nat = getIconWidth(iconType);
   int iconH_nat = getIconHeight(iconType);
   int iconH_tgt = PROMPT_ICON_SIZE_V;
-  // Scale icon to fit inside iconH_tgt × iconH_tgt while preserving aspect.
   int iconMax = iconW_nat > iconH_nat ? iconW_nat : iconH_nat;
   int iconW_v = (iconH_tgt * iconW_nat + iconMax / 2) / iconMax;
   int iconH_v = (iconH_tgt * iconH_nat + iconMax / 2) / iconMax;
@@ -158,30 +201,50 @@ void uiDrawPrompt(GSGLOBAL *gs, int x, int y, int z, uint64_t color, IconType ic
     iconW_v = 1;
   if (iconH_v < 1)
     iconH_v = 1;
+  *outW = iconW_v;
+  *outH = iconH_v;
+}
+
+// Will draw a single-icon prompt if iconType2 == ICON_COUNT
+static void uiDrawPrompt(GSGLOBAL *gs, int x, int y, int z, uint64_t color, IconType iconType, IconType iconType2, const char *label) {
+  int iconW_v, iconH_v;
+  promptIconVirtualSize(iconType, &iconW_v, &iconH_v);
+  int iconsW = PROMPT_ICON_SIZE_V;
+  int hasSecond = (iconType2 < ICON_COUNT);
+  int icon2W_v = 0, icon2H_v = 0;
+  if (hasSecond) {
+    promptIconVirtualSize(iconType2, &icon2W_v, &icon2H_v);
+    iconsW = PROMPT_ICON_SIZE_V + PROMPT_ICON_ICON_GAP + PROMPT_ICON_SIZE_V;
+  }
+
   int textW_nat = fontCalcDimensionsFirstLine(FONT_PROMPT, label);
   int textW_v = scaleUnscaleX(textW_nat);
-  int totalW_v = iconH_tgt + PROMPT_ICON_TEXT_GAP + textW_v;
+  int totalW_v = iconsW + PROMPT_ICON_TEXT_GAP + textW_v;
   int leftX = x - totalW_v / 2;
-
   int slotHalfH = SCENE_ROW_SIZE / 2;
 
-  totalW_v = iconH_tgt + PROMPT_ICON_TEXT_GAP + textW_v;
   int iconTopV = y - iconH_v / 2;
-  int iconLeftV = leftX + (iconH_tgt - iconW_v) / 2;
+  int iconLeftV = leftX + (PROMPT_ICON_SIZE_V - iconW_v) / 2;
   uiDrawIconScaled(gs, iconLeftV, iconTopV, iconW_v, iconH_v, z, color, iconType);
+  if (hasSecond) {
+    int icon2TopV = y - icon2H_v / 2;
+    int icon2LeftV = leftX + PROMPT_ICON_SIZE_V + PROMPT_ICON_ICON_GAP + (PROMPT_ICON_SIZE_V - icon2W_v) / 2;
+    uiDrawIconScaled(gs, icon2LeftV, icon2TopV, icon2W_v, icon2H_v, z, color, iconType2);
+  }
+
   int textTop = y - slotHalfH - PROMPT_TEXT_SLOT_OFFSET_UP;
   int textBottom = y + slotHalfH - PROMPT_TEXT_SLOT_OFFSET_UP;
-  int tx1 = leftX + iconH_tgt + PROMPT_ICON_TEXT_GAP;
+  int tx1 = leftX + iconsW + PROMPT_ICON_TEXT_GAP;
   int tx2 = leftX + totalW_v;
   fontRenderInRect(FONT_PROMPT, tx1, textTop, tx2, textBottom, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, z, label, color);
 }
 
-void uiDrawModalPrompt(GSGLOBAL *gs, int vx1, int vx2, int slot, int y, int z, uint64_t color, IconType iconType, const char *label) {
-  uiDrawPrompt(gs, POPUP_PROMPT_SLOT_CENTER_X(vx1, vx2, slot), POPUP_PROMPT_ROW_Y(y), z, color, iconType, label);
+void uiDrawScenePrompt(GSGLOBAL *gs, int slot, int z, uint64_t color, IconType iconType, const char *label) {
+  uiDrawPrompt(gs, SCENE_PROMPT_SLOT_CENTER_X(slot), SCENE_FOOTER_ROW_Y, z, color, iconType, ICON_COUNT, label);
 }
 
-void uiDrawScenePrompt(GSGLOBAL *gs, int slot, int z, uint64_t color, IconType iconType, const char *label) {
-  uiDrawPrompt(gs, SCENE_PROMPT_SLOT_CENTER_X(slot), SCENE_FOOTER_ROW_Y, z, color, iconType, label);
+void uiDrawScenePrompt2(GSGLOBAL *gs, int slot, int z, uint64_t color, IconType iconType, IconType iconType2, const char *label) {
+  uiDrawPrompt(gs, SCENE_PROMPT_SLOT_CENTER_X(slot), SCENE_FOOTER_ROW_Y, z, color, iconType, iconType2, label);
 }
 
 // Draw texture in virtual rect; ratio-preserving and centered. If tex is NULL or empty, draws solid rect.
@@ -206,15 +269,4 @@ void uiDrawTextureInVirtualRect(GSGLOBAL *gs, int vx, int vy, int vw, int vh, GS
   }
   if (disableAlphaTest)
     gs->PrimAlphaEnable = GS_SETTING_ON;
-}
-
-void uiVirtualRectToNative(int vx1, int vy1, int vx2, int vy2, int *out_x1, int *out_y1, int *out_x2, int *out_y2) {
-  if (out_x1)
-    *out_x1 = scaleScaleX(vx1) + scaleGetOffsetX();
-  if (out_y1)
-    *out_y1 = scaleScaleY(vy1) + scaleGetOffsetY();
-  if (out_x2)
-    *out_x2 = scaleScaleX(vx2) + scaleGetOffsetX();
-  if (out_y2)
-    *out_y2 = scaleScaleY(vy2) + scaleGetOffsetY();
 }

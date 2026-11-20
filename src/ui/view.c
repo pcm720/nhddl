@@ -25,6 +25,11 @@ struct ViewStack *viewStackCreate(GSGLOBAL *gs) {
   return s;
 }
 
+void viewStackSetGs(struct ViewStack *stack, GSGLOBAL *gs) {
+  if (stack)
+    stack->gs = gs;
+}
+
 void viewStackDestroy(struct ViewStack *stack) { free(stack); }
 
 int viewStackPush(struct ViewStack *stack, View *view) {
@@ -62,25 +67,6 @@ void viewStackSetOverlay(struct ViewStack *stack, View *view, int durationFrames
     return;
   stack->overlay = view;
   stack->overlayFramesLeft = durationFrames > 0 ? durationFrames : 0;
-}
-
-void viewStackClearOverlay(struct ViewStack *stack) {
-  if (!stack)
-    return;
-  stack->overlay = NULL;
-  stack->overlayFramesLeft = 0;
-}
-
-void viewInit(View *v, ViewType type, void *userdata, void (*onEnter)(View *), void (*onLeave)(View *), void (*draw)(View *, int),
-              ViewResult (*onInput)(View *, int)) {
-  if (!v)
-    return;
-  v->type = type;
-  v->userdata = userdata;
-  v->onEnter = onEnter;
-  v->onLeave = onLeave;
-  v->draw = draw;
-  v->onInput = onInput;
 }
 
 int viewStackRunFrame(struct ViewStack *stack) {

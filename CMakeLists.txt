@@ -20,14 +20,18 @@ set(SOURCES
 
     # Main UI code
     src/ui/ui_main.c
+    src/ui/ui_context.c
     src/ui/view.c
     src/ui/title_list.c
+    src/ui/folder_view.c
     src/ui/atlas.c
     src/ui/font.c
     src/ui/scale.c
     src/ui/png.c
     src/ui/draw.c
     src/ui/icons.c
+    src/ui/popup_list.c
+    src/ui/strings.c
 
     # UI worker thread
     src/ui/worker/worker.c

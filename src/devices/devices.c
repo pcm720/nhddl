@@ -141,6 +141,48 @@ int isDeviceLoaded(DeviceType type) { return (loadedDevices & type) != 0; }
 // Loads module, executing argument function if it's present
 int loadModule(ModuleListEntry *mod);
 
+// Apply EE-side patches needed before SifExecModuleBuffer
+static void applyModuleLoadPatches(void) {
+  sbv_patch_enable_lmb();
+  sbv_patch_disable_prefix_check();
+  if (loadedModules == -1)
+    // Patching fileio twice can crash IOP when Neutrino tries to access files
+    sbv_patch_fileio();
+}
+
+// Load Device_Basic modules; if tolerateFailures, keep going when a module is already resident (host:).
+static int loadBasicModules(int tolerateFailures) {
+  for (int i = 0; i < MODULE_COUNT; i++) {
+    if (loadedModules & (1 << i))
+      continue;
+    if (!(moduleList[i].type & Device_Basic))
+      continue;
+    if ((moduleList[i].irx == NULL) || (moduleList[i].size == NULL))
+      continue;
+
+    int ret = loadModule(&moduleList[i]);
+    if (ret) {
+      if (!strcmp(moduleList[i].name, "ppctty"))
+        continue;
+      if (!tolerateFailures) {
+        DPRINTF("devices error: failed to load %s: %d\n", moduleList[i].name, ret);
+        return ret;
+      }
+      // PS2Link already has iomanX/fileXio/dev9 loaded
+      DPRINTF("devices: %s load returned %d (already present? continuing)\n", moduleList[i].name, ret);
+    }
+    loadedModules |= (1 << i);
+    if (!strcmp(moduleList[i].name, "fileXio"))
+      fileXioInit();
+    if (moduleList[i].argStr != NULL) {
+      free(moduleList[i].argStr);
+      moduleList[i].argStr = NULL;
+    }
+  }
+  loadedDevices |= Device_Basic;
+  return 0;
+}
+
 // Reboots IOP and initializes basic devices
 int rebootIOP() {
   DPRINTF("devices: rebooting IOP\n");
@@ -155,13 +197,7 @@ int rebootIOP() {
 
   // Initialize the RPC manager
   sceSifInitRpc(0);
-
-  // Apply patches required to load modules from EE RAM
-  sbv_patch_enable_lmb();
-  sbv_patch_disable_prefix_check();
-  if (loadedModules == -1)
-    // Patching fileio twice can crash IOP when Neutrino tries to access files
-    sbv_patch_fileio();
+  applyModuleLoadPatches();
 
   loadedModules = 0;
   loadedDevices = 0;
@@ -178,6 +214,21 @@ int rebootIOP() {
     if (rootType != Device_None && rootType != Device_Basic)
       loadDeviceModules(rootType);
   }
+  return 0;
+}
+
+// Load base modules on the current IOP without reset (keeps host paths available).
+int initDevicesNoReset(void) {
+  DPRINTF("devices: initializing without IOP reset\n");
+  sceSifInitRpc(0);
+  applyModuleLoadPatches();
+
+  loadedModules = 0;
+  loadedDevices = 0;
+  int res = loadBasicModules(1);
+  if (res)
+    return res;
+  initPad();
   return 0;
 }
 

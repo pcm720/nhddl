@@ -247,7 +247,8 @@ static void fontDrawQuad(GSTEXTURE *txt, float ulX, float ulY, float ulU, float 
 }
 
 // Draws one glyph. Integer position; quad size = bitmap size (rasterized with PAR via FT_Set_Char_Size).
-static void fontRenderGlyph(FontGlyph *glyph, int penX, int penY, int z, uint64_t color) {
+// clipX0/clipX1: native X window [clipX0, clipX1); pass clipX0 >= clipX1 for no horizontal clip.
+static void fontRenderGlyph(FontGlyph *glyph, int penX, int penY, int z, uint64_t color, int clipX0, int clipX1) {
   if (!glyph->allocation || !glyph->atlas)
     return;
   int ulX = penX + glyph->ox;
@@ -262,8 +263,28 @@ static void fontRenderGlyph(FontGlyph *glyph, int penX, int penY, int z, uint64_
   }
   float ulU = (float)glyph->allocation->x;
   float ulV = (float)glyph->allocation->y;
-  fontDrawQuad(&glyph->atlas->surface, (float)ulX, (float)ulY, ulU, ulV, (float)brX, (float)brY, ulU + (float)glyph->width,
-               ulV + (float)glyph->height, z, color);
+  float brU = ulU + (float)glyph->width;
+  float brV = ulV + (float)glyph->height;
+
+  if (clipX0 < clipX1) {
+    if (brX <= clipX0 || ulX >= clipX1)
+      return;
+    // Shrink geometry + UVs to the visible horizontal slice.
+    if (ulX < clipX0) {
+      float cut = (float)(clipX0 - ulX);
+      ulU += cut;
+      ulX = clipX0;
+    }
+    if (brX > clipX1) {
+      float cut = (float)(brX - clipX1);
+      brU -= cut;
+      brX = clipX1;
+    }
+    if (ulX >= brX)
+      return;
+  }
+
+  fontDrawQuad(&glyph->atlas->surface, (float)ulX, (float)ulY, ulU, ulV, (float)brX, (float)brY, brU, brV, z, color);
 }
 
 // Initializes FreeType, the shared CLUT, and the single font slot.
@@ -367,7 +388,8 @@ void fontUpdateAspectRatio(void) {
 }
 
 // Renders string at (x,y). Integer native coords via scaleScaleX/Y; id must be FONT_DEFAULT or FONT_PROMPT. z: depth (larger = in front on PS2).
-int fontRenderString(int id, int x, int y, short aligned, size_t width, size_t height, int z, const char *string, uint64_t colour) {
+static int fontRenderStringClip(int id, int x, int y, int scrollX, short aligned, size_t width, size_t height, int z,
+                                const char *string, uint64_t colour) {
   if (id < 0 || id > sizeof(font) / sizeof(FontSlot) || !font[id].valid)
     return 0;
   FontSlot *slot = &font[id];
@@ -387,9 +409,11 @@ int fontRenderString(int id, int x, int y, short aligned, size_t width, size_t h
   else
     yNat += scaleScaleY(slot->fontSizePt + 2);
 
-  int penX = xNat;
+  // Clip window stays at [xNat, xmax]; pen may start left of it when scrollX > 0 (marquee).
+  int xmin = width ? xNat : (int)0x80000000;
   int xmax = width ? xNat + wNat : 0x7fffffff;
   int ymax = height ? yNat + hNat : 0x7fffffff;
+  int penX = (scrollX > 0) ? (scaleScaleX(x - scrollX) + scaleGetOffsetX()) : xNat;
   int useKerning = FT_HAS_KERNING(slot->face);
   FT_UInt prevIndex = 0;
 
@@ -410,19 +434,38 @@ int fontRenderString(int id, int x, int y, short aligned, size_t width, size_t h
     }
     if (width) {
       if (cp == '\n') {
-        penX = xNat;
+        penX = (scrollX > 0) ? (scaleScaleX(x - scrollX) + scaleGetOffsetX()) : xNat;
         yNat += scaleScaleY(slot->fontSizePt + 2);
         continue;
       }
       if (yNat > ymax)
         break;
-      if (penX + glyph->width > xmax)
+      int glyphLeft = penX + glyph->ox;
+      int glyphRight = glyphLeft + glyph->width;
+      // Fully outside the clip window: advance without drawing.
+      if (glyphRight <= xmin || glyphLeft >= xmax) {
+        penX += glyph->shx >> 6;
+        if (glyphLeft >= xmax)
+          break;
         continue;
+      }
+      fontRenderGlyph(glyph, penX, yNat, z, colour, xmin, xmax);
+    } else {
+      fontRenderGlyph(glyph, penX, yNat, z, colour, 0, 0);
     }
-    fontRenderGlyph(glyph, penX, yNat, z, colour);
     penX += glyph->shx >> 6;
   }
   return scaleUnscaleX(penX - scaleGetOffsetX());
+}
+
+int fontRenderString(int id, int x, int y, short aligned, size_t width, size_t height, int z, const char *string, uint64_t colour) {
+  return fontRenderStringClip(id, x, y, 0, aligned, width, height, z, string, colour);
+}
+
+int fontRenderStringScrolled(int id, int x, int y, int scrollX, size_t width, int z, const char *string, uint64_t colour) {
+  if (scrollX < 0)
+    scrollX = 0;
+  return fontRenderStringClip(id, x, y, scrollX, 0, width, 0, z, string, colour);
 }
 
 // Returns total advance width in native pixels (rasterization already has PAR). id must be FONT_DEFAULT or FONT_PROMPT.

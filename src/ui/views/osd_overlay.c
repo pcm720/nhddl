@@ -10,7 +10,6 @@
 static View s_view;
 
 static void osdOverlayDraw(View *v, int zOrder) {
-  (void)v;
   const int vx1 = SCENE_KEEPOUT, vy1 = SCENE_CONTENT_BOTTOM, vx2 = SCENE_VW - SCENE_KEEPOUT, vy2 = (SCENE_VH - SCENE_KEEPOUT);
   uiDrawRectRounded(gsGlobal, vx1, vy1, vx2, vy2, POPUP_ROUNDRECT_RADIUS, zOrder, ModalBGColor);
   const char *msg = getOSDMessage();

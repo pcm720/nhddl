@@ -27,9 +27,6 @@ extern void uiMain(void);
 int main(int argc, char *argv[]) {
   DPRINTF("*************\nNHDDL %s\nA Neutrino launcher by pcm720\n*************\n", GIT_VERSION);
 
-  // argc = 2;
-  // argv[1] = "-device=udpfs";
-
   for (int i = 0; i < argc; i++)
     DPRINTF("argv[%d] = %s\n", i, argv[i]);
 
@@ -38,7 +35,7 @@ int main(int argc, char *argv[]) {
     parseArgv(argc, argv);
 
   int res;
-  if (getImage() && getEnabledDevices()) {
+  if (getImage()) {
     // Forward ISO to Neutrino
     res = forwardBoot();
     DPRINTF("main: error: failed to forward to Neutrino: %d\n", res);
@@ -78,22 +75,36 @@ int resolveRootDevice(char *argv0) {
     goto reboot;
   }
 
-  // Get the last slash location and truncate argv0 at the last slash to get CWD
   char cwd[PATH_MAX] = {0};
   strncpy(cwd, argv0, PATH_MAX);
+
+  if (!strncmp(cwd, "host", 4)) {
+    char *slash = strrchr(cwd, '/');
+    if (slash) {
+      *(++slash) = '\0';
+    } else {
+      char *colon = strchr(cwd, ':');
+      if (!colon) {
+        res = -EINVAL;
+        goto reboot;
+      }
+      *(colon + 1) = '\0';
+    }
+    setNHDDLRoot(cwd);
+    DPRINTF("main: using host path %s\n", cwd);
+    // Load without rebooting the IOP to keep the host device available
+    if (initDevicesNoReset())
+      return -ENXIO;
+    return 0;
+  }
+
+  // Truncate argv0 at the last slash to get CWD
   char *temp = strrchr(cwd, '/');
   if (!temp) {
     res = -EINVAL;
     goto reboot;
   }
   *(++temp) = '\0';
-
-  // if (!strncmp(cwd, "host", 4)) {
-  //   DPRINTF("main: using host path\n");
-  //   // For host: paths, just set the root path and return
-  //   setNHDDLRoot(cwd);
-  //   return 0;
-  // }
 
   DeviceType device = guessDeviceType(cwd);
   if (device == Device_None) {

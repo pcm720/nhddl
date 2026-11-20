@@ -10,7 +10,8 @@
 // Loads PNG into GSTEXTURE and uploads to GS VRAM.
 // Supports 8-bit palettized and 32-bit RGBA
 int loadPNG(GSGLOBAL *gs, GSTEXTURE *texture, FILE *file) {
-  if (!file || !gs || !texture)
+  // gs may be NULL (decode-only path for the worker thread).
+  if (!file || !texture)
     return -1;
 
   png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
@@ -156,13 +157,11 @@ int loadPNG(GSGLOBAL *gs, GSTEXTURE *texture, FILE *file) {
 
   png_read_end(png_ptr, NULL);
   png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-
-  gsKit_TexManager_bind(gs, texture);
   return 0;
 }
 
-// Loads PNG from file into GSTEXTURE and uploads to GS VRAM.
-// Supports 8-bit palettized and 32-bit RGBA
+// Loads PNG from file into GSTEXTURE (no GS bind).
+// Supports 8-bit palettized and 32-bit RGBA. gs may be NULL.
 int loadPNGFromFile(GSGLOBAL *gs, GSTEXTURE *texture, char *path) {
   FILE *file = fopen(path, "rb");
   if (!file) {
@@ -176,7 +175,7 @@ int loadPNGFromFile(GSGLOBAL *gs, GSTEXTURE *texture, char *path) {
   return res;
 }
 
-// Loads PNG from memory into GSTEXTURE and uploads to GS VRAM.
+// Loads PNG from memory into GSTEXTURE (no GS bind).
 // Supports 8-bit palettized (icons) and 32-bit RGBA (e.g. splash logo)
 int loadPNGFromMemory(GSGLOBAL *gs, GSTEXTURE *texture, void *buf, size_t size) {
   FILE *file = fmemopen(buf, size, "rb");

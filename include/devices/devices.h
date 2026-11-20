@@ -31,6 +31,9 @@ int loadDeviceModules(DeviceType dtype);
 // Reboots IOP and initializes basic devices
 int rebootIOP();
 
+// Load base modules on the current IOP without reset (keeps the host available). Returns 0 on success.
+int initDevicesNoReset(void);
+
 // Returns max device count for the given type and writes base mountpoint (e.g. "ata", "usb") into baseMountpoint buffer. Returns 0 or negative if
 // type has no supported device info.
 int getDeviceInfo(DeviceType type, char *baseMountpoint, size_t baseMountpointSize);

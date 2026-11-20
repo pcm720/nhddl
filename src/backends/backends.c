@@ -27,7 +27,7 @@ static const DeviceType enabledDeviceTypeBits[] = {
   Device_iLink,
 };
 static const int numEnabledDeviceTypeBits =
-    (int)(sizeof(enabledDeviceTypeBits) / sizeof(enabledDeviceTypeBits[0]));
+    (int)(sizeof(enabledDeviceTypeBits)/sizeof(enabledDeviceTypeBits[0]));
 
 int getBackendDeviceCount(void) {
   int i = 0;

@@ -30,7 +30,9 @@ typedef struct {
   // UI flags:
   VModeType vmode;       // Video mode
   int widescreen;        // If 1, UI will be scaled for widescreen. Not applicable in 720p.
+  int folderView;        // If 1, main list starts in folder browse mode
   int autolaunchTimeout; // If >0, UI will auto-launch the last title after autolaunchTimeout seconds
+  char lang[8];          // UI language code (e.g. "en"), defaults to English
 } Config;
 
 // Getters
@@ -48,7 +50,9 @@ int getNoInit(void);
 int getFakeDEV9(void);
 VModeType getVMode(void);
 int getWidescreen(void);
+int getFolderView(void);
 int getAutolaunchTimeout(void);
+const char *getLang(void);
 
 // Setters
 void setEnabledDevices(DeviceType v);
@@ -62,6 +66,8 @@ void setNoInit(int v);
 void setFakeDEV9(int v);
 void setVMode(VModeType v);
 void setWidescreen(int v);
+void setFolderView(int v);
 void setAutolaunchTimeout(int v);
+void setLang(const char *v);
 
 #endif

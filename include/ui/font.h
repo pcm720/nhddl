@@ -2,6 +2,7 @@
 #define _UI_FONT_H_
 
 // FreeType font rendering with texture atlas (single font). Use id 0 for all APIs.
+#include "ui/layout.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -38,8 +39,19 @@ void fontUpdateAspectRatio(void);
 int fontRenderString(int id, int x, int y, short aligned, size_t width, size_t height, int z,
                      const char *string, uint64_t colour);
 
+// Like fontRenderString with left-align and no vertical clip height required for marquee: shifts text left by
+// scrollX (virtual pixels) while clipping to [x, x+width]. Keeps long names inside the list margins.
+int fontRenderStringScrolled(int id, int x, int y, int scrollX, size_t width, int z, const char *string,
+                             uint64_t colour);
+
 // Line height in virtual Y units (for vertical alignment). id must be FONT_DEFAULT or FONT_PROMPT. Returns 0 if font not ready.
 int fontGetLineHeight(int id);
+
+// Line height with SCENE_ROW_SIZE fallback when font is not ready.
+static inline int uiFontLineHeight(void) {
+  int h = fontGetLineHeight(FONT_DEFAULT);
+  return h > 0 ? h : SCENE_ROW_SIZE;
+}
 
 // Advance width of first line only (stops at '\n'), in native pixels. id must be FONT_DEFAULT or FONT_PROMPT.
 int fontCalcDimensionsFirstLine(int id, const char *str);

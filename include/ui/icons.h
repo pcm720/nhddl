@@ -18,13 +18,8 @@ typedef enum {
   ICON_COUNT
 } IconType;
 
-// Loads PNG from file into GSTEXTURE and uploads to GS VRAM.
-// Supports 8-bit palettized and 32-bit RGBA
-int loadPNGFromFile(GSGLOBAL *gs, GSTEXTURE *texture, char *path);
-
-// Loads PNG from memory into GSTEXTURE and uploads to GS VRAM.
-// Supports 8-bit palettized (icons) and 32-bit RGBA (e.g. splash logo)
-int loadPNGFromMemory(GSGLOBAL *gs, GSTEXTURE *texture, void *buf, size_t size);
+// Frees loaded icon textures (EE Mem/Clut). Safe if none loaded.
+void freeIcons(void);
 
 // Initializes icon textures from embedded PNGs. Returns 0 on success.
 int initIcons(GSGLOBAL *gs);

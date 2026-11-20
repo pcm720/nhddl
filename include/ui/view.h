@@ -40,6 +40,9 @@ typedef struct View {
 // Creates an empty view stack. gs is used for draw/flip. Returns NULL on failure.
 struct ViewStack *viewStackCreate(GSGLOBAL *gs);
 
+// Updates the GS pointer after recreating GSGLOBAL (e.g. hires boundary change).
+void viewStackSetGs(struct ViewStack *stack, GSGLOBAL *gs);
+
 // Frees the stack and any remaining views. Does not call onLeave on views.
 void viewStackDestroy(struct ViewStack *stack);
 
@@ -60,14 +63,6 @@ View *viewStackTop(const struct ViewStack *stack);
 // Overlay: drawn on top of everything for a limited time. No input. Use a View with only draw set (e.g. type ViewType_Overlay).
 // Replaces any current overlay. durationFrames: how many frames to show (e.g. 120 for ~2 s at 60 fps).
 void viewStackSetOverlay(struct ViewStack *stack, View *view, int durationFrames);
-
-// Clears the current overlay immediately (stops drawing and countdown).
-void viewStackClearOverlay(struct ViewStack *stack);
-
-// Initializes a view with the given type, userdata, and callbacks. Use to zero and set all fields.
-void viewInit(View *v, ViewType type, void *userdata,
-              void (*onEnter)(View *), void (*onLeave)(View *),
-              void (*draw)(View *, int zOrder), ViewResult (*onInput)(View *, int));
 
 // Runs one frame: draw all views from bottom to top (so popups/modals overlay),
 // then poll pad and dispatch input to top view only.

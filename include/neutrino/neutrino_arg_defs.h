@@ -2,65 +2,74 @@
 #define _NEUTRINO_NEUTRINO_ARG_DEFS_H_
 
 #include <stdint.h>
+#include <string.h>
 
 // Table-driven Neutrino argument metadata (known -gc/-gsm/path names and UI labels).
 
-typedef struct NeutGcOption {
+typedef struct NeutrinoGcOption {
   uint32_t bit;
   const char *digit;
-  const char *label;
-} NeutGcOption;
+} NeutrinoGcOption;
 
-typedef struct NeutGsmOption {
+typedef struct NeutrinoGsmOption {
   uint32_t bit;
   const char *value;
-  const char *label;
-} NeutGsmOption;
+} NeutrinoGsmOption;
 
-#define NEUT_GC_ARG "gc"
-#define NEUT_GSM_ARG "gsm"
-#define NEUT_LOGO_ARG "logo"
-#define NEUT_DBC_ARG "dbc"
+#define NEUTRINO_GC_ARG "gc"
+#define NEUTRINO_GSM_ARG "gsm"
+#define NEUTRINO_LOGO_ARG "logo"
+#define NEUTRINO_DBC_ARG "dbc"
 
-#define NEUT_PATH_MC0 "mc0"
-#define NEUT_PATH_MC1 "mc1"
-#define NEUT_PATH_ATA0 "ata0"
-#define NEUT_PATH_ATA0ID "ata0id"
-#define NEUT_PATH_ATA1 "ata1"
+#define NEUTRINO_PATH_MC0 "mc0"
+#define NEUTRINO_PATH_MC1 "mc1"
+#define NEUTRINO_PATH_ATA0 "ata0"
+#define NEUTRINO_PATH_ATA0ID "ata0id"
+#define NEUTRINO_PATH_ATA1 "ata1"
 
-#define NEUT_NUM_PATH_ARGS 5
+#define NEUTRINO_NUM_PATH_ARGS 5
 
-static inline const char *neutPathArgName(int idx) {
-  static const char *names[NEUT_NUM_PATH_ARGS] = {
-      NEUT_PATH_MC0,
-      NEUT_PATH_MC1,
-      NEUT_PATH_ATA0,
-      NEUT_PATH_ATA0ID,
-      NEUT_PATH_ATA1,
+static inline const char *neutrinoPathArgName(int idx) {
+  static const char *names[NEUTRINO_NUM_PATH_ARGS] = {
+      NEUTRINO_PATH_MC0,
+      NEUTRINO_PATH_MC1,
+      NEUTRINO_PATH_ATA0,
+      NEUTRINO_PATH_ATA0ID,
+      NEUTRINO_PATH_ATA1,
   };
-  return (idx >= 0 && idx < NEUT_NUM_PATH_ARGS) ? names[idx] : "";
+  return (idx >= 0 && idx < NEUTRINO_NUM_PATH_ARGS) ? names[idx] : "";
 }
 
-#define NEUT_GC_OPTION_COUNT 6
-static const NeutGcOption NEUT_GC_OPTIONS[NEUT_GC_OPTION_COUNT] = {
-    {(1u << 0), "0", "IOP: Fast reads"},
-    {(1u << 1), "1", "IOP: Dummy"},
-    {(1u << 2), "2", "IOP: Sync reads"},
-    {(1u << 3), "3", "EE: Unhook syscalls"},
-    {(1u << 5), "5", "IOP: Emulate DVD-DL"},
-    {(1u << 7), "7", "IOP: Fix buffer overrun"},
+static inline int neutrinoIsPathArg(const char *name) {
+  if (!name)
+    return 0;
+  for (int i = 0; i < NEUTRINO_NUM_PATH_ARGS; i++) {
+    if (!strcmp(name, neutrinoPathArgName(i)))
+      return 1;
+  }
+  return 0;
+}
+
+#define NEUTRINO_GC_OPTION_COUNT 6
+static const NeutrinoGcOption NEUTRINO_GC_OPTIONS[NEUTRINO_GC_OPTION_COUNT] = {
+    {(1u << 0), "0"},
+    {(1u << 1), "1"},
+    {(1u << 2), "2"},
+    {(1u << 3), "3"},
+    {(1u << 5), "5"},
+    {(1u << 7), "7"},
 };
 
-#define NEUT_GSM_OPTION_COUNT 8
-static const NeutGsmOption NEUT_GSM_OPTIONS[NEUT_GSM_OPTION_COUNT] = {
-    {(1u << 0), "fp1", "GSM: 240p/288p"},
-    {(1u << 1), "fp2", "GSM: 480p/576p"},
-    {(1u << 2), "1080ix1", "GSM: 1080i x1"},
-    {(1u << 3), "1080ix2", "GSM: 1080i x2"},
-    {(1u << 4), "1080ix3", "GSM: 1080i x3"},
-    {(1u << 5), ":1", "GSM: Field flip :1"},
-    {(1u << 6), ":2", "GSM: Field flip :2"},
-    {(1u << 7), ":3", "GSM: Field flip :3"},
+#define NEUTRINO_GSM_OPTION_COUNT 8
+static const NeutrinoGsmOption NEUTRINO_GSM_OPTIONS[NEUTRINO_GSM_OPTION_COUNT] = {
+    {(1u << 0), "fp1"},
+    {(1u << 1), "fp2"},
+    {(1u << 2), "1080ix1"},
+    {(1u << 3), "1080ix2"},
+    {(1u << 4), "1080ix3"},
+    {(1u << 5), ":1"},
+    {(1u << 6), ":2"},
+    {(1u << 7), ":3"},
 };
 
 #endif

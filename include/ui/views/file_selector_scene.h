@@ -10,10 +10,15 @@ typedef void (*FileSelectorDismissFn)(void *userdata);
 void fileSelectorSetDismissNotifier(FileSelectorDismissFn fn, void *userdata);
 
 // Configure selector before pushing its view on stack.
-void fileSelectorConfigure(const char *initialPath, FileSelectorDoneFn onDone, void *userdata);
+// heading: optional modal title; NULL uses "Select device"/"Select file".
+void fileSelectorConfigure(const char *initialPath, FileSelectorDoneFn onDone, void *userdata, const char *heading);
 
 // Browse only under mountRoot (e.g. title device). Circle at mount root cancels (Pop) without selecting.
-void fileSelectorConfigureForMount(const char *mountRoot, FileSelectorDoneFn onDone, void *userdata);
+// heading: optional modal title; NULL uses "Select file".
+void fileSelectorConfigureForMount(const char *mountRoot, FileSelectorDoneFn onDone, void *userdata, const char *heading);
+
+// After configure: device list = "Select Neutrino device", browse = "Select Neutrino ELF".
+void fileSelectorEnableNeutrinoHeadings(void);
 
 // Modal file selector view.
 struct View *fileSelectorGetView(void);

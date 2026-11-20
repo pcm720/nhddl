@@ -39,26 +39,6 @@ static struct TitleListViewNode *appendNode(TitleListView *v, Target *t) {
   return n;
 }
 
-int titleListViewBuildFromBackends(TitleListView *v) {
-  int n = getBackendDeviceCount();
-  for (int i = 0; i < n; i++) {
-    struct BackendDevice *dev = getBackendDeviceAt(i);
-    TargetList *tl = getBackendDeviceTitles(dev);
-    DPRINTF("ui/title_list: device %s has %d titles\n", dev->mountpoint, tl ? tl->total : 0);
-    if (!tl)
-      continue;
-    Target *cur = tl->first;
-    while (cur) {
-      if (!appendNode(v, cur)) {
-        titleListViewClear(v);
-        return -1;
-      }
-      cur = cur->next;
-    }
-  }
-  return 0;
-}
-
 int titleListViewBuildFromBackendsFiltered(TitleListView *v, uint32_t deviceMask, int favoritesOnly) {
   int n = getBackendDeviceCount();
   for (int i = 0; i < n; i++) {

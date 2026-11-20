@@ -14,12 +14,38 @@ Since NHDDL only launches Neutrino, PADEMU, IGR, IGS, cheats and other features 
 
 ## Usage
 
-### Title list controls
+### Controls
 
- - Press **Up** on the d-pad to select the **previous title** in the list
- - Press **Down** on the d-pad to select the **next title** in the list
- - Press **L1** to switch to the **previous page** or go to the **start of the list**
- - Press **R1** to switch to the **next page** or go to the **end of the list**
+Global button conventions:
+ - **Cross**/**Circle** — select/confirm/activate
+ - **Triangle** — back/cancel
+
+Title list:
+ - **Up**/**Down** — previous/next title (long names scroll horizontally)
+ - **L1**/**R1** — previous/next page (or start/end of the list)
+ - **Cross**/**Circle** — launch the selected title
+ - **Triangle** — title options (per-title or global Neutrino args)
+ - **Select** — view options for title list view (device filter, favorites only/first, sort)
+ - **Start** — NHDDL menu (enabled devices, NHDDL options, reload, exit)
+
+Folder view:
+ - **Square** — title options
+ - **Triangle** — up a level
+ - **Start** — NHDDL menu
+ - **Cross**/**Circle** — enter folder/device or launch title
+
+Title options:
+- **Triangle** — save and back
+- **Start** — discard
+- **Square**  — test
+- **Cross**/**Circle** — toggle/open.
+
+Path settings: 
+- **Triangle**  — back
+- **Square**  — clear
+- **Cross**/**Circle** — open a file picker
+
+**Save and apply options** writes `nhddl.cnf` and applies language, video mode/widescreen, and folder view immediately.
 
 ### Important notes
 
@@ -90,12 +116,12 @@ To skip all other devices, `-device=usb` must be present in `nhddl.cnf`.
 
 To skip all other devices, `-device=udpfs` must be present in `nhddl.cnf`.
 
-UDPBD module requires PS2 IP address to work.  
+UDPFS module requires PS2 IP address to work.  
 NHDDL attempts to retrieve PS2 IP address from the following sources:
-- `ip_addr` flag in `nhddl.cnf`
+- `-ip=` in `nhddl.cnf` (or via argv)
 - `SYS-CONF/IPCONFIG.DAT` on the memory card (usually created by w/uLaunchELF via `MISC/Configure/Network Settings...`)
 
-`ip_addr` flag takes priority over `IPCONFIG.DAT`.
+`-ip=` takes priority over `IPCONFIG.DAT`.
 
 Make sure to set the IP address in Neutrino config files (as of Neutrino 1.8.0, `config/bsd-udpfs.toml`).  
 Consult Neutrino documentation for more details.
@@ -149,9 +175,9 @@ If unsure where to get your cover art from, check out the latest version of [OPL
 Similar to Neutrino, NHDDL supports receiving launcher options from `argv` in the `-<arg>=<value>` format.  
 Be aware that passing any argument will cause NHDDL to completely skip loading launcher configuration files from any device.  
 
-For example, to initialize NHDDL with UDPBD mode, you can run `nhddl.elf` with `-device=udpbd` and `-ip_addr=192.168.1.6`.  
+For example, to initialize NHDDL with UDPFS mode, you can run `nhddl.elf` with `-device=udpfs` and `-ip=192.168.1.6`.  
 
-If NHDDL receives `-mode` and `-dvd=<path to the image file>`, it will skip UI initialization and directly launch Neutrino while respecting all arguments specified in argument files.  
+If NHDDL receives `-dvd=<path to the image file>`, it will skip UI initialization and directly launch Neutrino while respecting all arguments specified in argument files.  
 Add `-noinit` argument to skip IOP initialization (make sure all required modules are already loaded).  
 
 See [this file](examples/nhddl.cnf) for a list of all supported arguments and their possible values.
@@ -187,12 +213,31 @@ Configuration file is loaded from one of the following paths:
 - `mmceX:/nhddl/nhddl.cnf` (MMCE devices, will work even if MMCE mode is _not_ enabled unless MX4SIO mode is set)
 - `mcX:/APP_NHDDL/nhddl.cnf` (memory cards, __case-sensitive__)
 
-This file is _completely optional_ and must be used only to force video mode in NHDDL UI, set NHDDL device mode, or set the path to Neutrino ELF.  
-By default, default video mode is used and all BDM devices are used to look for ISO files.
+This file is _completely optional_. Use it to force UI video mode/widescreen, folder view (`-folder_view`), set devices, probe delay, autolaunch timeout, UI language (`-lang=`), UDPFS IP (`-ip=`), or Neutrino ELF path.  
+By default, system video mode is used, UI language is English (`en`), title list view is enabled, and no devices are used to look for ISO files.
+
+`-lang=` takes a short language code baked into the ELF (e.g. `-lang=en`), unknown codes are ignored. The same option is available under **NHDDL options → Language**.
+
+Optional UI font override (not part of `nhddl.cnf`): place `theme/font.ttf` under the NHDDL root to replace the embedded font. There is no theme config file yet.
 
 To disable a flag, comment out the line with `#` (e.g. `#-device=ata`).
 
 See [this file](examples/nhddl.cnf) for an example of a valid `nhddl.cnf` file and a list of all supported arguments and possible values.
+
+#### Adding a UI language
+
+UI strings are compiled into the ELF. Each language is represented by one C header file.
+
+To add a new language:
+
+1. Fork the repository
+2. Copy `include/ui/lang/en.h` to `include/ui/lang/<code>.h` (e.g. `ja.h`).
+3. Rename the macros/tables (`UI_LANG_*_CODE`/`NAME`, `ui_str_*`, `neutrino_str_*`) and translate the string literals.
+   Keep array order identical to the `UiStrId`/`NeutrinoStrId` enums in `include/ui/strings.h`.
+4. `#include "ui/lang/<code>.h"` from `src/ui/strings.c` and append an entry to `s_langs`.
+5. Create a PR with the changes
+
+When adding new strings, make sure to register the string IDs in `include/ui/strings.h` and add the values to each language header file.
 
 ### Additional configuration files on storage device
 
@@ -211,7 +256,11 @@ This file is also created automatically.
 #### Argument files
 
 These files store arbitrary arguments that are passed to Neutrino on title launch, in the same CNF format as the launcher config: one argument per line as `-name=value` or `-name`; disabled entries as `#-name=value` or `#-name`.  
-Arguments stored in those files __are passed to `neutrino.elf` as-is__.
+Most arguments are passed to `neutrino.elf` as written.
+
+For **known path arguments** (`-mc0`, `-mc1`, `-ata0`, `-ata0id`, `-ata1`), CNF should store device-relative values (e.g. `/memcard0.bin` or `CD/foo.iso`). NHDDL prepends the title device mountpoint when showing those paths in the UI and when launching Neutrino. Other arguments with `/`-prefixed values are not rewritten.
+
+Empty known path arguments (enabled `-mc0` with no value) are kept in CNF for per-title overrides but are not passed on launch.
 
 Ensure that paths are as short as possible as the combined length of all arguments cannot exceed approximately 255 characters. If this limit is exceeded, arguments will be truncated when passed to Neutrino, potentially causing unpredictable results such as returning to the PS2 menu or ignoring some arguments.  
 Note that NHDDL always adds `-bsd=<>`, `-dvd=<full path to ISO>`, and `-qb` arguments to load the title, which reduces the actual allowable length below 255 characters.
@@ -221,13 +270,13 @@ _For a list of valid arguments, see Neutrino README._
 Example of a valid argument file:
 ```
 -gc=2
--mc0=/memcard0.bin # paths starting with / or \ are relative to device root; mountpoint is added automatically
+-mc0=/memcard0.bin # known path args: device-relative; mountpoint added at launch/UI
 # -mc1=/VMC/memcard1.bin # this argument is disabled
 -dbc
 -logo
 ```
 
-Only enabled (non-commented) arguments get passed to Neutrino.
+Only enabled (non-commented) arguments get passed to Neutrino (except empty known path args, see above).
 
 NHDDL supports two kinds of argument files:
 
@@ -239,7 +288,8 @@ Arguments stored in `nhddl/global.cnf` are applied to every ISO by default.
 
 Arguments stored in `nhddl/<ISO name>.cnf` are applied to every ISO that starts with `<ISO name>`.  
 
-NHDDL can create this file automatically when title compatibility modes are modified and saved in UI.
+NHDDL can create this file automatically when options are saved from the UI.  
+Known path arguments are stored relative to device mountpoint (e.g. `/VMC/vmc1.bin`, not `usb:/VMC/vmc1.bin`).
 
 #### Example of directory structure on BDM device
 
@@ -249,7 +299,7 @@ ART/ # cover art, optional
   - SLUS_200.02_COV.png
 nhddl/
   |
-   - lastTitle.txt # created automatically
+   - lastTitle.bin # created automatically
    - cache.bin # created automatically
    - global.cnf # optional argument file, applies to all ISOs
    - nhddl.cnf # NHDDL options, applied after initialization is complete

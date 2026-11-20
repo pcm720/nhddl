@@ -177,8 +177,9 @@ static void trim_trailing(char *s) {
 
 // Parses file into ArgumentList. Result may contain parsed arguments even if an error is returned.
 // CNF format: one argument per line as -name=value or -name; # starts comments; # -name=value is disabled.
-// If device is non-NULL, values starting with / or \ are resolved against device->mountpoint.
+// Values are stored as written
 static int parseConfigFile(ArgumentList *result, struct BackendDevice *device, FILE *file) {
+  (void)device;
   char lineBuffer[PATH_MAX];
   lineBuffer[0] = '\0';
 
@@ -212,17 +213,7 @@ static int parseConfigFile(ArgumentList *result, struct BackendDevice *device, F
     if (line[0] == '\0')
       continue;
 
-    char *resolved = NULL;
-    if (device && value[0] != '\0' && (value[0] == '/' || value[0] == '\\')) {
-      resolved = malloc(strlen(device->mountpoint) + strlen(value) + 1);
-      if (resolved) {
-        strcpy(resolved, device->mountpoint);
-        strcat(resolved, value);
-      }
-    }
-    const char *val = resolved ? resolved : value;
-    Argument *arg = newArgument(line, val[0] ? (char *)val : NULL);
-    free(resolved);
+    Argument *arg = newArgument(line, value[0] ? value : NULL);
     arg->isDisabled = isDisabled;
     appendArgument(result, arg);
   }

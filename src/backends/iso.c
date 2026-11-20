@@ -125,7 +125,7 @@ int _findISO(DIR *directory, TargetList *result, struct BackendDevice *device) {
       if ((entry->d_name[0] == '$') || (entry->d_name[0] == '?'))
         continue;
 
-      for (int i = 0; i < sizeof(ignoredDirs) / sizeof(char *); i++) {
+      for (int i = 0; i < sizeof(ignoredDirs)/sizeof(char *); i++) {
         if (!strcmp(ignoredDirs[i], entry->d_name))
           goto next;
       }

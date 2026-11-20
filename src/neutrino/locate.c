@@ -1,4 +1,5 @@
 #include "backends/backends.h"
+#include "config/common.h"
 #include "config/config.h"
 #include "devices/hdd.h"
 #include "dprintf.h"
@@ -52,21 +53,22 @@ int findNeutrinoELF() {
   char neutrinoPath[PATH_MAX] = {0};
   const char *cwd = getNHDDLRoot();
   if (cwd) {
-    // If path is valid, try it
-    snprintf(neutrinoPath, PATH_MAX, "%s%s", cwd, neutrinoCWDPath);
+    joinDevicePath(neutrinoPath, sizeof(neutrinoPath), cwd, neutrinoCWDPath);
     if (!testPath(neutrinoPath))
       return 0;
 
     // Try the root of CWD device
-    neutrinoPath[0] = '\0';
+    char mount[16];
     char *cwdMount = strchr(cwd, ':');
     if (cwdMount) {
-      cwdMount += 1;
-      strncpy(neutrinoPath, cwd, cwdMount - cwd);
-      neutrinoPath[cwdMount - cwd] = '\0';
-      strcat(neutrinoPath, neutrinoRootPath);
-      if (!testPath(neutrinoPath))
-        return 0;
+      size_t mlen = (size_t)(cwdMount - cwd + 1);
+      if (mlen < sizeof(mount)) {
+        memcpy(mount, cwd, mlen);
+        mount[mlen] = '\0';
+        joinDevicePath(neutrinoPath, sizeof(neutrinoPath), mount, neutrinoRootPath);
+        if (!testPath(neutrinoPath))
+          return 0;
+      }
     }
   }
 
@@ -84,7 +86,7 @@ int findNeutrinoELF() {
     else
       device = dev;
     if (device->mountpoint) {
-      snprintf(neutrinoPath, PATH_MAX, "%s%s", device->mountpoint, neutrinoRootPath);
+      joinDevicePath(neutrinoPath, sizeof(neutrinoPath), device->mountpoint, neutrinoRootPath);
       if (!testPath(neutrinoPath))
         return 0;
     }

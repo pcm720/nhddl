@@ -5,14 +5,17 @@
 
 #include "ui/scale.h"
 #include "gsInit.h"
+#include <fcntl.h>
 #include <gsKit.h>
+#include <kernel.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 static int displayWidth;
 static int displayHeight;
 static int offsetX = 0;
 static int offsetY = 0;
-static int spriteOffsetX = 0;
-static int spriteOffsetY = 0;
 static float scaleX = 1.0f;
 static float scaleY = 1.0f;
 static float par = 1.0f;
@@ -62,29 +65,65 @@ void scaleSetDisplayAspect(int ratio) { displayAspect = ratio ? ASPECT_16_9 : AS
 int scaleGetDisplayAspect(void) { return displayAspect; }
 
 void scaleApplyVMode(GSGLOBAL *gs, VModeType v) {
-  if (v == VMode_NONE || !gs)
+  if (!gs)
     return;
-  int i;
-  for (i = 0; scaleVModeTable[i].mode >= 0; i++) {
-    if (scaleVModeTable[i].mode == (int)v) {
-      gs->Mode = scaleVModeTable[i].mode;
-      gs->Width = scaleVModeTable[i].width;
-      gs->Height = scaleVModeTable[i].height;
-      gs->Interlace = scaleVModeTable[i].interlace;
-      gs->Field = scaleVModeTable[i].field;
-      refreshRate = scaleVModeTable[i].refreshRate;
-      scaleUpdate(gs);
-
-      return;
+  if (v != VMode_NONE) {
+    int i;
+    for (i = 0; scaleVModeTable[i].mode >= 0; i++) {
+      if (scaleVModeTable[i].mode == (int)v) {
+        gs->Mode = scaleVModeTable[i].mode;
+        gs->Width = scaleVModeTable[i].width;
+        gs->Height = scaleVModeTable[i].height;
+        gs->Interlace = scaleVModeTable[i].interlace;
+        gs->Field = scaleVModeTable[i].field;
+        refreshRate = scaleVModeTable[i].refreshRate;
+        scaleUpdate(gs);
+        return;
+      }
     }
   }
 
+  // VMode_NONE or unknown: ROM/system default.
   gs->Mode = gsKit_check_rom();
   gs->Width = 640;
   gs->Height = (gs->Mode == GS_MODE_PAL) ? 512 : 448;
   gs->Interlace = GS_INTERLACED;
   gs->Field = GS_FIELD;
+  refreshRate = (gs->Mode == GS_MODE_PAL) ? 50 : 60;
   scaleUpdate(gs);
+}
+
+// ROMs < 2.10 lack SetGsCrt mode 0x53 (576p).
+static int checkROMVER(void) {
+  static int cached = -1;
+  if (cached >= 0)
+    return cached;
+
+  cached = 0;
+  char romver[16];
+  int fd = open("rom0:ROMVER", O_RDONLY);
+  if (fd < 0)
+    return cached;
+  int n = read(fd, romver, sizeof(romver) - 1);
+  close(fd);
+  if (n < 4)
+    return cached;
+  romver[4] = '\0';
+  if (strtoul(romver, NULL, 10) < 210)
+    cached = 1;
+  return cached;
+}
+
+void scaleFix576pMode(GSGLOBAL *gs) {
+  if (!gs || gs->Mode != GS_MODE_DTV_576P)
+    return;
+  if (!checkROMVER())
+    return;
+  // Configure DVE/CRTC for 480p, then override SYNCH for 576p timings.
+  SetGsCrt(GS_NONINTERLACED, GS_MODE_DTV_480P, GS_FRAME);
+  *GS_SYNCH1 = 0x000402E02003C827ULL;
+  *GS_SYNCH2 = 0x000000000019CA67ULL;
+  *GS_SYNCV = 0x00A9000002700005ULL;
 }
 
 void scaleUpdate(GSGLOBAL *gs) {
@@ -94,8 +133,6 @@ void scaleUpdate(GSGLOBAL *gs) {
     scaleX = 1.0f;
     scaleY = 1.0f;
     par = 1.0f;
-    spriteOffsetX = 0;
-    spriteOffsetY = 0;
     return;
   }
 
@@ -126,15 +163,6 @@ void scaleUpdate(GSGLOBAL *gs) {
 
   offsetX = 0;
   offsetY = 0;
-  // When display is larger than virtual, centering offset for scaleVirtualToSpriteX/Y (e.g. letterbox).
-  // Drawing uses scaleScaleX/Y + offsetX/Y (both 0) to fill the display.
-  if (displayWidth > SCALE_VIRTUAL_W || displayHeight > SCALE_VIRTUAL_H) {
-    spriteOffsetX = (displayWidth - SCALE_VIRTUAL_W) / 2;
-    spriteOffsetY = (displayHeight - SCALE_VIRTUAL_H) / 2;
-  } else {
-    spriteOffsetX = 0;
-    spriteOffsetY = 0;
-  }
 }
 
 int scaleGetInterlacedFrame(void) { return interlacedFrame; }
@@ -159,9 +187,5 @@ int scaleUnscaleY(int y) { return (y * SCALE_VIRTUAL_H) / displayHeight; }
 
 int scaleGetOffsetX(void) { return offsetX; }
 int scaleGetOffsetY(void) { return offsetY; }
-
-int scaleVirtualToSpriteX(int x) { return x + spriteOffsetX; }
-
-int scaleVirtualToSpriteY(int y) { return y + spriteOffsetY; }
 
 int scaleGetRefreshRateHz(void) { return refreshRate; }

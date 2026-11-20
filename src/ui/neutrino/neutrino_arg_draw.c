@@ -1,53 +1,71 @@
-#include "ui/neutrino/neutrino_arg_editor_priv.h"
+#include "backends/backends.h"
 #include "backends/target.h"
 #include "config/arguments.h"
+#include "config/common.h"
 #include "ui/draw.h"
 #include "ui/font.h"
 #include "ui/layout.h"
+#include "ui/neutrino/neutrino_arg_editor_priv.h"
+#include "ui/strings.h"
 #include "ui/ui_shared.h"
 #include <gsKit.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 
 static const char *sectionTitle(int id) {
   switch (id) {
   case 0:
-    return "Compatibility (-gc)";
+    return neutrinoStr(UI_N_STR_SECTION_GC);
   case 1:
-    return "GSM (-gsm)";
+    return neutrinoStr(UI_N_STR_SECTION_GSM);
   case 2:
-    return "Paths (device)";
+    return neutrinoStr(UI_N_STR_SECTION_PATHS);
   case 3:
-    return "Flags";
+    return neutrinoStr(UI_N_STR_SECTION_FLAGS);
   case 4:
-    return "Neutrino arguments";
+    return neutrinoStr(UI_N_STR_SECTION_ARGS);
   case 5:
-    return "Additional arguments (raw)";
+    return neutrinoStr(UI_N_STR_SECTION_RAW);
   default:
     return "";
   }
 }
 
-static void trimPathDisplay(const char *path, char *out, size_t outSz) {
-  if (!path || !path[0]) {
-    snprintf(out, outSz, "(none)");
-    return;
-  }
-  size_t len = strlen(path);
-  if (len < outSz) {
-    snprintf(out, outSz, "%s", path);
-    return;
-  }
-  if (outSz < 8) {
-    out[0] = '\0';
-    return;
-  }
-  size_t head = (outSz - 4) / 2;
-  size_t tail = outSz - 4 - head;
-  snprintf(out, outSz, "%.*s...%s", (int)head, path, path + len - tail);
+static const char *gcLabel(int idx) {
+  if (idx < 0 || idx >= NEUTRINO_GC_OPTION_COUNT)
+    return "";
+  return neutrinoStr((NeutrinoStrId)(UI_N_STR_GC_IOP_FAST_READS + idx));
 }
 
-void neutArgEditorClampScroll(NeutArgEditor *ed, int visibleRows) {
+static const char *gsmLabel(int idx) {
+  if (idx < 0 || idx >= NEUTRINO_GSM_OPTION_COUNT)
+    return "";
+  return neutrinoStr((NeutrinoStrId)(UI_N_STR_GSM_FP1 + idx));
+}
+
+// Show mount-prefixed paths for device emulation
+static void formatPathArgDisplay(const NeutrinoArgEditor *ed, const char *value, char *out, size_t outSz) {
+  const char *empty = neutrinoStr(UI_N_STR_NONE);
+  if (!value || !value[0]) {
+    uiTrimPathMiddle(NULL, out, outSz, empty);
+    return;
+  }
+  if (strchr(value, ':')) {
+    uiTrimPathMiddle(value, out, outSz, empty);
+    return;
+  }
+  const char *mount = (ed && ed->pathRootDevice && ed->pathRootDevice->mountpoint) ? ed->pathRootDevice->mountpoint : NULL;
+  if (!mount || !mount[0]) {
+    uiTrimPathMiddle(value, out, outSz, empty);
+    return;
+  }
+  char full[PATH_MAX];
+  joinDevicePath(full, sizeof(full), mount, value);
+  uiTrimPathMiddle(full[0] ? full : value, out, outSz, empty);
+}
+
+void neutrinoArgEditorClampScroll(NeutrinoArgEditor *ed, int visibleRows) {
   if (ed->cursor < ed->scroll)
     ed->scroll = ed->cursor;
   if (ed->cursor >= ed->scroll + visibleRows)
@@ -61,20 +79,56 @@ void neutArgEditorClampScroll(NeutArgEditor *ed, int visibleRows) {
     ed->scroll = maxScroll;
 }
 
-void neutArgEditorDraw(NeutArgEditor *ed, GSGLOBAL *gs, int zOrder, int vx1, int vy1, int vx2, int vy2) {
-  int lineH = fontGetLineHeight(FONT_DEFAULT);
-  if (lineH <= 0)
-    lineH = SCENE_ROW_SIZE;
+static int pathKeyColumnWidth(void) {
+  return fontCalcDimensions(FONT_DEFAULT, NEUTRINO_PATH_ATA0ID) + SCENE_KEEPOUT;
+}
+
+static int rawKeyColumnWidth(const NeutrinoArgEditor *ed) {
+  int maxW = fontCalcDimensions(FONT_DEFAULT, "-?");
+  char key[80];
+  for (int j = 0; j < ed->rawArgCount; j++) {
+    Argument *ra = ed->rawArgs[j];
+    if (!ra || !ra->arg)
+      continue;
+    snprintf(key, sizeof(key), "-%s", ra->arg);
+    int w = fontCalcDimensions(FONT_DEFAULT, key);
+    if (w > maxW)
+      maxW = w;
+  }
+  return maxW + SCENE_KEEPOUT;
+}
+
+const char *neutrinoArgEditorPanelTitle(const NeutrinoArgEditor *ed) {
+  if (!ed || ed->panel <= 0)
+    return NULL;
+  switch (ed->panel) {
+  case 1:
+    return sectionTitle(0);
+  case 2:
+    return sectionTitle(1);
+  case 3:
+    return sectionTitle(2);
+  case 4:
+    return sectionTitle(5);
+  default:
+    return NULL;
+  }
+}
+
+void neutrinoArgEditorDraw(NeutrinoArgEditor *ed, GSGLOBAL *gs, int zOrder, int vx1, int vy1, int vx2, int vy2) {
+  int lineH = uiFontLineHeight();
   int visibleRows = (vy2 - vy1) / lineH;
   if (visibleRows < 1)
     visibleRows = 1;
-  if (visibleRows > NEUT_ARG_VISIBLE_ROWS_MAX)
-    visibleRows = NEUT_ARG_VISIBLE_ROWS_MAX;
+  if (visibleRows > NEUTRINO_ARG_VISIBLE_ROWS_MAX)
+    visibleRows = NEUTRINO_ARG_VISIBLE_ROWS_MAX;
 
-  neutArgEditorClampScroll(ed, visibleRows);
+  neutrinoArgEditorClampScroll(ed, visibleRows);
 
   int leftX = vx1 + SCENE_KEEPOUT;
   int rightX = vx2 - SCENE_KEEPOUT;
+  int pathKeyW = pathKeyColumnWidth();
+  int rawKeyW = rawKeyColumnWidth(ed);
   int y = vy1;
   for (int i = ed->scroll; i < ed->rowCount && i < ed->scroll + visibleRows; i++) {
     uint64_t col = (i == ed->cursor) ? ColorSelected : FontMainColor;
@@ -82,62 +136,68 @@ void neutArgEditorDraw(NeutArgEditor *ed, GSGLOBAL *gs, int zOrder, int vx1, int
     unsigned char s = ed->rowSub[i];
 
     if (k == RK_SECTION) {
-      fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, sectionTitle((int)s), HeaderTextColor);
+      fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, sectionTitle((int)s),
+                       HeaderTextColor);
     } else if (k == RK_GC) {
-      int on = (ed->gcState & NEUT_GC_OPTIONS[s].bit) ? 1 : 0;
-      uiDrawSelectionIndicator(gs, leftX + 5, y + lineH / 2, 5, zOrder, col, on);
-      fontRenderInRect(FONT_DEFAULT, leftX + 24, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder + 1, NEUT_GC_OPTIONS[s].label, col);
+      int on = (ed->gcState & NEUTRINO_GC_OPTIONS[s].bit) ? 1 : 0;
+      uiDrawChoiceRow(gs, leftX, rightX, y, lineH, zOrder, col, on, gcLabel((int)s));
     } else if (k == RK_GSM) {
-      int on = (ed->gsmState & NEUT_GSM_OPTIONS[s].bit) ? 1 : 0;
-      uiDrawSelectionIndicator(gs, leftX + 5, y + lineH / 2, 5, zOrder, col, on);
-      fontRenderInRect(FONT_DEFAULT, leftX + 24, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder + 1, NEUT_GSM_OPTIONS[s].label, col);
+      int on = (ed->gsmState & NEUTRINO_GSM_OPTIONS[s].bit) ? 1 : 0;
+      uiDrawChoiceRow(gs, leftX, rightX, y, lineH, zOrder, col, on, gsmLabel((int)s));
     } else if (k == RK_PATH) {
-      char line[200];
-      const char *pn = neutPathArgName((int)s);
+      const char *pn = neutrinoPathArgName((int)s);
       Argument *a = getArgument(ed->list, pn);
       char disp[120];
-      trimPathDisplay(a && a->value && !a->isDisabled ? a->value : NULL, disp, sizeof(disp));
-      snprintf(line, sizeof(line), "%s  %s", pn, disp);
-      fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, line, col);
+      formatPathArgDisplay(ed, a && a->value && !a->isDisabled ? a->value : NULL, disp, sizeof(disp));
+      int valueX = leftX + pathKeyW;
+      if (valueX > rightX - 8)
+        valueX = leftX + (rightX - leftX) / 3;
+      fontRenderInRect(FONT_DEFAULT, leftX, y, valueX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, pn, col);
+      fontRenderInRect(FONT_DEFAULT, valueX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, disp, col);
     } else if (k == RK_FLAG_LOGO) {
-      uiDrawSelectionIndicator(gs, leftX + 5, y + lineH / 2, 5, zOrder, col, ed->logoOn);
-      fontRenderInRect(FONT_DEFAULT, leftX + 24, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder + 1, "PS2 logo (-logo)", col);
+      uiDrawChoiceRow(gs, leftX, rightX, y, lineH, zOrder, col, ed->logoOn, neutrinoStr(UI_N_STR_FLAG_LOGO));
     } else if (k == RK_FLAG_DBC) {
-      uiDrawSelectionIndicator(gs, leftX + 5, y + lineH / 2, 5, zOrder, col, ed->dbcOn);
-      fontRenderInRect(FONT_DEFAULT, leftX + 24, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder + 1, "Debug colors (-dbc)", col);
+      uiDrawChoiceRow(gs, leftX, rightX, y, lineH, zOrder, col, ed->dbcOn, neutrinoStr(UI_N_STR_FLAG_DBC));
     } else if (k == RK_MENU_GC) {
-      fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, "Compatibility (-gc)", col);
+      fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, neutrinoStr(UI_N_STR_MENU_GC),
+                       col);
       fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_RIGHT | FONT_ALIGN_VCENTER, zOrder, ">", HeaderTextColor);
     } else if (k == RK_MENU_GSM) {
-      fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, "GSM (-gsm)", col);
+      fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, neutrinoStr(UI_N_STR_MENU_GSM),
+                       col);
       fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_RIGHT | FONT_ALIGN_VCENTER, zOrder, ">", HeaderTextColor);
     } else if (k == RK_MENU_PATHS) {
-      fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, "Device emulation (paths)", col);
+      fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, neutrinoStr(UI_N_STR_MENU_PATHS),
+                       col);
       fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_RIGHT | FONT_ALIGN_VCENTER, zOrder, ">", HeaderTextColor);
     } else if (k == RK_MENU_RAW) {
-      fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, "Additional arguments (raw)", col);
+      fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, neutrinoStr(UI_N_STR_MENU_RAW),
+                       col);
       fontRenderInRect(FONT_DEFAULT, leftX, y, rightX, y + lineH, FONT_ALIGN_RIGHT | FONT_ALIGN_VCENTER, zOrder, ">", HeaderTextColor);
     } else if (k == RK_RAW_NONE) {
-      fontRenderInRect(FONT_DEFAULT, leftX + 24, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder, "(no additional arguments)", FontMainColor);
+      fontRenderInRect(FONT_DEFAULT, leftX + UI_SEL_LABEL_INDENT, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder,
+                       neutrinoStr(UI_N_STR_NO_ADDITIONAL_ARGS), FontMainColor);
     } else if (k == RK_RAW_ARG && (int)s >= 0 && (int)s < ed->rawArgCount) {
       Argument *ra = ed->rawArgs[(int)s];
       if (ra) {
         int en = !ra->isDisabled;
-        uiDrawSelectionIndicator(gs, leftX + 5, y + lineH / 2, 5, zOrder, col, en);
-        char line[200];
+        uiDrawSelectionIndicator(gs, leftX + UI_SEL_INDICATOR_R, uiSelectionIndicatorCenterY(y, lineH), UI_SEL_INDICATOR_R, zOrder, col, en);
+        char key[80];
         char valdisp[120];
-        trimPathDisplay(ra->value && ra->value[0] ? ra->value : NULL, valdisp, sizeof(valdisp));
-        snprintf(line, sizeof(line), "-%s  %s", ra->arg ? ra->arg : "?", valdisp);
-        fontRenderInRect(FONT_DEFAULT, leftX + 24, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder + 1, line, col);
+        snprintf(key, sizeof(key), "-%s", ra->arg ? ra->arg : "?");
+        uiTrimPathMiddle(ra->value && ra->value[0] ? ra->value : NULL, valdisp, sizeof(valdisp), neutrinoStr(UI_N_STR_NONE));
+        int valueX = leftX + UI_SEL_LABEL_INDENT + rawKeyW;
+        if (valueX > rightX - 8)
+          valueX = leftX + UI_SEL_LABEL_INDENT + (rightX - leftX - UI_SEL_LABEL_INDENT) / 3;
+        fontRenderInRect(FONT_DEFAULT, leftX + UI_SEL_LABEL_INDENT, y, valueX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder + 1, key, col);
+        fontRenderInRect(FONT_DEFAULT, valueX, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder + 1, valdisp, col);
       }
     } else if (k == RK_TITLE_FAV && ed->titleTarget) {
       int on = (ed->titleTarget->flags & TitleFlag_Favorite) ? 1 : 0;
-      uiDrawSelectionIndicator(gs, leftX + 5, y + lineH / 2, 5, zOrder, col, on);
-      fontRenderInRect(FONT_DEFAULT, leftX + 24, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder + 1, "Favorite", col);
+      uiDrawChoiceRow(gs, leftX, rightX, y, lineH, zOrder, col, on, neutrinoStr(UI_N_STR_FAVORITE));
     } else if (k == RK_TITLE_FAKE && ed->titleTarget) {
       int on = (ed->titleTarget->flags & TitleFlag_FakeDEV9) ? 1 : 0;
-      uiDrawSelectionIndicator(gs, leftX + 5, y + lineH / 2, 5, zOrder, col, on);
-      fontRenderInRect(FONT_DEFAULT, leftX + 24, y, rightX, y + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder + 1, "Fake DEV9 (ATA-net)", col);
+      uiDrawChoiceRow(gs, leftX, rightX, y, lineH, zOrder, col, on, neutrinoStr(UI_N_STR_FAKE_DEV9));
     }
     y += lineH;
   }

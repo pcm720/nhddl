@@ -22,10 +22,10 @@
 #define RK_RAW_ARG 17
 #define RK_RAW_NONE 18
 
-#define NEUT_ARG_VISIBLE_ROWS_MAX 14
+#define NEUTRINO_ARG_VISIBLE_ROWS_MAX 14
 
-void neutArgNotifyListMutated(NeutArgEditor *ed);
-void neutArgEditorRebuildRows(NeutArgEditor *ed);
-void neutArgEditorClampScroll(NeutArgEditor *ed, int visibleRows);
+void neutrinoArgNotifyListMutated(NeutrinoArgEditor *ed);
+void neutrinoArgEditorRebuildRows(NeutrinoArgEditor *ed);
+void neutrinoArgEditorClampScroll(NeutrinoArgEditor *ed, int visibleRows);
 
 #endif

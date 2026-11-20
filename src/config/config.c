@@ -23,7 +23,9 @@ int getNoInit(void) { return config.noInit; }
 int getFakeDEV9(void) { return config.fakeDEV9; }
 VModeType getVMode(void) { return config.vmode; }
 int getWidescreen(void) { return config.widescreen; }
+int getFolderView(void) { return config.folderView; }
 int getAutolaunchTimeout(void) { return config.autolaunchTimeout; }
+const char *getLang(void) { return config.lang[0] ? config.lang : "en"; }
 
 // Setters
 void setEnabledDevices(DeviceType v) { config.enabledDevices = v; }
@@ -52,4 +54,13 @@ void setNoInit(int v) { config.noInit = v; }
 void setFakeDEV9(int v) { config.fakeDEV9 = v; }
 void setVMode(VModeType v) { config.vmode = v; }
 void setWidescreen(int v) { config.widescreen = v; }
+void setFolderView(int v) { config.folderView = v; }
 void setAutolaunchTimeout(int v) { config.autolaunchTimeout = v; }
+void setLang(const char *v) {
+  if (!v || !v[0]) {
+    config.lang[0] = '\0';
+    return;
+  }
+  strncpy(config.lang, v, sizeof(config.lang) - 1);
+  config.lang[sizeof(config.lang) - 1] = '\0';
+}

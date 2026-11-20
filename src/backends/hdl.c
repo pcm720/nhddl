@@ -255,7 +255,7 @@ Target *scanPartition(char *deviceMountpoint, char *partitionName, uint32_t star
   HDLHeader header;
 
   // Note: The APA specification states that there is a 4KB area used for storing the partition's information, before the extended attribute area.
-  uint32_t lba = startSector + (HDL_GAME_DATA_OFFSET + 4096) / 512;
+  uint32_t lba = startSector + (HDL_GAME_DATA_OFFSET + 4096)/512;
   uint32_t nsectors = 2; // 2 * 512 = 1024 byte
 
   // Read HDLoader header

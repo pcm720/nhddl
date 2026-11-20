@@ -5,6 +5,7 @@
 #include "config/arguments.h"
 #include "config/config.h"
 #include "config/neutrino_args.h"
+#include "devices/pad.h"
 #include "devices/utils.h"
 #include "dprintf.h"
 #include "neutrino/neutrino.h"
@@ -14,23 +15,22 @@
 #include "ui/layout.h"
 #include "ui/png.h"
 #include "ui/scale.h"
+#include "ui/folder_view.h"
 #include "ui/title_list.h"
+#include "ui/ui_context.h"
+#include "ui/strings.h"
 #include "ui/ui_shared.h"
 #include "ui/view.h"
 #include "ui/views/menu_scene.h"
 #include "ui/views/title_options_scene.h"
 #include "ui/views/view_options_popup.h"
 #include "ui/worker/worker.h"
-#include <dirent.h>
-#include <fcntl.h>
 #include <gsKit.h>
 #include <gsToolkit.h>
-#include <libpad.h>
 #include <malloc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 
 #define OVERLAY_DURATION_FRAMES 120
 
@@ -40,11 +40,13 @@
 #define COVER_W 140
 #define COVER_H 200
 #define COVER_LEFT (SCENE_VW - LIST_LEFT - COVER_W)
-#define LIST_RIGHT COVER_LEFT - SCENE_KEEPOUT
+#define LIST_RIGHT (COVER_LEFT - SCENE_KEEPOUT)
 #define COVER_TOP (LIST_TOP + (SCENE_CONTENT_BOTTOM - LIST_TOP) / 2 - COVER_H / 2)
 #define COVER_BORDER_MARGIN 2
 #define ART_PATH "/ART"
 #define COVER_DEBOUNCE_FRAMES 18
+#define MARQUEE_HOLD_FRAMES 45
+#define MARQUEE_SPEED 1
 
 static View s_view;
 static MainSceneData s_data;
@@ -52,40 +54,49 @@ static int s_autolaunchCanceled;
 static int s_maxVisible = 0;
 static int s_lineHeight = 0;
 
-void uiLaunchTarget();
+void uiLaunchTarget(void);
 static char *getISOFormat(uint32_t titleFlags);
+static void syncSelectedTitle(MainSceneData *d);
 
 void mainSceneBeginBackendResync(MainSceneData *d) {
+  UiContext *ctx = uiGetContext();
   if (!d)
     return;
   d->filterDeviceMask = 0;
   titleListViewClear(&d->listView);
+  folderViewFree(&d->folderView);
+  folderViewInit(&d->folderView);
   d->selectedIndex = -1;
   d->scrollOffset = 0;
   d->coverTarget = NULL;
   d->coverDebounceFramesLeft = 0;
   d->rebuildSelectionTarget = NULL;
   d->listDirty = 0;
-  d->listRebuildPending = 1;
+  ctx->selectedTitle = NULL;
+  ctx->listUpdating = 1;
+  ctx->marqueeOffset = 0;
+  ctx->marqueeHoldFrames = 0;
   s_autolaunchCanceled = 1;
   d->autoLaunchCountdown = 0;
 }
 
 void mainSceneInit(void) {
   titleListViewInit(&s_data.listView);
+  folderViewInit(&s_data.folderView);
+  s_data.folderMode = getFolderView();
   s_data.filterDeviceMask = 0;
+  s_data.favoritesOnly = 0;
   s_data.favoritesOnTop = 0;
   s_data.sortAscending = 1;
-  s_data.exitRequested = 0;
   s_data.coverTexture = NULL;
   s_data.coverTarget = NULL;
-  s_data.listRebuildPending = 0;
   s_data.rebuildSelectionTarget = NULL;
   s_data.coverDebounceFramesLeft = 0;
   s_data.autoLaunchCountdown = getAutolaunchTimeout() * scaleGetRefreshRateHz();
   if (!s_data.autoLaunchCountdown)
     s_autolaunchCanceled = 1;
   s_data.selectedIndex = -1;
+  s_data.listDirty = 0;
 
   s_lineHeight = fontGetLineHeight(FONT_DEFAULT);
   if (s_lineHeight <= 0)
@@ -105,13 +116,14 @@ void mainSceneCleanup(void) {
     s_data.coverTexture = NULL;
   }
   titleListViewFree(&s_data.listView);
+  folderViewFree(&s_data.folderView);
 }
 
-// View list is owned by UI and built from backends on UI thread. Worker only inits/rescans devices; UI shows "Rebuilding list..." until worker
-// reports ready.
-
-static void enqueueLoadCover(MainSceneData *d, Target *t) {
+static void requestLoadCover(MainSceneData *d, Target *t) {
+  UiContext *ctx = uiGetContext();
   if (!t || !t->device || !t->id)
+    return;
+  if (ctx->listUpdating || workerGetState() != WorkerState_Idle)
     return;
 
   if (!d->coverTexture) {
@@ -130,6 +142,8 @@ static void enqueueLoadCover(MainSceneData *d, Target *t) {
       d->coverTexture->Clut = NULL;
     }
     gsKit_TexManager_invalidate(gsGlobal, d->coverTexture);
+    d->coverTexture->Width = 0;
+    d->coverTexture->Height = 0;
   }
 
   struct BackendDevice *dev = t->device;
@@ -138,11 +152,10 @@ static void enqueueLoadCover(MainSceneData *d, Target *t) {
 
   d->coverTarget = t;
   snprintf(d->lineBuf, sizeof(d->lineBuf), "%s%s/%s_COV.png", dev->mountpoint, ART_PATH, t->id);
-  workerEnqueueLoadCover(d->lineBuf, gsGlobal, d->coverTexture);
+  if (workerRequestLoadCover(d->lineBuf, d->coverTexture) != 0)
+    d->coverTarget = NULL;
 }
 
-// filterDeviceMask uses backend slot index bits; after enabling/disabling device types, indices shift.
-// If no selected bit matches any current device, clear filter so the list is not empty by mistake.
 static void mainSceneNormalizeDeviceFilter(MainSceneData *d) {
   if (!d || d->filterDeviceMask == 0)
     return;
@@ -154,122 +167,209 @@ static void mainSceneNormalizeDeviceFilter(MainSceneData *d) {
     d->filterDeviceMask = 0;
 }
 
-static void rebuildViewListFromBackends(MainSceneData *d) {
+void mainSceneRebuildFromBackends(MainSceneData *d) {
   mainSceneNormalizeDeviceFilter(d);
   titleListViewClear(&d->listView);
   if (titleListViewBuildFromBackendsFiltered(&d->listView, d->filterDeviceMask, d->favoritesOnly) != 0)
     return;
   titleListViewSort(&d->listView, d->sortAscending, d->favoritesOnTop);
+  if (d->folderMode)
+    folderViewResetRoot(&d->folderView);
   d->selectedIndex = 0;
   d->scrollOffset = 0;
   d->listDirty = 0;
+  syncSelectedTitle(d);
 }
 
-static void mainSceneOnEnter(View *v) {
-  MainSceneData *d = (MainSceneData *)v->userdata;
-  if (d->selectedIndex == -1) {
-    rebuildViewListFromBackends(d);
+static int mainSceneRowCount(const MainSceneData *d) {
+  if (d->folderMode)
+    return folderViewCount(&d->folderView);
+  return titleListViewCount(&d->listView);
+}
+
+static void syncSelectedTitle(MainSceneData *d) {
+  UiContext *ctx = uiGetContext();
+  ctx->selectedTitle = NULL;
+  if (d->folderMode) {
+    const FolderViewRow *row = folderViewGetRow(&d->folderView, d->selectedIndex);
+    if (row && row->kind == FolderRow_Title)
+      ctx->selectedTitle = row->target;
+  } else {
+    int count = titleListViewCount(&d->listView);
+    if (count > 0 && d->selectedIndex >= 0 && d->selectedIndex < count)
+      ctx->selectedTitle = titleListViewGetAt(&d->listView, d->selectedIndex);
+  }
+  ctx->marqueeOffset = 0;
+  ctx->marqueeHoldFrames = MARQUEE_HOLD_FRAMES;
+}
+
+static void mainSceneTryFirstSetup(MainSceneData *d) {
+  UiContext *ctx = uiGetContext();
+  if (d->selectedIndex != -1 || ctx->listUpdating)
+    return;
+
+  mainSceneRebuildFromBackends(d);
+  if (d->folderMode) {
+    // Stay at root, skip autolaunch.
+    s_autolaunchCanceled = 1;
+    d->autoLaunchCountdown = 0;
+    syncSelectedTitle(d);
+  } else {
     Target *last = getLastLaunchedTarget();
     if (last) {
-      enqueueLoadCover(d, last);
       d->selectedIndex = titleListViewGetIdx(&d->listView, last);
       if (d->selectedIndex < 0) {
         s_autolaunchCanceled = 1;
         d->autoLaunchCountdown = 0;
         d->selectedIndex = 0;
       }
+      syncSelectedTitle(d);
+      if (ctx->selectedTitle)
+        requestLoadCover(d, ctx->selectedTitle);
+    } else {
+      syncSelectedTitle(d);
     }
+  }
+  // Empty list after boot: open main menu once so the user can enable devices.
+  if (!ctx->openedMenuOnEmpty && titleListViewCount(&d->listView) == 0) {
+    ctx->openedMenuOnEmpty = 1;
+    View *menu = menuGetView();
+    menu->userdata = d;
+    viewStackPush(viewStack, menu);
   }
 }
 
-static void mainSceneOnLeave(View *v) {}
+static void mainSceneOnEnter(View *v) { mainSceneTryFirstSetup((MainSceneData *)v->userdata); }
+
+static void mainSceneOnLeave(View *v) { }
+
+static void updateMarquee(UiContext *ctx, const char *name, int listWidthNative) {
+  int textW = fontCalcDimensionsFirstLine(FONT_DEFAULT, name);
+  if (textW <= listWidthNative) {
+    ctx->marqueeOffset = 0;
+    ctx->marqueeHoldFrames = MARQUEE_HOLD_FRAMES;
+    return;
+  }
+  int maxOff = textW - listWidthNative;
+  if (ctx->marqueeHoldFrames > 0) {
+    ctx->marqueeHoldFrames--;
+    if (ctx->marqueeHoldFrames == 0 && ctx->marqueeOffset >= maxOff) {
+      ctx->marqueeOffset = 0;
+      ctx->marqueeHoldFrames = MARQUEE_HOLD_FRAMES;
+    }
+    return;
+  }
+  ctx->marqueeOffset += MARQUEE_SPEED;
+  if (ctx->marqueeOffset >= maxOff) {
+    ctx->marqueeOffset = maxOff;
+    ctx->marqueeHoldFrames = MARQUEE_HOLD_FRAMES;
+  }
+}
 
 static void mainSceneDraw(View *v, int zOrder) {
   MainSceneData *d = (MainSceneData *)v->userdata;
+  UiContext *ctx = uiGetContext();
 
-  if (d->listRebuildPending && workerPollJobDone()) {
-    (void)workerGetAndClearListNeedsRebuild();
-    Target *prev = d->rebuildSelectionTarget;
-    rebuildViewListFromBackends(d);
-    d->selectedIndex = titleListViewGetIdx(&d->listView, prev);
-    if (d->selectedIndex < 0)
-      d->selectedIndex = 0;
-    d->scrollOffset = 0;
-    d->listRebuildPending = 0;
-    d->rebuildSelectionTarget = NULL;
-  }
+  // Splash may have been skipped before InitList finished
+  mainSceneTryFirstSetup(d);
 
-  if (d->listDirty && !d->listRebuildPending) {
-    Target *prev =
-        (d->selectedIndex >= 0 && d->selectedIndex < titleListViewCount(&d->listView)) ? titleListViewGetAt(&d->listView, d->selectedIndex) : NULL;
+  if (d->listDirty && !ctx->listUpdating) {
+    Target *prev = ctx->selectedTitle;
     titleListViewClear(&d->listView);
     if (titleListViewBuildFromBackendsFiltered(&d->listView, d->filterDeviceMask, d->favoritesOnly) == 0) {
       titleListViewSort(&d->listView, d->sortAscending, d->favoritesOnTop);
-      d->selectedIndex = titleListViewGetIdx(&d->listView, prev);
-      if (d->selectedIndex < 0)
+      if (d->folderMode) {
+        folderViewRebuild(&d->folderView);
         d->selectedIndex = 0;
+      } else {
+        d->selectedIndex = titleListViewGetIdx(&d->listView, prev);
+        if (d->selectedIndex < 0)
+          d->selectedIndex = 0;
+      }
     }
     d->scrollOffset = 0;
     d->listDirty = 0;
+    syncSelectedTitle(d);
   }
 
-  // Header + prompts (safe while list is cleared; do not touch title rows or cover until rebuild completes)
-  fontRenderInRect(FONT_DEFAULT, 0, HEADER_Y, SCENE_VW, LIST_TOP, FONT_ALIGN_TOP | FONT_ALIGN_HCENTER, zOrder, "Title List", HeaderTextColor);
-  uiDrawScenePrompt(gsGlobal, 0, zOrder, HeaderTextColor, ICON_TRIANGLE, "Title options");
-  uiDrawScenePrompt(gsGlobal, 1, zOrder, HeaderTextColor, ICON_SELECT, "View");
-  uiDrawScenePrompt(gsGlobal, 2, zOrder, HeaderTextColor, ICON_START, "Menu");
-  uiDrawScenePrompt(gsGlobal, 3, zOrder, HeaderTextColor, ICON_CROSS, "Launch");
-
-  if (d->listRebuildPending) {
-    fontRenderInRect(FONT_DEFAULT, 0, LIST_TOP, SCENE_VW, SCENE_CONTENT_BOTTOM, FONT_ALIGN_CENTER, zOrder, "Updating devices...", FontMainColor);
-    return;
-  }
-
-  int count = titleListViewCount(&d->listView);
-  if (count > 0 && d->selectedIndex >= 0 && d->selectedIndex < count) {
-    snprintf(d->lineBuf, sizeof(d->lineBuf), "%d / %d", d->selectedIndex + 1, count);
-    fontRenderInRect(FONT_DEFAULT, 0, HEADER_Y, SCENE_VW - LIST_LEFT, LIST_TOP, FONT_ALIGN_TOP | FONT_ALIGN_RIGHT, zOrder, d->lineBuf,
+  if (d->folderMode) {
+    if (d->folderView.atDeviceList)
+      snprintf(d->lineBuf, sizeof(d->lineBuf), "%s", uiStr(UI_STR_DEVICES));
+    else {
+      const char *mount = (d->folderView.device && d->folderView.device->mountpoint) ? d->folderView.device->mountpoint : "";
+      if (d->folderView.pathPrefix[0])
+        snprintf(d->lineBuf, sizeof(d->lineBuf), "%s/%s/", mount, d->folderView.pathPrefix);
+      else if (mount[0])
+        snprintf(d->lineBuf, sizeof(d->lineBuf), "%s/", mount);
+      else
+        snprintf(d->lineBuf, sizeof(d->lineBuf), "/");
+    }
+    fontRenderInRect(FONT_DEFAULT, LIST_LEFT, HEADER_Y, SCENE_VW - LIST_LEFT, LIST_TOP, FONT_ALIGN_TOP | FONT_ALIGN_LEFT, zOrder, d->lineBuf,
                      HeaderTextColor);
+    uiDrawScenePrompt(gsGlobal, 0, zOrder, HeaderTextColor, ICON_SQUARE, uiStr(UI_STR_TITLE_OPTIONS));
+    uiDrawScenePrompt(gsGlobal, 1, zOrder, HeaderTextColor, ICON_TRIANGLE, uiStr(UI_STR_UP));
+    uiDrawScenePrompt(gsGlobal, 2, zOrder, HeaderTextColor, ICON_START, uiStr(UI_STR_MENU));
+    uiDrawScenePrompt2(gsGlobal, 3, zOrder, HeaderTextColor, ICON_CROSS, ICON_CIRCLE, uiStr(UI_STR_SELECT));
+  } else {
+    fontRenderInRect(FONT_DEFAULT, 0, HEADER_Y, SCENE_VW, LIST_TOP, FONT_ALIGN_TOP | FONT_ALIGN_HCENTER, zOrder, uiStr(UI_STR_TITLE_LIST),
+                     HeaderTextColor);
+    uiDrawScenePrompt(gsGlobal, 0, zOrder, HeaderTextColor, ICON_TRIANGLE, uiStr(UI_STR_TITLE_OPTIONS));
+    uiDrawScenePrompt(gsGlobal, 1, zOrder, HeaderTextColor, ICON_SELECT, uiStr(UI_STR_VIEW));
+    uiDrawScenePrompt(gsGlobal, 2, zOrder, HeaderTextColor, ICON_START, uiStr(UI_STR_MENU));
+    uiDrawScenePrompt2(gsGlobal, 3, zOrder, HeaderTextColor, ICON_CROSS, ICON_CIRCLE, uiStr(UI_STR_LAUNCH));
   }
 
-  // Title list
-  Target *cur = (count > 0 && d->selectedIndex >= 0 && d->selectedIndex < count) ? titleListViewGetAt(&d->listView, d->selectedIndex) : NULL;
-  if (count == 0) {
-    fontRenderInRect(FONT_DEFAULT, 0, 0, SCENE_VW, SCENE_CONTENT_BOTTOM, FONT_ALIGN_CENTER, zOrder, "No titles", FontMainColor);
+  if (ctx->listUpdating) {
+    fontRenderInRect(FONT_DEFAULT, 0, LIST_TOP, SCENE_VW, SCENE_CONTENT_BOTTOM, FONT_ALIGN_CENTER, zOrder, uiStr(UI_STR_UPDATING_DEVICES),
+                     FontMainColor);
     return;
   }
-  // Cover art: ratio-preserving border and content so they match in widescreen.
-  // In widescreen draw at 1.5x size, centered in the same slot.
-  int coverW = COVER_W, coverH = COVER_H, coverLeft = COVER_LEFT, coverTop = COVER_TOP;
-  if (scaleGetDisplayAspect() == ASPECT_16_9) {
-    coverW = COVER_W * 1.2;
-    coverH = COVER_H * 1.2;
-    coverLeft = COVER_LEFT + COVER_W / 2 - coverW / 2;
-    coverTop = COVER_TOP + COVER_H / 2 - coverH / 2;
-  }
-  uiDrawTextureInVirtualRect(gsGlobal, coverLeft - COVER_BORDER_MARGIN, coverTop - COVER_BORDER_MARGIN, coverW + COVER_BORDER_MARGIN * 2,
-                             coverH + COVER_BORDER_MARGIN * 2, NULL, zOrder, FontMainColor, 0);
 
-  if (cur && cur != d->coverTarget && d->coverDebounceFramesLeft <= 0)
-    d->coverDebounceFramesLeft = COVER_DEBOUNCE_FRAMES;
-  if (d->coverDebounceFramesLeft > 0)
-    d->coverDebounceFramesLeft--;
-  if (workerPollCoverLoadDone() && d->coverDebounceFramesLeft == 0 && cur && cur != d->coverTarget) {
-    enqueueLoadCover(d, cur);
-    d->coverDebounceFramesLeft = -1;
+  int count = mainSceneRowCount(d);
+  if (count > 0 && d->selectedIndex >= 0 && d->selectedIndex < count) {
+    char posBuf[16];
+    snprintf(posBuf, sizeof(posBuf), "%d/%d", d->selectedIndex + 1, count);
+    fontRenderInRect(FONT_DEFAULT, 0, HEADER_Y, SCENE_VW - LIST_LEFT, LIST_TOP, FONT_ALIGN_TOP | FONT_ALIGN_RIGHT, zOrder, posBuf, HeaderTextColor);
   }
 
-  // Only show cover texture when it matches current selection; when a new cover is requested, show placeholder until it loads
-  if (workerPollCoverLoadDone() && d->coverTexture && d->coverTarget == cur && d->coverTexture->Width > 0) {
-    gsKit_TexManager_bind(gsGlobal, d->coverTexture);
-    // Some cover art might have inverted alpha values; work around this issue by disabling alpha test for cover art
-    uiDrawTextureInVirtualRect(gsGlobal, coverLeft, coverTop, coverW, coverH, d->coverTexture, zOrder + 1, FontMainColor, 1);
-  } else {
-    uiDrawTextureInVirtualRect(gsGlobal, coverLeft, coverTop, coverW, coverH, NULL, zOrder + 1, BGColor, 0);
-    fontRenderInRect(FONT_DEFAULT, coverLeft, coverTop, coverLeft + coverW, coverTop + coverH, FONT_ALIGN_CENTER, zOrder + 1, "No cover",
-                     FontMainColor);
+  Target *cur = ctx->selectedTitle;
+  if (count == 0) {
+    fontRenderInRect(FONT_DEFAULT, 0, 0, SCENE_VW, SCENE_CONTENT_BOTTOM, FONT_ALIGN_CENTER, zOrder, uiStr(UI_STR_NO_TITLES), FontMainColor);
+    return;
   }
+
   if (cur) {
+    int coverW = COVER_W, coverH = COVER_H, coverLeft = COVER_LEFT, coverTop = COVER_TOP;
+    if (scaleGetDisplayAspect() == ASPECT_16_9) {
+      coverW = (int)(COVER_W * 1.2f);
+      coverH = (int)(COVER_H * 1.2f);
+      coverLeft = COVER_LEFT + COVER_W / 2 - coverW / 2;
+      coverTop = COVER_TOP + COVER_H / 2 - coverH / 2;
+    }
+    uiDrawTextureInVirtualRect(gsGlobal, coverLeft - COVER_BORDER_MARGIN, coverTop - COVER_BORDER_MARGIN, coverW + COVER_BORDER_MARGIN * 2,
+                               coverH + COVER_BORDER_MARGIN * 2, NULL, zOrder, FontMainColor, 0);
+
+    if (cur != d->coverTarget && d->coverDebounceFramesLeft <= 0)
+      d->coverDebounceFramesLeft = COVER_DEBOUNCE_FRAMES;
+    if (d->coverDebounceFramesLeft > 0)
+      d->coverDebounceFramesLeft--;
+    if (workerGetState() == WorkerState_Idle && d->coverDebounceFramesLeft == 0 && cur != d->coverTarget) {
+      requestLoadCover(d, cur);
+      d->coverDebounceFramesLeft = -1;
+    }
+
+    int coverLoading = (workerGetState() == WorkerState_Running && workerGetJobType() == WorkerJob_LoadCover);
+    if (d->coverTexture && d->coverTarget == cur && d->coverTexture->Width > 0 && !coverLoading) {
+      gsKit_TexManager_bind(gsGlobal, d->coverTexture);
+      uiDrawTextureInVirtualRect(gsGlobal, coverLeft, coverTop, coverW, coverH, d->coverTexture, zOrder + 1, FontMainColor, 1);
+    } else {
+      // Blank slot while debouncing/loading
+      uiDrawTextureInVirtualRect(gsGlobal, coverLeft, coverTop, coverW, coverH, NULL, zOrder + 1, BGColor, 0);
+      int coverFailed = (d->coverTarget == cur && d->coverTexture && d->coverTexture->Width == 0 && !coverLoading);
+      if (coverFailed)
+        fontRenderInRect(FONT_DEFAULT, coverLeft, coverTop, coverLeft + coverW, coverTop + coverH, FONT_ALIGN_CENTER, zOrder + 1, uiStr(UI_STR_NO_COVER),
+                         FontMainColor);
+    }
     if (cur->id)
       fontRenderInRect(FONT_DEFAULT, coverLeft, (coverTop + coverH), (coverLeft + coverW), 0, FONT_ALIGN_CENTER, zOrder, cur->id, HeaderTextColor);
     if (cur->device && cur->device->type) {
@@ -288,30 +388,51 @@ static void mainSceneDraw(View *v, int zOrder) {
     d->scrollOffset = d->selectedIndex;
   if (d->selectedIndex >= d->scrollOffset + s_maxVisible)
     d->scrollOffset = d->selectedIndex - s_maxVisible + 1;
+
+  int listWidthNative = scaleScaleX(LIST_RIGHT - LIST_LEFT);
   for (int i = 0; i < s_maxVisible; i++) {
     int idx = d->scrollOffset + i;
     if (idx >= count)
       break;
-    Target *t = titleListViewGetAt(&d->listView, idx);
     int y = LIST_TOP + i * s_lineHeight;
     uint64_t col = (idx == d->selectedIndex) ? ColorSelected : FontMainColor;
-    const char *name = (t && t->name) ? t->name : "(no name)";
-    fontRenderString(FONT_DEFAULT, LIST_LEFT, y, 0, LIST_RIGHT - LIST_LEFT, 0, zOrder, name, col);
+    const char *name = uiStr(UI_STR_NO_NAME);
+    char folderLabel[FOLDER_VIEW_NAME_MAX + 2];
+    if (d->folderMode) {
+      const FolderViewRow *row = folderViewGetRow(&d->folderView, idx);
+      if (row) {
+        if (row->kind == FolderRow_Title)
+          name = (row->target && row->target->name) ? row->target->name : uiStr(UI_STR_NO_NAME);
+        else if (row->kind == FolderRow_Folder) {
+          snprintf(folderLabel, sizeof(folderLabel), "%s/", row->name);
+          name = folderLabel;
+        } else
+          name = row->name;
+      }
+    } else {
+      Target *t = titleListViewGetAt(&d->listView, idx);
+      name = (t && t->name) ? t->name : uiStr(UI_STR_NO_NAME);
+    }
+    if (idx == d->selectedIndex) {
+      updateMarquee(ctx, name, listWidthNative);
+      fontRenderStringScrolled(FONT_DEFAULT, LIST_LEFT, y, scaleUnscaleX(ctx->marqueeOffset), LIST_RIGHT - LIST_LEFT, zOrder, name, col);
+    } else {
+      fontRenderString(FONT_DEFAULT, LIST_LEFT, y, 0, LIST_RIGHT - LIST_LEFT, 0, zOrder, name, col);
+    }
   }
 
-  // Handle autolaunch
   if (d->autoLaunchCountdown > 0) {
     int sec = (d->autoLaunchCountdown + 59) / scaleGetRefreshRateHz();
-    snprintf(d->lineBuf, sizeof(d->lineBuf), "Launching in %d s... (any button to cancel)", sec);
+    snprintf(d->lineBuf, sizeof(d->lineBuf), uiStr(UI_STR_LAUNCHING_IN_FMT), sec);
     showOSD(d->lineBuf, 1);
   }
 }
 
 static ViewResult mainSceneOnInput(View *v, int padInput) {
   MainSceneData *d = (MainSceneData *)v->userdata;
+  UiContext *ctx = uiGetContext();
 
-  // Handle autolaunch
-  if (!s_autolaunchCanceled && !d->listRebuildPending) {
+  if (!s_autolaunchCanceled && !ctx->listUpdating) {
     if (!d->autoLaunchCountdown) {
       uiLaunchTarget();
       return ViewResult_Continue;
@@ -323,7 +444,7 @@ static ViewResult mainSceneOnInput(View *v, int padInput) {
     }
   }
 
-  if (d->exitRequested)
+  if (ctx->exitRequested)
     return ViewResult_Pop;
 
   if (padInput & PAD_START) {
@@ -333,30 +454,44 @@ static ViewResult mainSceneOnInput(View *v, int padInput) {
     return ViewResult_Continue;
   }
 
-  if (d->listRebuildPending)
+  if (ctx->listUpdating)
     return ViewResult_Continue;
 
-  int count = titleListViewCount(&d->listView);
+  int count = mainSceneRowCount(d);
 
-  if (padInput & PAD_SELECT) {
-    if (count > 0) {
-      View *cv = viewOptionsPopupGetView();
-      cv->userdata = d;
-      viewStackPush(viewStack, cv);
-    }
+  if ((padInput & PAD_SELECT) && !d->folderMode) {
+    View *cv = viewOptionsPopupGetView();
+    cv->userdata = d;
+    viewStackPush(viewStack, cv);
     return ViewResult_Continue;
   }
-  if (padInput & PAD_TRIANGLE) {
-    if (count > 0 && d->selectedIndex >= 0 && d->selectedIndex < count) {
+  if (d->folderMode) {
+    if (padInput & PAD_TRIANGLE) {
+      if (folderViewGoUp(&d->folderView)) {
+        d->selectedIndex = 0;
+        d->scrollOffset = 0;
+        d->coverDebounceFramesLeft = COVER_DEBOUNCE_FRAMES;
+        syncSelectedTitle(d);
+      }
+      return ViewResult_Continue;
+    }
+    if ((padInput & PAD_SQUARE) && ctx->selectedTitle) {
       View *cv = titleOptionsSelectorGetView();
       TitleOptionsSelectorData *opt = (TitleOptionsSelectorData *)cv->userdata;
-      opt->target = titleListViewGetAt(&d->listView, d->selectedIndex);
+      opt->target = ctx->selectedTitle;
+      viewStackPush(viewStack, cv);
+      return ViewResult_Continue;
+    }
+  } else if (padInput & PAD_TRIANGLE) {
+    if (ctx->selectedTitle) {
+      View *cv = titleOptionsSelectorGetView();
+      TitleOptionsSelectorData *opt = (TitleOptionsSelectorData *)cv->userdata;
+      opt->target = ctx->selectedTitle;
       viewStackPush(viewStack, cv);
     }
     return ViewResult_Continue;
   }
   if (count > 0) {
-    // Parentheses required: & binds tighter than |; without them, (padInput & PAD_UP) | PAD_L1 is often non-zero every frame.
     if (padInput & (PAD_UP | PAD_L1)) {
       if (padInput & PAD_UP)
         d->selectedIndex--;
@@ -366,6 +501,7 @@ static ViewResult mainSceneOnInput(View *v, int padInput) {
       if (d->selectedIndex < 0)
         d->selectedIndex = count - 1;
       d->coverDebounceFramesLeft = COVER_DEBOUNCE_FRAMES;
+      syncSelectedTitle(d);
       return ViewResult_Continue;
     }
     if (padInput & (PAD_DOWN | PAD_R1)) {
@@ -377,11 +513,26 @@ static ViewResult mainSceneOnInput(View *v, int padInput) {
       if (d->selectedIndex >= count)
         d->selectedIndex = 0;
       d->coverDebounceFramesLeft = COVER_DEBOUNCE_FRAMES;
+      syncSelectedTitle(d);
       return ViewResult_Continue;
     }
-    if ((padInput & PAD_CROSS) && d->selectedIndex >= 0 && d->selectedIndex < count) {
-      uiLaunchTarget();
-      return ViewResult_Continue;
+    if (padInput & PAD_SELECT_ACTION) {
+      if (d->folderMode) {
+        const FolderViewRow *row = folderViewGetRow(&d->folderView, d->selectedIndex);
+        if (row && (row->kind == FolderRow_Device || row->kind == FolderRow_Folder)) {
+          if (folderViewEnter(&d->folderView, d->selectedIndex)) {
+            d->selectedIndex = 0;
+            d->scrollOffset = 0;
+            d->coverDebounceFramesLeft = COVER_DEBOUNCE_FRAMES;
+            syncSelectedTitle(d);
+          }
+          return ViewResult_Continue;
+        }
+      }
+      if (ctx->selectedTitle) {
+        uiLaunchTarget();
+        return ViewResult_Continue;
+      }
     }
   }
   return ViewResult_Continue;
@@ -401,12 +552,11 @@ struct View *mainSceneGetView(void) {
 
 MainSceneData *mainSceneGetData(void) { return &s_data; }
 
-void uiLaunchTarget() {
-  Target *t = (s_data.selectedIndex >= 0 && s_data.selectedIndex < titleListViewCount(&s_data.listView))
-                  ? titleListViewGetAt(&s_data.listView, s_data.selectedIndex)
-                  : NULL;
+void uiLaunchTarget(void) {
+  UiContext *ctx = uiGetContext();
+  Target *t = ctx->selectedTitle;
   if (!t) {
-    showOSD("No title selected", OVERLAY_DURATION_FRAMES);
+    showOSD(uiStr(UI_STR_NO_TITLE_SELECTED), OVERLAY_DURATION_FRAMES);
     return;
   }
   ArgumentList *globalArgs = calloc(1, sizeof(ArgumentList));
@@ -424,7 +574,7 @@ void uiLaunchTarget() {
         freeArgumentList(titleArgs);
         return;
       }
-      snprintf(s_data.lineBuf, sizeof(s_data.lineBuf), "Launch failed: %d", res);
+      snprintf(s_data.lineBuf, sizeof(s_data.lineBuf), uiStr(UI_STR_LAUNCH_FAILED_FMT), res);
       showOSD(s_data.lineBuf, OVERLAY_DURATION_FRAMES);
     }
     freeArgumentList(globalArgs);
@@ -439,7 +589,7 @@ void uiLaunchTarget() {
 
 void uiTestLaunchWithTitleArgs(Target *t, ArgumentList *effectiveMerged) {
   if (!t || !effectiveMerged) {
-    showOSD("No title", OVERLAY_DURATION_FRAMES);
+    showOSD(uiStr(UI_STR_NO_TITLE), OVERLAY_DURATION_FRAMES);
     return;
   }
   ArgumentList *copy = duplicateArgumentList(effectiveMerged);
@@ -448,21 +598,20 @@ void uiTestLaunchWithTitleArgs(Target *t, ArgumentList *effectiveMerged) {
   int res = launchTarget(t, copy);
   freeArgumentList(copy);
   if (res != 0) {
-    snprintf(s_data.lineBuf, sizeof(s_data.lineBuf), "Test launch failed: %d", res);
+    snprintf(s_data.lineBuf, sizeof(s_data.lineBuf), uiStr(UI_STR_TEST_LAUNCH_FAILED_FMT), res);
     showOSD(s_data.lineBuf, OVERLAY_DURATION_FRAMES);
   }
 }
 
 void uiTestLaunchWithInMemoryGlobalArgs(ArgumentList *globalArgsInMemory) {
+  UiContext *ctx = uiGetContext();
   if (!globalArgsInMemory) {
-    showOSD("No configuration", OVERLAY_DURATION_FRAMES);
+    showOSD(uiStr(UI_STR_NO_CONFIGURATION), OVERLAY_DURATION_FRAMES);
     return;
   }
-  Target *t = (s_data.selectedIndex >= 0 && s_data.selectedIndex < titleListViewCount(&s_data.listView))
-                  ? titleListViewGetAt(&s_data.listView, s_data.selectedIndex)
-                  : NULL;
+  Target *t = ctx->selectedTitle;
   if (!t) {
-    showOSD("No title selected", OVERLAY_DURATION_FRAMES);
+    showOSD(uiStr(UI_STR_NO_TITLE_SELECTED), OVERLAY_DURATION_FRAMES);
     return;
   }
   ArgumentList *titleArgs = calloc(1, sizeof(ArgumentList));
@@ -477,7 +626,7 @@ void uiTestLaunchWithInMemoryGlobalArgs(ArgumentList *globalArgsInMemory) {
       freeArgumentList(titleArgs);
       return;
     }
-    snprintf(s_data.lineBuf, sizeof(s_data.lineBuf), "Test launch failed: %d", res);
+    snprintf(s_data.lineBuf, sizeof(s_data.lineBuf), uiStr(UI_STR_TEST_LAUNCH_FAILED_FMT), res);
     showOSD(s_data.lineBuf, OVERLAY_DURATION_FRAMES);
   }
   freeArgumentList(titleArgs);

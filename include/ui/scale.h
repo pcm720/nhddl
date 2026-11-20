@@ -16,8 +16,11 @@ void scaleSetDisplayAspect(int ratio);
 int scaleGetDisplayAspect(void);
 
 // Single source of truth: apply resolution and scaling for the given mode, then scaleUpdate.
-// If v == VMode_NONE, does nothing (caller should set gs from ROM and call scaleUpdate).
+// VMode_NONE applies system default
 void scaleApplyVMode(GSGLOBAL *gs, VModeType v);
+
+// On ROMVER < 2.10, SetGsCrt as 480p then poke SYNCH registers (the kernel lacks native 576p support)
+void scaleFix576pMode(GSGLOBAL *gs);
 
 // Call after setting gs->Mode, Width, Height, Interlace, Field. Computes scale and PAR for font/UI.
 void scaleUpdate(GSGLOBAL *gs);
@@ -43,10 +46,6 @@ int scaleUnscaleY(int y);
 // Offset for drawing (0 when no letterbox).
 int scaleGetOffsetX(void);
 int scaleGetOffsetY(void);
-
-// Virtual (640x480) to sprite/panel coords. Use for gsKit_prim_sprite etc.; applies offset when display > virtual so panels align.
-int scaleVirtualToSpriteX(int x);
-int scaleVirtualToSpriteY(int y);
 
 // Non-zero when interlaced frame mode (glyph raster height and quad height use half size).
 int scaleGetInterlacedFrame(void);

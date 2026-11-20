@@ -1,23 +1,21 @@
 #include "ui/views/file_selector_scene.h"
 #include "backends/backends.h"
+#include "config/common.h"
+#include "devices/pad.h"
 #include "ui/draw.h"
 #include "ui/font.h"
 #include "ui/icons.h"
 #include "ui/layout.h"
+#include "ui/strings.h"
 #include "ui/ui_shared.h"
 #include "ui/view.h"
 #include <dirent.h>
-#include <libpad.h>
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 
-#define POPUP_W 500
-#define POPUP_X ((SCENE_VW - POPUP_W) / 2)
-#define POPUP_Y 70
 #define MAX_SELECTOR_ITEMS 256
-#define VISIBLE_ROWS 10
 
 typedef struct {
   char name[128];
@@ -37,7 +35,9 @@ typedef struct {
   int scroll;
   char currentPath[PATH_MAX + 1];
   char rootMount[64];
+  char heading[64];
   int boundedMount;
+  int neutrinoPick;
   FileSelectorDoneFn onDone;
   void *doneUserdata;
   FileSelectorDismissFn onDismiss;
@@ -56,7 +56,6 @@ void fileSelectorSetDismissNotifier(FileSelectorDismissFn fn, void *userdata) {
 }
 
 static void fileSelectorOnLeave(View *v) {
-  (void)v;
   if (s_data.onDismiss)
     s_data.onDismiss(s_data.dismissUserdata);
   s_data.onDismiss = NULL;
@@ -89,14 +88,6 @@ static int isMountRoot(const char *path, const char *rootMount) {
   char withSlash[80];
   snprintf(withSlash, sizeof(withSlash), "%s/", rootMount);
   return strcmp(path, withSlash) == 0;
-}
-
-static void joinPath(char *out, size_t outSize, const char *base, const char *name) {
-  size_t len = strlen(base);
-  if (len > 0 && base[len - 1] == '/')
-    snprintf(out, outSize, "%s%s", base, name);
-  else
-    snprintf(out, outSize, "%s/%s", base, name);
 }
 
 static void enterDeviceList(FileSelectorData *d) {
@@ -133,7 +124,7 @@ static void loadDirectory(FileSelectorData *d, const char *path) {
 
   DIR *dir = opendir(d->currentPath);
   if (!dir) {
-    showOSD("Path open failed", 120);
+    showOSD(uiStr(UI_STR_PATH_OPEN_FAILED), 120);
     return;
   }
 
@@ -146,7 +137,7 @@ static void loadDirectory(FileSelectorData *d, const char *path) {
     snprintf(it->name, sizeof(it->name), "%s", entry->d_name);
 
     char fullPath[PATH_MAX + 1];
-    joinPath(fullPath, sizeof(fullPath), d->currentPath, entry->d_name);
+    joinDevicePath(fullPath, sizeof(fullPath), d->currentPath, entry->d_name);
 
     struct stat st = {0};
     it->isDir = (stat(fullPath, &st) == 0 && S_ISDIR(st.st_mode)) ? 1 : 0;
@@ -161,7 +152,6 @@ static void loadDirectory(FileSelectorData *d, const char *path) {
 }
 
 static void fileSelectorOnEnter(View *v) {
-  (void)v;
   if (s_data.boundedMount && s_data.rootMount[0] != '\0') {
     const char *start = s_data.currentPath[0] ? s_data.currentPath : s_data.rootMount;
     loadDirectory(&s_data, start);
@@ -178,40 +168,69 @@ static void fileSelectorOnEnter(View *v) {
   enterDeviceList(&s_data);
 }
 
+static int fileSelectorVisibleRows(int listTop, int listBottom, int lineH) {
+  int rows = (listBottom - listTop) / lineH;
+  if (rows < 1)
+    rows = 1;
+  return rows;
+}
+
+static void fileSelectorLayout(int lineH, int *vx1, int *vy1, int *vx2, int *vy2, int *listTop, int *listBottom) {
+  const int G = SCENE_KEEPOUT;
+  int panelW = uiContentPanelWidth();
+  *vx1 = uiContentPanelLeft();
+  *vx2 = *vx1 + panelW;
+  *vy1 = SCENE_KEEPOUT + lineH + G;
+  *vy2 = SCENE_CONTENT_BOTTOM - G;
+  if (*vy2 < *vy1 + lineH * 3)
+    *vy2 = *vy1 + lineH * 3;
+  *listTop = *vy1 + SCENE_KEEPOUT + lineH;
+  *listBottom = *vy2 - SCENE_KEEPOUT;
+  if (*listBottom < *listTop + lineH)
+    *listBottom = *listTop + lineH;
+}
+
+static const char *fileSelectorHeading(const FileSelectorData *d) {
+  if (d->neutrinoPick)
+    return (d->mode == SelectorMode_Devices) ? uiStr(UI_STR_SELECT_NEUTRINO_DEVICE) : uiStr(UI_STR_SELECT_NEUTRINO_ELF);
+  if (d->heading[0])
+    return d->heading;
+  return (d->mode == SelectorMode_Devices) ? uiStr(UI_STR_SELECT_DEVICE) : uiStr(UI_STR_SELECT_FILE);
+}
+
 static void fileSelectorDraw(View *v, int zOrder) {
-  (void)v;
   FileSelectorData *d = &s_data;
 
-  int rows = d->itemCount;
-  if (rows < 2)
-    rows = 2;
-  if (rows > VISIBLE_ROWS)
-    rows = VISIBLE_ROWS;
+  int lineH = uiFontLineHeight();
 
-  int popupH = SCENE_KEEPOUT + (SCENE_ROW_SIZE * (rows + 2)) + POPUP_PROMPT_ROW_OFFSET;
-  int vx1 = POPUP_X;
-  int vy1 = POPUP_Y;
-  int vx2 = POPUP_X + POPUP_W;
-  int vy2 = POPUP_Y + popupH;
+  int vx1, vy1, vx2, vy2, listTop, listBottom;
+  fileSelectorLayout(lineH, &vx1, &vy1, &vx2, &vy2, &listTop, &listBottom);
+  int rows = fileSelectorVisibleRows(listTop, listBottom, lineH);
   int centerX = (vx1 + vx2) / 2;
   int leftX = vx1 + SCENE_KEEPOUT;
   int rightX = vx2 - SCENE_KEEPOUT;
 
   uiDrawRectRounded(gsGlobal, vx1, vy1, vx2, vy2, POPUP_ROUNDRECT_RADIUS, zOrder, ModalBGColor);
-  fontRenderString(FONT_DEFAULT, centerX, vy1 + SCENE_KEEPOUT, FONT_ALIGN_HCENTER, 0, 0, zOrder,
-                   (d->mode == SelectorMode_Devices) ? "Select device" : "Select file", HeaderTextColor);
+  fontRenderString(FONT_DEFAULT, centerX, vy1 + SCENE_KEEPOUT, FONT_ALIGN_HCENTER, 0, 0, zOrder, fileSelectorHeading(d), HeaderTextColor);
 
   if (d->mode == SelectorMode_Browse) {
-    fontRenderInRect(FONT_DEFAULT, leftX, vy1 + SCENE_KEEPOUT + 2, rightX, vy1 + SCENE_KEEPOUT + SCENE_ROW_SIZE,
-                     FONT_ALIGN_RIGHT | FONT_ALIGN_VCENTER, zOrder, d->currentPath, HeaderTextColor);
+    fontRenderInRect(FONT_DEFAULT, leftX, vy1 + SCENE_KEEPOUT + 2, rightX, vy1 + SCENE_KEEPOUT + lineH, FONT_ALIGN_RIGHT | FONT_ALIGN_VCENTER, zOrder,
+                     d->currentPath, HeaderTextColor);
   }
+
+  if (d->selected < d->scroll)
+    d->scroll = d->selected;
+  if (d->selected >= d->scroll + rows)
+    d->scroll = d->selected - rows + 1;
+  if (d->scroll < 0)
+    d->scroll = 0;
 
   int first = d->scroll;
   int last = first + rows;
   if (last > d->itemCount)
     last = d->itemCount;
 
-  int entryY = vy1 + SCENE_KEEPOUT + SCENE_ROW_SIZE;
+  int entryY = listTop;
   for (int i = first; i < last; i++) {
     uint64_t col = (i == d->selected) ? ColorSelected : FontMainColor;
     char line[160];
@@ -219,19 +238,23 @@ static void fileSelectorDraw(View *v, int zOrder) {
       snprintf(line, sizeof(line), "%s/", d->items[i].name);
     else
       snprintf(line, sizeof(line), "%s", d->items[i].name);
-    fontRenderInRect(FONT_DEFAULT, leftX, entryY, rightX, entryY + SCENE_ROW_SIZE, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder + 1, line, col);
-    entryY += fontGetLineHeight(0);
+    fontRenderInRect(FONT_DEFAULT, leftX, entryY, rightX, entryY + lineH, FONT_ALIGN_LEFT | FONT_ALIGN_VCENTER, zOrder + 1, line, col);
+    entryY += lineH;
   }
 
-  uiDrawModalPrompt(gsGlobal, vx1, vx2, 0, vy2, zOrder, HeaderTextColor, ICON_CROSS, "Open");
-  uiDrawModalPrompt(gsGlobal, vx1, vx2, 1, vy2, zOrder, HeaderTextColor, ICON_CIRCLE, "Back");
+  uiDrawScenePrompt(gsGlobal, 0, zOrder + 2, HeaderTextColor, ICON_TRIANGLE, uiStr(UI_STR_BACK));
+  uiDrawScenePrompt2(gsGlobal, 3, zOrder + 2, HeaderTextColor, ICON_CROSS, ICON_CIRCLE, uiStr(UI_STR_SELECT));
 }
 
 static void updateScroll(FileSelectorData *d) {
+  int lineH = uiFontLineHeight();
+  int vx1, vy1, vx2, vy2, listTop, listBottom;
+  fileSelectorLayout(lineH, &vx1, &vy1, &vx2, &vy2, &listTop, &listBottom);
+  int rows = fileSelectorVisibleRows(listTop, listBottom, lineH);
   if (d->selected < d->scroll)
     d->scroll = d->selected;
-  if (d->selected >= d->scroll + VISIBLE_ROWS)
-    d->scroll = d->selected - VISIBLE_ROWS + 1;
+  if (d->selected >= d->scroll + rows)
+    d->scroll = d->selected - rows + 1;
   if (d->scroll < 0)
     d->scroll = 0;
 }
@@ -252,10 +275,9 @@ static void navigateParent(FileSelectorData *d) {
 }
 
 static ViewResult fileSelectorOnInput(View *v, int padInput) {
-  (void)v;
   FileSelectorData *d = &s_data;
 
-  if (padInput & PAD_CIRCLE) {
+  if (padInput & PAD_TRIANGLE) {
     if (d->boundedMount && d->mode == SelectorMode_Browse && isMountRoot(d->currentPath, d->rootMount))
       return ViewResult_Pop;
     if (d->mode == SelectorMode_Devices)
@@ -282,7 +304,7 @@ static ViewResult fileSelectorOnInput(View *v, int padInput) {
     return ViewResult_Continue;
   }
 
-  if (padInput & PAD_CROSS) {
+  if (padInput & PAD_SELECT_ACTION) {
     const SelectorItem *it = &d->items[d->selected];
     if (d->mode == SelectorMode_Devices) {
       snprintf(d->rootMount, sizeof(d->rootMount), "%s", it->name);
@@ -295,14 +317,14 @@ static ViewResult fileSelectorOnInput(View *v, int padInput) {
         navigateParent(d);
       } else {
         char nextPath[PATH_MAX + 1];
-        joinPath(nextPath, sizeof(nextPath), d->currentPath, it->name);
+        joinDevicePath(nextPath, sizeof(nextPath), d->currentPath, it->name);
         loadDirectory(d, nextPath);
       }
       return ViewResult_Continue;
     }
 
     char selectedPath[PATH_MAX + 1];
-    joinPath(selectedPath, sizeof(selectedPath), d->currentPath, it->name);
+    joinDevicePath(selectedPath, sizeof(selectedPath), d->currentPath, it->name);
     if (d->onDone)
       d->onDone(selectedPath, d->doneUserdata);
     return ViewResult_Pop;
@@ -310,7 +332,7 @@ static ViewResult fileSelectorOnInput(View *v, int padInput) {
   return ViewResult_Continue;
 }
 
-void fileSelectorConfigure(const char *initialPath, FileSelectorDoneFn onDone, void *userdata) {
+void fileSelectorConfigure(const char *initialPath, FileSelectorDoneFn onDone, void *userdata, const char *heading) {
   FileSelectorDismissFn d = s_dismissNotifierPending;
   void *du = s_dismissUserdataPending;
   s_dismissNotifierPending = NULL;
@@ -320,11 +342,13 @@ void fileSelectorConfigure(const char *initialPath, FileSelectorDoneFn onDone, v
   s_data.dismissUserdata = du;
   s_data.onDone = onDone;
   s_data.doneUserdata = userdata;
+  if (heading && heading[0])
+    snprintf(s_data.heading, sizeof(s_data.heading), "%s", heading);
   if (initialPath && initialPath[0] != '\0')
     snprintf(s_data.currentPath, sizeof(s_data.currentPath), "%s", initialPath);
 }
 
-void fileSelectorConfigureForMount(const char *mountRoot, FileSelectorDoneFn onDone, void *userdata) {
+void fileSelectorConfigureForMount(const char *mountRoot, FileSelectorDoneFn onDone, void *userdata, const char *heading) {
   FileSelectorDismissFn d = s_dismissNotifierPending;
   void *du = s_dismissUserdataPending;
   s_dismissNotifierPending = NULL;
@@ -335,10 +359,14 @@ void fileSelectorConfigureForMount(const char *mountRoot, FileSelectorDoneFn onD
   s_data.boundedMount = 1;
   s_data.onDone = onDone;
   s_data.doneUserdata = userdata;
+  if (heading && heading[0])
+    snprintf(s_data.heading, sizeof(s_data.heading), "%s", heading);
   if (mountRoot && mountRoot[0])
     snprintf(s_data.rootMount, sizeof(s_data.rootMount), "%s", mountRoot);
   snprintf(s_data.currentPath, sizeof(s_data.currentPath), "%s", s_data.rootMount);
 }
+
+void fileSelectorEnableNeutrinoHeadings(void) { s_data.neutrinoPick = 1; }
 
 struct View *fileSelectorGetView(void) {
   s_view = (View){

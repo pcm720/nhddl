@@ -1,6 +1,11 @@
 #ifndef _DEVICES_PAD_H_
 #define _DEVICES_PAD_H_
 
+#include <libpad.h>
+
+// Cross and Circle both used as the select action
+#define PAD_SELECT_ACTION (PAD_CROSS | PAD_CIRCLE)
+
 // Initializes gamepad input driver
 void initPad();
 

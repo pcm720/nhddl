@@ -1,5 +1,10 @@
-#-video=ntsc # supported video modes: ntsc, pal, 480p
+#-video=480i # supported: 480i, 576i, 480p, 576p, 720p
+#-widescreen # anamorphic 16:9 UI (forced on for 720p)
+#-folder_view # start in folder browse mode
+#-autolaunch=5 # seconds; 0 or omit = off
+#-probe_delay=5 # seconds before probing devices; 0 or omit = off
+#-lang=en # NHDDL UI language
 -device=ata # supported modes: ata, mx4sio, udpfs, usb, ilink, mmce, hdl. If not present or commented out, all devices will be used to search for ISO files
 -device=mmce # multiple modes are supported via multiple mode strings
-#-ip_addr=192.168.1.6 # PS2 IP address for UDPBD mode (commented out)
+#-ip=192.168.1.6 # PS2 IP address for UDPFS/UDPBD (commented out)
 # Optional: path to Neutrino ELF (e.g. -neutrino=mass0:/neutrino/neutrino.elf)

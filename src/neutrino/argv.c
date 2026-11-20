@@ -1,10 +1,13 @@
 #include "backends/backends.h"
 #include "backends/cache.h"
 #include "config/arguments.h"
+#include "config/common.h"
 #include "config/config.h"
 #include "devices/hdd.h"
 #include "devices/utils.h"
 #include "dprintf.h"
+#include "neutrino/neutrino_arg_defs.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +34,7 @@ int launchELF(int argc, char *argv[]);
 
 // Assembles argument lists into argv for loader.elf.
 // Expects argv to be initialized with at least (arguments->total) elements.
+// Known path args with empty values are skipped
 int assembleArgv(ArgumentList *arguments, char **argv[]) {
   Argument *curArg = arguments->first;
   int argCount = 1; // argv[0] is always neutrino.elf
@@ -39,10 +43,15 @@ int assembleArgv(ArgumentList *arguments, char **argv[]) {
   *argv[0] = (char *)getNeutrinoPath();
   while (curArg != NULL) {
     if (!curArg->isDisabled) {
+      int emptyVal = !curArg->value || !curArg->value[0];
+      if (neutrinoIsPathArg(curArg->arg) && emptyVal) {
+        curArg = curArg->next;
+        continue;
+      }
       argSize = strlen(curArg->arg) + (curArg->value ? strlen(curArg->value) : 0) + 3; // + \0, = and -
       char *value = calloc(sizeof(char), argSize);
 
-      if (!curArg->value || !strlen(curArg->value))
+      if (emptyVal)
         snprintf(value, argSize, "-%s", curArg->arg);
       else
         snprintf(value, argSize, "-%s=%s", curArg->arg, curArg->value);
@@ -58,6 +67,27 @@ int assembleArgv(ArgumentList *arguments, char **argv[]) {
     *argv = realloc(*argv, argCount * sizeof(char *));
 
   return argCount;
+}
+
+// Join device mount onto known path args with relative values
+static void resolvePathArgsForLaunch(ArgumentList *arguments, struct BackendDevice *dev) {
+  if (!arguments || !dev)
+    return;
+  struct BackendDevice *pathDev = (dev->metadev) ? dev->metadev : dev;
+  const char *mount = pathDev && pathDev->mountpoint ? pathDev->mountpoint : NULL;
+  if (!mount || !mount[0])
+    return;
+
+  for (Argument *a = arguments->first; a; a = a->next) {
+    if (!neutrinoIsPathArg(a->arg) || !a->value || !a->value[0] || strchr(a->value, ':'))
+      continue;
+    char full[PATH_MAX];
+    joinDevicePath(full, sizeof(full), mount, a->value);
+    if (!full[0])
+      continue;
+    free(a->value);
+    a->value = strdup(full);
+  }
 }
 
 // Launches target, passing arguments to Neutrino.
@@ -115,6 +145,8 @@ int launchTarget(Target *target, ArgumentList *arguments) {
   char fullPathBuf[PATH_MAX];
   if (!getTargetFullPath(target, fullPathBuf, sizeof(fullPathBuf)))
     appendArgument(arguments, newArgument(isoArgument, fullPathBuf));
+
+  resolvePathArgsForLaunch(arguments, dev);
 
   // Assemble argv
   DPRINTF("neutrino: assembling argv\n");

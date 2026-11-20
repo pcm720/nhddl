@@ -42,13 +42,17 @@ static void freeIcon(GSTEXTURE *t) {
   free(t);
 }
 
-int initIcons(GSGLOBAL *gs) {
+void freeIcons(void) {
   for (int i = 0; i < ICON_COUNT; i++) {
     if (iconTextures[i]) {
       freeIcon(iconTextures[i]);
       iconTextures[i] = NULL;
     }
   }
+}
+
+int initIcons(GSGLOBAL *gs) {
+  freeIcons();
 
   struct {
     const void *data;
@@ -80,7 +84,7 @@ void drawIconAt(GSGLOBAL *gs, float x, float y, float w, float h, int z, uint64_
     return;
   GSTEXTURE *t = iconTextures[iconType];
   gsKit_TexManager_bind(gs, t);
-  gsKit_prim_sprite_texture(gs, t, x, y, 0.f, 0.f, x + w, y + h, (float)t->Width+1, (float)t->Height+1, z, color);
+  gsKit_prim_sprite_texture(gs, t, x, y, 0.f, 0.f, x + w, y + h, (float)t->Width + 1, (float)t->Height + 1, z, color);
 }
 
 int getIconWidth(IconType iconType) {

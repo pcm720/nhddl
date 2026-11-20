@@ -47,7 +47,8 @@ void appendArgumentCopy(ArgumentList *target, Argument *arg);
 // Expects both lists to be initialized. All arguments merged from src are a deep copy.
 void mergeArgumentLists(ArgumentList *dst, ArgumentList *src);
 
-// Parses a CNF-format file into ArgumentList. Overwrites options. device may be NULL (no path resolution).
+// Parses a CNF-format file into ArgumentList, overwriting options. device may be NULL.
+// Values are stored as written.
 // Returns 0 on success; on I/O or parse error returns negative errno, clears any partially built nodes (list head is not freed).
 int loadArgumentList(ArgumentList *options, struct BackendDevice *device, char *filePath);
 
